@@ -1,42 +1,77 @@
 test =
-	0: 'success'
+	0: 'test init success'
 print test[0]
+
 greet = "hello world"
 test[1] = greet == 'hello world'
-print test[1]
 print 'test 1 passed' if test[1] == true else 'test 1 failed'
+
 greeting[str src]: 'Hello ' + src
 test[2] = "Hello Veronica" == greeting['Veronica']
 print 'test 2 passed' if test[2] == True else 'test 2 failed'
 
-
-# ***********************
 my_var[int num]:
 	prop1 = "hello"
 	prop2 = "world"
 	return num + 5
 my_var[str text]: text + '!'
+test[3] = my_var[1] == 10
+print 'test 3 passed' if test[3] else 'test 3 failed'
+
+test[4] = my_var[2] == 11
+print 'test 4 passed' if test[4] else 'test 4 failed'
+
 next_var =
 	str text: text + '?!?!'
-print next_var['hahahahaha']
+test[5] = next_var['hahahahaha'] == 'hahahahaha?!?!'
+print 'test 5 passed' if test[5] else 'test 5 failed'
 
 my_var[3] = "three"
-print 345 ~ type["345"]
-print 345 ~ type[33333]
-print "****************"
-debug
+test[6] = my_var[3] == 'three'
+print 'test 10 passed' if test[10] else 'test 10 failed'
+
+test[7] = not 345 ~ type["345"] and 345 ~ type[3333]
+print 'test 11 passed' if test[7] else 'test 11 failed'
+
 Dog[str name, str breed]:
-	bark: print "hello my name is " + name
+	bark: "hello my name is " + name
 spot = Dog['Spot', 'terrier']
+test[8] = spot.bark == "hello my name is Spot"
+print 'test 12 passed' if test[8] else 'test 12 failed'
+
+test[9] = (spot.breed == "terrier" or spot.name == "Spot") and (spot.breed != "terrier" or spot.name == "Spot") and not (spot.breed == "terrier" and spot.name != "Spot") and not (spot.breed != "terrier" and spot.name == "Spot")
+print 'test 13 passed' if test[9] else 'test 13 failed'
+
+spot.name = 'Rover'
+test[14] = spot.name == 'Rover'
+print 'test 14 passed' if test[14] else 'test 14 failed'
+
+test[15] = spot.bark == "hello my name is Rover"
+print 'test 15 passed' if test[15] else 'test 15 failed'
+
+Range[int start, int end, int step]:
+	index = start
+	next:
+		return 'done' if index >= end else (index = index + step)
+r = Range[0, 3, 1]
+# print r.index
+# print r.next
+# print r.next
+test[20] = r.index == 0 and r.next == 1 and r.next == 2 and r.next == 3 and r.next == 'done'
+print 'test 20 passed' if test[20] else 'test 20 failed'
+
 debug
-spot.bark
-print spot.breed == "terrier" or spot.name == "Spot"
-print spot.breed != "terrier" or spot.name == "Spot"
-print spot.breed == "terrier" and spot.name != "Spot"
-print spot.breed != "terrier" and spot.name == "Spot"
+Dog.bark_breed: "Hi, I'm a " + breed
+test[21] = spot.bark_breed == "Hi, I'm a terrier"
+print 'test 21 passed' if test[21] else 'test 21 failed'
+
 exit
 # ***********************
 
+Dog =
+	[str name, str breed]:
+		bark: "hello my name is " + name
+	bark_breed: "hi I'm a " + breed
 
 
 

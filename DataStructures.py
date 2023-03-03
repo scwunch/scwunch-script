@@ -148,8 +148,9 @@ class Pattern:
         for i, param in enumerate(self.all_parameters):
             if i == len(args):
                 break
-            patt = Pattern(Parameter(param.name, Value(i+1)))
-            d[patt] = args[i]
+            if param.name:
+                patt = Pattern(Parameter(param.name))
+                d[patt] = args[i]
         return d
     def __len__(self):
         return len(self.required_parameters)
@@ -203,13 +204,13 @@ class Option:
             case types.FunctionType(): self.fn = val_block_fn
             case fn if callable(fn): self.fn = fn
 
-    def execute(self, args, env=Context.env):
+    def execute(self, args, proto=None, env=Context.env):
         if self.value:
             return self.value
         if self.fn:
             return self.fn(*args)
         assert self.block is not None
-        fn = Function(options=self.pattern.zip(args), env=env)
+        fn = Function(options=self.pattern.zip(args), prototype=proto, env=env)
         Context.push(fn)
         for statement in self.block.statements:
             Context.line = statement.pos[0]
@@ -222,7 +223,10 @@ class Option:
         return Value(fn)
 
     def __repr__(self):
-        return f"{self.pattern} => {self.value or self.block or self.fn}"
+        if self.value:
+            return f"{self.pattern}={self.value}"
+        if self.block or self.fn:
+            return f"{self.pattern}: {self.block or self.fn}"
 
 class RuntimeErr(Exception):
     pass
@@ -235,8 +239,11 @@ class OperatorError(SyntaxErr):
 
 class Function:
     return_value = None
+    # prototype = None
     def __init__(self, opt_pattern=None, opt_value=None, options=None, prototype=None, env=Context.env):
         # self.block = block or Block([])
+        self.prototype = prototype
+        self.env = env
         self.options = []  # [Option(Pattern(), self)]
         self.named_options = {}
         if options:
@@ -244,8 +251,6 @@ class Function:
                 self.add_option(patt, val)
         if opt_pattern is not None:
             self.assign_option(opt_pattern, opt_value)
-        self.prototype: Function = prototype
-        self.env: Function = env
         # self.return_value = value
         # self.is_null = is_null
         # if prototype:
@@ -298,11 +303,12 @@ class Function:
                     idx = i
         return idx
 
-    def select(self, key: Pattern | list[Value], walk_prototype_chain=True, create_if_not_exists=False):
+    def select(self, key: Pattern | list[Value], walk_prototype_chain=True, ascend_env=False):
         """
         :param key: list of args, or pattern of params
         :param walk_prototype_chain: bool=True search options of prototype if not found
-        :param create_if_not_exists: create an null function option if not found
+        :param ascend_env: bool=False search containing environment if not found
+        :param create_if_not_exists: create a null function option if not found
                 (I think these two options should probably be mutually exclusive)
         :returns the matching option, creating a null option if none exists
         """
@@ -310,23 +316,27 @@ class Function:
             opt = [opt for opt in self.options if opt.pattern == key]
             if opt:
                 return opt[0]
-            if create_if_not_exists:
-                return self.add_option(key)
-            raise NoMatchingOptionError(f"No option found in function {self} matching pattern {key}")
-
-        if len(key) == 1 and key[0].type == BasicType.String:
-            option = self.named_options.get(key[0].value, None)
-            if option:
-                return option
-
-        i = self.index_of(key)
-        if i is not None:
-            return self.options[i]
-        if create_if_not_exists:
-            return self.add_option(Pattern(*[Parameter(value=k) for k in key]))
+            # if ascend_env:
+            #     return self.add_option(key)
+            # raise NoMatchingOptionError(f"No option found in function {self} matching pattern {key}")
+        else:
+            if len(key) == 1 and key[0].type == BasicType.String:
+                option = self.named_options.get(key[0].value, None)
+                if option:
+                    return option
+            i = self.index_of(key)
+            if i is not None:
+                return self.options[i]
+        # if create_if_not_exists:
+        #     return self.add_option(Pattern(*[Parameter(value=k) for k in key]))
         if walk_prototype_chain and self.prototype:
             try:
                 return self.prototype.select(key)
+            except NoMatchingOptionError:
+                pass
+        if ascend_env and self.env:
+            try:
+                return self.env.select(key)
             except NoMatchingOptionError:
                 pass
         raise NoMatchingOptionError(f"Line {Context.line}: key {key} not found in function {self}")
@@ -341,7 +351,7 @@ class Function:
                 except NoMatchingOptionError:
                     pass
             raise e
-        return option.execute(key, self)
+        return option.execute(key, self, self)
 
     def deref(self, name: str, ascend_env=True):
         return self.call([Value(name)], ascend=ascend_env)
@@ -355,9 +365,10 @@ class Function:
     #     return fn
 
     def clone(self):
-        fn = Function(block=self.block, prototype=self, env=self.env)
+        fn = Function(prototype=self.prototype, env=self.env)
         for opt in self.options:
-            fn.assign_option(opt.pattern, opt.function.clone())
+            fn.assign_option(opt.pattern,
+                             opt.value.clone() if opt.value else opt.block or opt.fn)
         return fn
 
     def __repr__(self):
@@ -367,33 +378,6 @@ class Function:
             return f"{{{self.options}}}"
         else:
             return f"{{{self.block}}}"
-
-
-class Native(Function):
-    def __init__(self, fn: callable):
-        super().__init__()
-        self.fn = fn
-
-    def execute(self):
-        return self.fn(*self.args)
-
-    def init(self, pattern, key, parent=None, copy=False):
-        self.args = key
-        return self
-
-    def __repr__(self):
-        return 'Native'
-
-def NullFunction():
-    return Function(is_null=True)
-# class NullFunction(Function):
-#     is_null = True
-#     def select(self, key: Pattern | list[Value]) -> Option | None:
-#         raise Exception("Null Function has no options: line " + str(Context.line))
-#     def execute(self):
-#         raise Exception("Null option cannot be executed: line " + str(Context.line))
-#     def call(self, key: list[Value] | str, copy_option=True, ascend_env=False) -> Value | None:
-#         raise Exception("Null option cannot be called: line " + str(Context.line))
 
 
 Op = {}
@@ -426,7 +410,7 @@ class Operator:
         assert self.binop or self.prefix or self.postfix or self.ternary
 
     def prepare_args(self, lhs, mid, rhs) -> list[Value]:
-        raise Exception('Operator.prepare_args not implemented')
+        raise NotImplemented('Operator.prepare_args not implemented')
 
     def __repr__(self):
         return self.text

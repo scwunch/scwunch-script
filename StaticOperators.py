@@ -114,7 +114,10 @@ Op['and'].static = and_fn
 
 def if_fn(lhs: list[Node], mid: list[Node], rhs: list[Node]) -> Value:
     condition = Expression(mid).evaluate()
-    return Expression(lhs).evaluate() if BuiltIns['bool'].call([condition]).value else Expression(rhs).evaluate()
+    if BuiltIns['bool'].call([condition]).value:
+        return Expression(lhs).evaluate()
+    else:
+        return Expression(rhs).evaluate()
 Op['if'].static = if_fn
 
 def option_exists(lhs: list[Node], mid: list[Node], rhs: list[Node]) -> Value:

@@ -3,10 +3,6 @@ from Syntax import BasicType
 from DataStructures import *
 from Expressions import Expression, number
 
-class Static(Native):
-    def call(self, key: list[Expression], copy_option=False, ascend=False) -> Value | None:
-        return self.fn(*key)
-
 
 NoneParam = Parameter(basic_type=BasicType.none)
 BoolParam = Parameter(basic_type=BasicType.Boolean)

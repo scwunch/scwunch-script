@@ -68,15 +68,15 @@ class Expression:
 
     def evaluate(self):
         match self.type:
-            case ExprType.Empty: return Value(None)
-            case ExprType.Single: return eval_node(self[0])
+            case ExprType.Empty:
+                return Value(None)
+            case ExprType.Single:
+                return eval_node(self[0])
             case ExprType.Conditional:
                 if self.condition.evaluate().value:
                     return self.consequent.evaluate()
-                elif self.alt:
-                    return self.alt.evaluate().value
                 else:
-                    return Value(None)
+                    return self.alt.evaluate()
             case ExprType.Loop:
                 return 'loop not implemented'
             case ExprType.Command:
@@ -127,12 +127,12 @@ def conditional(nodes: list[Node]):
     for i, node in enumerate(nodes):
         if isinstance(node, Block):
             condition = Expression(nodes[1:i])
-            consequent = node
+            consequent = Expression([node])
         elif node.source_text == 'else':
             alt = Expression(nodes[i+1:])
             break
     else:
-        alt = None
+        alt = Expression([])
     return condition, consequent, alt
 
 def for_loop(nodes: list[Node]):
@@ -159,8 +159,8 @@ def eval_command(cmd: str, expr: Expression):
             raise Exception(f"Unhandled command {cmd}")
 
 def expr_tree(nodes: list[Node]):
-    pre_op = Op[nodes[0].source_text] if nodes[0].type == TokenType.Operator else None
-    post_op = Op[nodes[-1].source_text] if nodes[-1].type == TokenType.Operator else None
+    pre_op = Op[nodes[0].source_text] if nodes[0].type in (TokenType.Operator, TokenType.Keyword) else None
+    post_op = Op[nodes[-1].source_text] if nodes[-1].type in (TokenType.Operator, TokenType.Keyword) else None
     op_idx = right_idx = None
     min_precedence = math.inf
     if pre_op and pre_op.prefix is not None:
@@ -177,7 +177,7 @@ def expr_tree(nodes: list[Node]):
             op_idx = i_tern
         elif nodes[i].type in (TokenType.Operator, TokenType.OptionSet, TokenType.Keyword, TokenType.ListStart):
             op = Op[nodes[i].source_text]
-            if op.binop < min_precedence or \
+            if op.binop and op.binop < min_precedence or \
                     op.binop == min_precedence and op.associativity == 'left':
                 op_idx, right_idx, min_precedence = i, i, op.binop
                 if op.ternary:
@@ -212,8 +212,6 @@ def eval_node(node: Node) -> Value:
 
 def eval_token(tok: Token) -> Value:
     s = tok.source_text
-    if s == 'true' or s == 'True':
-        pass
     match tok.type:
         case TokenType.Singleton:
             return Value(singletons[s])
@@ -248,6 +246,13 @@ def number(text: str) -> int | float:
     else:
         return int(text)
 
+def string(text: str):
+    q = text[0]
+    if q == "`":
+        return text[1:-1]
+    return text[1:-1]
+    # TO IMPLEMENT: "string {formatting}"
+
 def make_param(param_nodes: list[Node]) -> Parameter:
     last = param_nodes[-1]
     if isinstance(last, Token) and last.type in (TokenType.Name, TokenType.PatternName):
@@ -280,121 +285,40 @@ def split(nodes: list[Node], splitter: TokenType) -> list[list[Node]]:
         groups.append(nodes[start:])
     return groups
 
-def evaluate_pattern(pattern_nodes: list[Node] | List) -> Pattern:
-    if isinstance(pattern_nodes, List):
-        param_statements = (statement.nodes for statement in pattern_nodes.nodes)
-    else:
-        param_statements = split(pattern_nodes, TokenType.Comma)
-    parameters = (make_param(ps_nodes) for ps_nodes in param_statements)
-    return Pattern(*parameters)
-
 def get_option(nodes: list[Node]) -> Option:
-    fn = Context.env
+    fn_nodes, fn = [], Context.env
     match nodes:
         case [*fn_nodes, _, List() as param_list]:
-            if fn_nodes:
-                try:
-                    fn_val = Expression(fn_nodes).evaluate()
-                except NoMatchingOptionError:
-                    opt = get_option(fn_nodes)
-                    if opt.is_null():
-                        fn_val = Value(Function())
-                        opt.value = fn_val
-                    else:
-                        fn_val = opt.value
-                    # how many levels deep should this go?
-                    # This will recurse infinitely, potentially creating many function
-                if fn_val.type != BasicType.Function:
-                    raise RuntimeErr(f"Line {Context.line}: "
-                                     f"Cannot add option to {fn_val.type.value} {' '.join((map(str, fn_nodes)))}")
-                fn = fn_val.value
             param_list = [item.nodes for item in param_list.nodes]
+        case [*fn_nodes, Token() as dot_op, Token() as name_tok] \
+                if dot_op.source_text == '.' and name_tok.type == TokenType.PatternName:
+            param_list = [[name_tok]]
         case _:
             param_list = split(nodes, TokenType.Comma)
+    if fn_nodes:
+        try:
+            fn_val = Expression(fn_nodes).evaluate()
+        except NoMatchingOptionError:
+            opt = get_option(fn_nodes)
+            if opt.is_null():
+                fn_val = Value(Function())
+                opt.value = fn_val
+            else:
+                fn_val = opt.value
+            # how many levels deep should this go?
+            # This will recurse infinitely, potentially creating many function
+        if fn_val.type != BasicType.Function:
+            raise RuntimeErr(f"Line {Context.line}: "
+                             f"Cannot add option to {fn_val.type.value} {' '.join((map(str, fn_nodes)))}")
+        fn = fn_val.value
     params = map(make_param, param_list)
+    if Context.line > 62:
+        pass
     patt = Pattern(*params)
-    return fn.select(patt, create_if_not_exists=True)
-
-    fn = patt = name = None
-    if last_node.type in (TokenType.Name, TokenType.PatternName):
-        name = last_node.source_text
-        nodes = nodes[:-1]
-    match Expression(nodes).evaluate().value:
-        case None:
-            pass
-        case Pattern() as patt:
-            pass
-        case Function() as fn:
-            pass
-        case _:
-            pass
-    if isinstance(last_node, List):
-        if len(nodes) > 1:
-            param_pattern = evaluate_pattern(last_node)
-            if len(nodes) == 3 and nodes[0].type == TokenType.Name:
-                fn = eval_node(nodes[0])
-                if fn.is_null():  # if function does not exist, create it
-                    fn = Context.env.assign_option(
-                        Pattern(Parameter(nodes[0].source_text)),
-                        Function(env=Context.env))
-            else:
-                fn = Expression(nodes[:-2]).evaluate()
-            return fn.select(param_pattern)
-        else:
-            nodes = last_node
-
-    pattern = evaluate_pattern(nodes)
-    return Context.env.select(pattern)
+    try:
+        return fn.select(patt, ascend_env=True)
+    except NoMatchingOptionError:
+        return fn.add_option(patt)
 
 
-def get_option_old(nodes: list[Node]) -> Option:
-    last_node = nodes[-1]
-    if isinstance(last_node, List):
-        if len(nodes) > 1:
-            param_pattern = evaluate_pattern(last_node)
-            if len(nodes) == 3 and nodes[0].type == TokenType.Name:
-                fn = eval_node(nodes[0])
-                if fn.is_null():  # if function does not exist, create it
-                    fn = Context.env.assign_option(
-                        Pattern(Parameter(nodes[0].source_text)),
-                        Function(env=Context.env))
-            else:
-                fn = Expression(nodes[:-2]).evaluate()
-            return fn.select(param_pattern)
-        else:
-            nodes = last_node
-    pattern = evaluate_pattern(nodes)
-    return Context.env.select(pattern)
 
-def execute(fn: Function, args: list[Value] = None) -> Value:
-    # fn = fn.copy()
-    # for arg in args:
-    #     fn.assign_option(pattern, arg)
-    Context.push(fn)
-    print(Context.env)
-    for statement in fn.block.statements:
-        Context.line = statement.pos[0]
-        expr = Expression(statement.nodes)
-        result = expr.evaluate()
-        if fn.return_value:
-            Context.pop()
-            return fn.return_value
-        # if isinstance(result, Action):
-        #     match result.action:
-        #         case 'return':
-        #             Context.pop()
-        #             return Value(result.value)
-        #         case 'assign':
-        #             fn.assign_option(result.pattern, Function(value=Value(result.value)))
-    Context.pop()
-    fn.return_value = Value(fn)
-    return fn.return_value
-
-# Function.exec = execute
-
-def string(text: str):
-    q = text[0]
-    if q == "`":
-        return text[1:-1]
-    return text[1:-1]
-    # TO IMPLEMENT: "string {formatting}"
