@@ -16,11 +16,11 @@ if __name__ == "__main__":
 
     tokenizer = Tokenizer(script_string)
     ast = AST(tokenizer)
-    root = Function(block=ast.block)
+    builtin_env = Function(env=None)
+    for key, builtin in BuiltIns.items():
+        builtin_env.add_option(Pattern(Parameter(key)), Value(builtin))
+    root = Function(Pattern(), ast.block, env=builtin_env)
     Context.root = root
     Context.env = root
-    for key, builtin in BuiltIns.items():
-        root.add_option(Pattern(Parameter(key)), builtin)
-    output = root.execute()
+    output = root.call([])
     print(output)
-    DataStructures.is_match()

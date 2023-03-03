@@ -1,4 +1,6 @@
-from Syntax import BasicType, Block, type_mapper
+import types
+
+from Syntax import BasicType, Block, Node
 
 class Context:
     _env = []
@@ -140,6 +142,15 @@ class Pattern:
     @property
     def all_parameters(self):
         return self.required_parameters + self.optional_parameters
+    def zip(self, args: list):
+        assert len(self.required_parameters) <= len(args) <= len(self.all_parameters)
+        d = {}
+        for i, param in enumerate(self.all_parameters):
+            if i == len(args):
+                break
+            patt = Pattern(Parameter(param.name, Value(i+1)))
+            d[patt] = args[i]
+        return d
     def __len__(self):
         return len(self.required_parameters)
     def __getitem__(self, item):
@@ -158,26 +169,60 @@ class Pattern:
 def name_patt(name: str) -> Pattern:
     return Pattern(Parameter(name))
 # shortcut function
-def val_func(pyval):
-    return Function(value=Value(pyval))
+# def val_func(pyval):
+#     return Function(value=Value(pyval))
+
+def make_expr(nodes: list[Node]):
+    raise NotImplemented
+
+
+# opt_value_type = Value | Block | callable | None
 
 class Option:
-    def __init__(self, params: Pattern | Parameter | str, function=None):
-        if isinstance(params, str):
-            self.params = Pattern(Parameter(params))
-        elif isinstance(params, Parameter):
-            self.params = Pattern(params)
+    value = None
+    block = None
+    fn = None
+    def __init__(self, pattern, value=None):
+        if isinstance(pattern, str):
+            self.params = name_patt(pattern)
+        elif isinstance(pattern, Parameter):
+            self.params = Pattern(pattern)
         else:
-            self.pattern = params
-        self.function = function or NullFunction()
+            self.pattern = pattern
+        self.assign(value)
 
     def is_null(self):
-        return self.function is None
+        return (self.value and self.block and self.fn) is None
     def not_null(self):
-        return self.function is not None
+        return (self.value or self.block or self.fn) is not None
+    def assign(self, val_block_fn):
+        match val_block_fn:
+            case Value(): self.value = val_block_fn
+            case Block(): self.block = val_block_fn
+            case types.FunctionType: self.fn = val_block_fn
+            case types.FunctionType(): self.fn = val_block_fn
+            case fn if callable(fn): self.fn = fn
+
+    def execute(self, args, env=Context.env):
+        if self.value:
+            return self.value
+        if self.fn:
+            return self.fn(*args)
+        assert self.block is not None
+        fn = Function(options=self.pattern.zip(args), env=env)
+        Context.push(fn)
+        for statement in self.block.statements:
+            Context.line = statement.pos[0]
+            expr = Context.make_expr(statement.nodes)
+            result = expr.evaluate()
+            if fn.return_value:
+                Context.pop()
+                return fn.return_value
+        Context.pop()
+        return Value(fn)
 
     def __repr__(self):
-        return f"{self.pattern} => {self.function}"
+        return f"{self.pattern} => {self.value or self.block or self.fn}"
 
 class RuntimeErr(Exception):
     pass
@@ -189,40 +234,46 @@ class OperatorError(SyntaxErr):
     pass
 
 class Function:
-    def __init__(self, opt_pattern=None, opt_value=None, options=None, block: Block = None,
-                 prototype=None, env=Context.env, value=None, is_null=False):
-        self.block = block or Block([])
+    return_value = None
+    def __init__(self, opt_pattern=None, opt_value=None, options=None, prototype=None, env=Context.env):
+        # self.block = block or Block([])
         self.options = []  # [Option(Pattern(), self)]
         self.named_options = {}
         if options:
             for patt, val in options.items():
                 self.add_option(patt, val)
-        if opt_pattern:
+        if opt_pattern is not None:
             self.assign_option(opt_pattern, opt_value)
         self.prototype: Function = prototype
         self.env: Function = env
-        self.return_value = value
-        self.is_null = is_null
+        # self.return_value = value
+        # self.is_null = is_null
         # if prototype:
         #     self.options += [opt.copy() for opt in prototype.options.copy()]
 
-    def add_option(self, pattern, fn=None):
-        if not fn:
-            fn = Function(env=self)
-        option = Option(pattern, fn)
-        if len(pattern) == 1 and pattern[0].name:
-            self.named_options[pattern[0].name] = option
+    def add_option(self, pattern, val_or_block=None):
+        option = Option(pattern, val_or_block)
+        name = None
+        match pattern:
+            case str(): name = pattern
+            case Parameter(): name = pattern.name
+            case Pattern(): name = pattern[0].name if len(pattern) == 1 else None
+        if name is not None:
+            self.named_options[name] = option
         self.options.insert(0, option)
         self.options.sort(key=lambda opt: opt.pattern.specificity, reverse=True)
         return option
 
-    def assign_option(self, pattern, function):
+    def assign_option(self, pattern, val_or_block):
         try:
             opt = self.select(pattern)
-            opt.function = function
+            opt.assign(val_or_block)
         except NoMatchingOptionError:
-            self.add_option(pattern, function)
-        return function
+            self.add_option(pattern, val_or_block)
+        if isinstance(val_or_block, Value):
+            return val_or_block
+        else:
+            return Value(None)
 
     def index_of(self, key: list[Value]) -> int | None:
         idx = None
@@ -280,38 +331,28 @@ class Function:
                 pass
         raise NoMatchingOptionError(f"Line {Context.line}: key {key} not found in function {self}")
 
-    def call(self, key: list[Value], copy_option=False, ascend=False) -> Value | None:
+    def call(self, key: list[Value], ascend=False) -> Value | None:
         try:
             option = self.select(key)
         except NoMatchingOptionError as e:
             if ascend and self.env:
-                return self.env.call(key, ascend=True)
+                try:
+                    return self.env.call(key, ascend=True)
+                except NoMatchingOptionError:
+                    pass
             raise e
-        if option.function.return_value:
-            return option.function.return_value
-        fn = option.function.init(option.pattern, key, self, copy_option)
-        return fn.execute()
-
-    def execute(self):
-        if self.return_value:
-            return self.return_value
-        return self.exec()
+        return option.execute(key, self)
 
     def deref(self, name: str, ascend_env=True):
-        opt = self.named_options.get(name, None)
-        if opt:
-            return opt.function.execute()
-        if ascend_env and self.env:
-            return self.env.deref(name)
-        raise NoMatchingOptionError(f"Cannot find name '{name}' in env {self}")
+        return self.call([Value(name)], ascend=ascend_env)
 
-    def init(self, pattern: Pattern, key: list[Value], parent=None, copy=True):
-        parent = parent or self
-        fn = Function(block=self.block, prototype=parent, env=parent.env) if copy else self
-        for arg, param in zip(key, pattern.required_parameters):
-            fn.assign_option(Pattern(param), Function(value=arg))
-        fn.args = key
-        return fn
+    # def init(self, pattern: Pattern, key: list[Value], parent=None, copy=True):
+    #     parent = parent or self
+    #     fn = Function(block=self.block, prototype=parent, env=parent.env) if copy else self
+    #     for arg, param in zip(key, pattern.required_parameters):
+    #         fn.assign_option(Pattern(param), Function(value=arg))
+    #     fn.args = key
+    #     return fn
 
     def clone(self):
         fn = Function(block=self.block, prototype=self, env=self.env)
@@ -323,18 +364,9 @@ class Function:
         if self == Context.root:
             return 'root'
         if len(self.options) == 1 or True:
-            return f"{{{self.options} => Block: {self.block}}}"
+            return f"{{{self.options}}}"
         else:
             return f"{{{self.block}}}"
-
-
-class Action(Value):
-    action: str  # return, assign,
-    def __init__(self, value, action: str, data=None):
-        super().__init__(value)
-        self.action = action
-        if action == 'assign':
-            self.pattern = data
 
 
 class Native(Function):

@@ -25,31 +25,31 @@ NormalBinopPattern = Pattern(NormalParam, NormalParam)
 AnyBinopPattern = Pattern(AnyParam, AnyParam)
 
 
-BuiltIns['bool'] = Function(Pattern(AnyParam), Native(lambda x: Value(bool(x.value), BasicType.Boolean)))
-BuiltIns['number'] = Function(Pattern(NormalParam), Native(
-    lambda x: Value(int(x.value)) if x.type == BasicType.Boolean else Value(number(x.value))))
-BuiltIns['int'] = Function(Pattern(NormalParam), Native(lambda x: Value(int(BuiltIns['number'].call([x]).value))))
-BuiltIns['float'] = Function(Pattern(NormalParam), Native(lambda x: Value(float(BuiltIns['number'].call([x]).value))))
+BuiltIns['bool'] = Function(Pattern(AnyParam), lambda x: Value(bool(x.value), BasicType.Boolean))
+BuiltIns['number'] = Function(Pattern(NormalParam),
+                              lambda x: Value(int(x.value)) if x.type == BasicType.Boolean else Value(number(x.value)))
+BuiltIns['int'] = Function(Pattern(NormalParam), lambda x: Value(int(BuiltIns['number'].call([x]).value)))
+BuiltIns['float'] = Function(Pattern(NormalParam), lambda x: Value(float(BuiltIns['number'].call([x]).value)))
 ToString = Function()
-# ToString.add_option(Pattern(), Native(lambda: Value(BasicType.String)))
-ToString.add_option(Pattern(NumberParam), Native(
-    lambda n: Value('-' * (n.value < 0) + base(abs(n.value), 10, 6, string=True, recurring=False))))
-ToString.add_option(Pattern(AnyParam), Native(lambda x: Value(str(x.value))))
-ToString.add_option(Pattern(Parameter(basic_type=BasicType.Type)), Native(lambda t: Value(t.value.name)))
+# ToString.add_option(Pattern(), lambda: Value(BasicType.String))
+ToString.add_option(Pattern(NumberParam),
+                    lambda n: Value('-' * (n.value < 0) + base(abs(n.value), 10, 6, string=True, recurring=False)))
+ToString.add_option(Pattern(AnyParam), lambda x: Value(str(x.value)))
+ToString.add_option(Pattern(Parameter(basic_type=BasicType.Type)), lambda t: Value(t.value.name))
 BuiltIns['str'] = ToString
 
-BuiltIns['type'] = Function(Pattern(AnyParam), Native(lambda v: Value(v.type, BasicType.Type)))
+BuiltIns['type'] = Function(Pattern(AnyParam), lambda v: Value(v.type, BasicType.Type))
 
 def contains(a: Function, b: Value):
     return Value(b in (opt.value for opt in a.options))
-Contains = Function(Pattern(FunctionParam, AnyParam), Native(contains))
+Contains = Function(Pattern(FunctionParam, AnyParam), contains)
 BuiltIns['contains'] = Contains
 
 Operator('=', binop=1, static=True, associativity='right')
 Operator(':', binop=1, static=True, associativity='right')
 Operator(':=', binop=1, static=True, associativity='right')
 Operator('if',
-         Function(Pattern(AnyParam), Native(lambda x: x)),
+         Function(Pattern(AnyParam), lambda x: x),
          binop=2, static=True, ternary='else')
 Operator('??',
          binop=2.5, static=True)
@@ -58,28 +58,28 @@ Operator('or',
 Operator('and',
          binop=4, static=True)
 Operator('not',
-         Function(Pattern(AnyParam), Native(lambda a: Value(not BuiltIns['bool'].call([a]).value))),
+         Function(Pattern(AnyParam), lambda a: Value(not BuiltIns['bool'].call([a]).value)),
          prefix=5)
 Operator('in',
-         Function(AnyBinopPattern, Native(lambda a, b: Contains.call([b, a]))),
+         Function(AnyBinopPattern, lambda a, b: Contains.call([b, a])),
          binop=6)
 Operator('==',
-         Function(AnyBinopPattern, Native(lambda a, b: Value(a == b))),
+         Function(AnyBinopPattern, lambda a, b: Value(a == b)),
          binop=7)
 Operator('!=',
-         Function(AnyBinopPattern, Native(lambda a, b: Value(a != b))),
+         Function(AnyBinopPattern, lambda a, b: Value(a != b)),
          binop=7)
 Operator('<',
-         Function(NormalBinopPattern, Native(lambda a, b: Value(a.value < b.value))),
+         Function(NormalBinopPattern, lambda a, b: Value(a.value < b.value)),
          binop=9)
 Operator('>',
-         Function(NormalBinopPattern, Native(lambda a, b: Value(a.value > b.value))),
+         Function(NormalBinopPattern, lambda a, b: Value(a.value > b.value)),
          binop=9)
 Operator('<=',
-         Function(NormalBinopPattern, Native(lambda a, b: Value(a.value <= b.value))),
+         Function(NormalBinopPattern, lambda a, b: Value(a.value <= b.value)),
          binop=9)
 Operator('>=',
-         Function(NormalBinopPattern, Native(lambda a, b: Value(a.value >= b.value))),
+         Function(NormalBinopPattern, lambda a, b: Value(a.value >= b.value)),
          binop=9)
 def matchPattern(a: Value, b: Pattern | Value):
     match b:
@@ -90,27 +90,27 @@ def matchPattern(a: Value, b: Pattern | Value):
             assert b.type == BasicType.Type
             return Value(a.type == b.value, BasicType.Boolean)
 Operator('~',
-         Function(AnyBinopPattern, Native(lambda a, b: a.type == b.type),
-                  options={Pattern(AnyParam, Parameter(basic_type=(BasicType.Type, BasicType.Pattern))): Native(matchPattern)}),
+         Function(AnyBinopPattern, lambda a, b: a.type == b.type,
+                  options={Pattern(AnyParam, Parameter(basic_type=(BasicType.Type, BasicType.Pattern))): matchPattern}),
          binop=8)
 Operator('+',
-         Function(NormalBinopPattern, Native(lambda a, b: Value(a.value + b.value))),
+         Function(NormalBinopPattern, lambda a, b: Value(a.value + b.value)),
          binop=10)
 Operator('-',
-         Function(NormalBinopPattern, Native(lambda a, b: Value(a.value - b.value)),
-                  options={Pattern(LogNumParam): Native(lambda a: Value(-a.value))}),
+         Function(NormalBinopPattern, lambda a, b: Value(a.value - b.value),
+                  options={Pattern(LogNumParam): lambda a: Value(-a.value)}),
          binop=10, prefix=12)
 Operator('*',
-         Function(Pattern(LogNumParam, LogNumParam), Native(lambda a, b: Value(a.value * b.value))),
+         Function(Pattern(LogNumParam, LogNumParam), lambda a, b: Value(a.value * b.value)),
          binop=11)
 Operator('/',
-         Function(Pattern(LogNumParam, LogNumParam), Native(lambda a, b: Value(a.value / b.value))),
+         Function(Pattern(LogNumParam, LogNumParam), lambda a, b: Value(a.value / b.value)),
          binop=11)
 Operator('%',
-         Function(Pattern(LogNumParam, LogNumParam), Native(lambda a, b: Value(a.value % b.value))),
+         Function(Pattern(LogNumParam, LogNumParam), lambda a, b: Value(a.value % b.value)),
          binop=11)
 Operator('**',
-         Function(Pattern(LogNumParam, LogNumParam), Native(lambda a, b: Value(a.value ** b.value))),
+         Function(Pattern(LogNumParam, LogNumParam), lambda a, b: Value(a.value ** b.value)),
          binop=12, associativity='right')
 Operator('?',
          postfix=13, static=True)
@@ -135,11 +135,13 @@ def dot_call(a: Value, b: Value, c: Value = None):
         return val
 
 Operator('.',
-         Function(Pattern(FunctionParam, Parameter(basic_type=BasicType.Name)), Native(lambda a, b: a.call(Value(b[0].name))),
-                  options={Pattern(AnyParam, Parameter(basic_type=BasicType.Name), optional_parameters=(ListParam,)): Native(dot_call)}),
+         Function(Pattern(FunctionParam, Parameter(basic_type=BasicType.Name)), lambda a, b: a.call(Value(b[0].name)),
+                  options={Pattern(AnyParam,
+                                   Parameter(basic_type=BasicType.Name), optional_parameters=(ListParam,)
+                                   ): dot_call}),
          binop=13, ternary='[')
 Operator('.[',
-         Function(Pattern(FunctionParam, ListParam), Native(lambda a, b: a.value.call(b.value))),
+         Function(Pattern(FunctionParam, ListParam), lambda a, b: a.value.call(b.value)),
          binop=13)
 
 
@@ -147,21 +149,21 @@ Operator('.[',
 def number_guard(a: Value, b: Value, op_sym: str):
     # assert a.value == b.type
     return Pattern(Parameter(basic_type=a.value,
-                             fn=Native(lambda n: Op[op_sym].fn.call([n, b]))))
+                             fn=lambda n: Op[op_sym].fn.call([n, b])))
 
 # generating functions with syntax like `str > 5` => `[str x]: len(x) > 5`
 def string_guard(a: Value, b: Value, op_sym: str):
     assert a.value == BasicType.String and b.type in (BasicType.Integer, BasicType.Float)
     return Pattern(Parameter(basic_type=BasicType.String,
-                             fn=Native(lambda s: Op[op_sym].fn.call([Value(len(s.value)), b]))))
+                             fn=lambda s: Op[op_sym].fn.call([Value(len(s.value)), b])))
 
 for op in ('>', '<', '>=', '<='):
     Op[op].fn.assign_option(Pattern(Parameter(value=Value(BasicType.Integer)), NumberParam),
-                            Native(lambda a, b: number_guard(a, b, op)))
+                            lambda a, b: number_guard(a, b, op))
     Op[op].fn.assign_option(Pattern(Parameter(value=Value(BasicType.Float)), NumberParam),
-                            Native(lambda a, b: number_guard(a, b, op)))
+                            lambda a, b: number_guard(a, b, op))
     Op[op].fn.assign_option(Pattern(Parameter(value=Value(BasicType.String)), NumberParam),
-                            Native(lambda  a, b: string_guard(a, b, op)))
+                            lambda a, b: string_guard(a, b, op))
 
 
 

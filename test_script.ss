@@ -1,9 +1,14 @@
+test =
+	0: 'success'
+print test[0]
 greet = "hello world"
-print 'greet = "hello world => ' + str[greet == 'hello world']
-greeting[str src]: 'Hello '+src
-debug
-print greeting['srcsasdfads']
-exit
+test[1] = greet == 'hello world'
+print test[1]
+print 'test 1 passed' if test[1] == true else 'test 1 failed'
+greeting[str src]: 'Hello ' + src
+test[2] = "Hello Veronica" == greeting['Veronica']
+print 'test 2 passed' if test[2] == True else 'test 2 failed'
+
 
 # ***********************
 my_var[int num]:
@@ -13,9 +18,11 @@ my_var[int num]:
 my_var[str text]: text + '!'
 next_var =
 	str text: text + '?!?!'
+print next_var['hahahahaha']
 
 my_var[3] = "three"
 print 345 ~ type["345"]
+print 345 ~ type[33333]
 print "****************"
 debug
 Dog[str name, str breed]:
@@ -29,6 +36,22 @@ print spot.breed == "terrier" and spot.name != "Spot"
 print spot.breed != "terrier" and spot.name == "Spot"
 exit
 # ***********************
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 coolFunc[str input: 345, int n: 43]:
     0: "zero"

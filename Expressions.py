@@ -105,6 +105,9 @@ class Expression:
             case ExprType.Mathological:
                 return f"{self.lhs}  {self.operator}  {self.rhs}"
 
+
+Context.make_expr = Expression
+
 def precook_args(op: Operator, lhs, mid, rhs) -> list[Value]:
     if op.ternary and lhs and mid and rhs:
         args = [Expression(lhs).evaluate(), Expression(mid).evaluate(), Expression(rhs).evaluate()]
@@ -200,7 +203,8 @@ def eval_node(node: Node) -> Value:
         case Token() as node:
             return eval_token(node)
         case Block() as node:
-            return Value(Function(block=node, env=Context.env), BasicType.Function)
+            opt = Option(Pattern(), node)
+            return opt.execute([])
         case List() as node:
             # return Value([eval_node(n) for n in node.nodes])
             return Value(list(map(eval_node, node.nodes)), BasicType.List)
@@ -208,6 +212,8 @@ def eval_node(node: Node) -> Value:
 
 def eval_token(tok: Token) -> Value:
     s = tok.source_text
+    if s == 'true' or s == 'True':
+        pass
     match tok.type:
         case TokenType.Singleton:
             return Value(singletons[s])
@@ -288,14 +294,20 @@ def get_option(nodes: list[Node]) -> Option:
         case [*fn_nodes, _, List() as param_list]:
             if fn_nodes:
                 try:
-                    fn = Expression(fn_nodes).evaluate()
-                    if fn.type != BasicType.Function:
-                        raise RuntimeErr(f"Line {Context.line}: Cannot add option to {fn.type.value} {' '.join((map(str, fn_nodes)))}")
-                    fn = fn.value
+                    fn_val = Expression(fn_nodes).evaluate()
                 except NoMatchingOptionError:
-                    fn = get_option(fn_nodes).function
+                    opt = get_option(fn_nodes)
+                    if opt.is_null():
+                        fn_val = Value(Function())
+                        opt.value = fn_val
+                    else:
+                        fn_val = opt.value
                     # how many levels deep should this go?
-                    # This will recurse infinitely, potentially creating many functions
+                    # This will recurse infinitely, potentially creating many function
+                if fn_val.type != BasicType.Function:
+                    raise RuntimeErr(f"Line {Context.line}: "
+                                     f"Cannot add option to {fn_val.type.value} {' '.join((map(str, fn_nodes)))}")
+                fn = fn_val.value
             param_list = [item.nodes for item in param_list.nodes]
         case _:
             param_list = split(nodes, TokenType.Comma)
@@ -378,7 +390,7 @@ def execute(fn: Function, args: list[Value] = None) -> Value:
     fn.return_value = Value(fn)
     return fn.return_value
 
-Function.exec = execute
+# Function.exec = execute
 
 def string(text: str):
     q = text[0]

@@ -73,13 +73,13 @@ def static_fn(lhs: list[Node], mid: list[Node], rhs: list[Node]) -> Value:
 def assign_val(lhs: list[Node], mid: list[Node], rhs: list[Node]) -> Value:
     value = Expression(rhs).evaluate().clone()
     option = get_option(lhs)
-    option.function = Function(value=value)
+    option.value = value
     return value
 
 def assign_alias(lhs: list[Node], mid: list[Node], rhs: list[Node]) -> Value:
     value = Expression(rhs).evaluate()
     option = get_option(lhs)
-    option.function = Function(value=value)
+    option.value = value
     return value
 
 def assign_fn(lhs: list[Node], mid: list[Node], rhs: list[Node]) -> Value:
@@ -89,8 +89,8 @@ def assign_fn(lhs: list[Node], mid: list[Node], rhs: list[Node]) -> Value:
         return_statement = Statement([Token('return')] + rhs)  # noqa
         block = Block([return_statement])
     option = get_option(lhs)
-    option.function.block = block
-    return Value(option.function)
+    option.block = block
+    return Value(None)
 
 
 Op['='].static = assign_val
@@ -104,17 +104,17 @@ Op[':'].static = assign_fn
 
 def or_fn(lhs: list[Node], mid: list[Node], rhs: list[Node]) -> Value:
     condition = Expression(lhs).evaluate()
-    return condition if BuiltIns['bool'].call([condition]) else Expression(rhs).evaluate()
+    return condition if BuiltIns['bool'].call([condition]).value else Expression(rhs).evaluate()
 Op['or'].static = or_fn
 
 def and_fn(lhs: list[Node], mid: list[Node], rhs: list[Node]) -> Value:
     condition = Expression(lhs).evaluate()
-    return Expression(rhs).evaluate() if BuiltIns['bool'].call([condition]) else condition
+    return Expression(rhs).evaluate() if BuiltIns['bool'].call([condition]).value else condition
 Op['and'].static = and_fn
 
 def if_fn(lhs: list[Node], mid: list[Node], rhs: list[Node]) -> Value:
     condition = Expression(mid).evaluate()
-    return Expression(lhs).evaluate() if BuiltIns['bool'].call([condition]) else Expression(rhs).evaluate()
+    return Expression(lhs).evaluate() if BuiltIns['bool'].call([condition]).value else Expression(rhs).evaluate()
 Op['if'].static = if_fn
 
 def option_exists(lhs: list[Node], mid: list[Node], rhs: list[Node]) -> Value:

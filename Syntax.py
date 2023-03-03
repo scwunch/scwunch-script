@@ -132,7 +132,7 @@ class Token(Node):
     type: TokenType
     """
 
-    def __init__(self, text, pos: tuple[int, int] = (-1, -1)):
+    def __init__(self, text: str, pos: tuple[int, int] = (-1, -1)):
         self.pos = pos[0]+1, pos[1]+1
         self.type: TokenType
         self.source_text = text
@@ -148,7 +148,8 @@ class Token(Node):
                 self.type = TokenType.Operator
         elif text in Commands:
             self.type = TokenType.Command
-        elif text in Singletons:
+        elif text.lower() in Singletons:
+            self.source_text = text.lower()
             self.type = TokenType.Singleton
         elif text in BasicType:
             self.type = TokenType.Type
