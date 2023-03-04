@@ -88,13 +88,13 @@ Dog =
 
 
 
-coolFunc[str input: 345, int n: 43]:
+coolFunc[str input: "345", int n: 43]:
     0: "zero"
     "string_key": 5
     string_key: 5   // equivalent to above
     int: 3 + 3      // key is not string "int", rather the type `int`
     int<0: "negative integers"
-	return input[n]
+    return input + str[n]
 
 myFunction[0]: "zero"
 myFunction["string_key"]: 5
@@ -104,30 +104,25 @@ myFunction[int<0]: "negative integers"
 
 coolFunc["input"]
 
-Token[string src] =
-	string[r'\s*'] src: "SPACE"
-	string src: "other string"
-
-print Token[' ']   # returns the above executed function exactly
-
 Token =
-	string[r'\s*'] src: "SPACE"
-	string src: "other string"
-	string src, int n: src + " " + str[n]
+	str[`\s*`]: "SPACE"
+	str src: "other string"
+	str src, int n: src + " " + str[n]
 
 print Token[' '] == "SPACE"
-
+print Token['blah'] == "other string"
+print Token["my age is", 55] == "my age is 55"
 
 # So maybe what I would want is this:
-Token[string src]:
+Token[str src]:
 	_Token =
 		str[`\s*`] src: "SPACE"
 		str src: "other string"
 		any: None
-	partial_result = _Token[src]
+	partial_result = _Token[src] ?? false
 	if partial_result
 		return partial_result
 	else
 		return "some default"
 
-return 5
+
