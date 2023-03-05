@@ -60,10 +60,16 @@ r = Range[0, 3, 1]
 test[20] = r.index == 0 and r.next == 1 and r.next == 2 and r.next == 3 and r.next == 'done'
 print 'test 20 passed' if test[20] else 'test 20 failed'
 
-debug
+# test prototype modification
 Dog.bark_breed: "Hi, I'm a " + breed
 test[21] = spot.bark_breed == "Hi, I'm a terrier"
 print 'test 21 passed' if test[21] else 'test 21 failed'
+
+test[22] = Dog.asdfknasdf? == false and Dog.bark_breed? == true and asdfasdf? == false and Dog? == true
+print 'test 22 passed' if test[22] else 'test 22 failed'
+
+test[23] = (Dog[23] ?? "23") == "23" and (spot.name ?? "no name") == 'Rover'
+print 'test 23 passed' if test[23] else 'test 23 failed'
 
 exit
 # ***********************
@@ -78,7 +84,26 @@ Dog =
 
 
 
+container =
+	data = {}
+	name = "I'm a container"
+	.len: len[data]
+len[container]  # or container.len
+> 0
 
+Duration[int hr, int min]:
+	is_afternoon: hr >= 12
+	is_morning: hr < 12
+	.["+"][other]:
+		new_hr = hr + other.hr
+		new_min = min + other.min
+		if new_min >= 60
+			new_min -= 60
+			new_hr += 1
+		return Duration[new_hr % 24, new_min]
+dur = Duration[1, 59] + Duration[0, 15]
+print str[dur.hr] + ":" str[dur.min]
+# > "2:14"
 
 
 

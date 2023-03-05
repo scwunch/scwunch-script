@@ -48,35 +48,35 @@ Operator('if',
          Function(Pattern(AnyParam), lambda x: x),
          binop=2, static=True, ternary='else')
 Operator('??',
-         binop=2.5, static=True)
-Operator('or',
          binop=3, static=True)
-Operator('and',
+Operator('or',
          binop=4, static=True)
+Operator('and',
+         binop=5, static=True)
 Operator('not',
          Function(Pattern(AnyParam), lambda a: Value(not BuiltIns['bool'].call([a]).value)),
-         prefix=5)
+         prefix=6)
 Operator('in',
          Function(AnyBinopPattern, lambda a, b: Contains.call([b, a])),
-         binop=6)
+         binop=7)
 Operator('==',
          Function(AnyBinopPattern, lambda a, b: Value(a == b)),
-         binop=7)
+         binop=8)
 Operator('!=',
          Function(AnyBinopPattern, lambda a, b: Value(a != b)),
-         binop=7)
+         binop=9)
 Operator('<',
          Function(NormalBinopPattern, lambda a, b: Value(a.value < b.value)),
-         binop=9)
+         binop=10)
 Operator('>',
          Function(NormalBinopPattern, lambda a, b: Value(a.value > b.value)),
-         binop=9)
+         binop=10)
 Operator('<=',
          Function(NormalBinopPattern, lambda a, b: Value(a.value <= b.value)),
-         binop=9)
+         binop=10)
 Operator('>=',
          Function(NormalBinopPattern, lambda a, b: Value(a.value >= b.value)),
-         binop=9)
+         binop=10)
 def matchPattern(a: Value, b: Pattern | Value):
     match b:
         case Pattern():
@@ -88,28 +88,28 @@ def matchPattern(a: Value, b: Pattern | Value):
 Operator('~',
          Function(AnyBinopPattern, lambda a, b: a.type == b.type,
                   options={Pattern(AnyParam, Parameter(basic_type=(BasicType.Type, BasicType.Pattern))): matchPattern}),
-         binop=8)
+         binop=9)
 Operator('+',
          Function(NormalBinopPattern, lambda a, b: Value(a.value + b.value)),
-         binop=10)
+         binop=11)
 Operator('-',
          Function(NormalBinopPattern, lambda a, b: Value(a.value - b.value),
                   options={Pattern(LogNumParam): lambda a: Value(-a.value)}),
-         binop=10, prefix=12)
+         binop=11, prefix=13)
 Operator('*',
          Function(Pattern(LogNumParam, LogNumParam), lambda a, b: Value(a.value * b.value)),
-         binop=11)
+         binop=12)
 Operator('/',
          Function(Pattern(LogNumParam, LogNumParam), lambda a, b: Value(a.value / b.value)),
-         binop=11)
+         binop=12)
 Operator('%',
          Function(Pattern(LogNumParam, LogNumParam), lambda a, b: Value(a.value % b.value)),
-         binop=11)
+         binop=12)
 Operator('**',
          Function(Pattern(LogNumParam, LogNumParam), lambda a, b: Value(a.value ** b.value)),
-         binop=12, associativity='right')
+         binop=13, associativity='right')
 Operator('?',
-         postfix=13, static=True)
+         postfix=14, static=True)
 def dot_call(a: Value, b: Value, c: Value = None):
     name = b.value
     args: list[Value] = []
@@ -135,10 +135,10 @@ Operator('.',
                   options={Pattern(AnyParam,
                                    Parameter(basic_type=BasicType.Name), optional_parameters=(ListParam,)
                                    ): dot_call}),
-         binop=13, ternary='[')
+         binop=15, ternary='[')
 Operator('.[',
          Function(Pattern(FunctionParam, ListParam), lambda a, b: a.value.call(b.value)),
-         binop=13)
+         binop=15)
 
 
 # Add shortcut syntax for adding function guards to type checks.  Eg `int > 0` or `float < 1.0`

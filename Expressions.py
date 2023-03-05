@@ -312,8 +312,6 @@ def get_option(nodes: list[Node]) -> Option:
                              f"Cannot add option to {fn_val.type.value} {' '.join((map(str, fn_nodes)))}")
         fn = fn_val.value
     params = map(make_param, param_list)
-    if Context.line > 62:
-        pass
     patt = Pattern(*params)
     try:
         return fn.select(patt, ascend_env=True)

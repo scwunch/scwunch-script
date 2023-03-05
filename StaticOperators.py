@@ -1,5 +1,5 @@
 from Syntax import Node, Token, TokenType, List, Statement, Block
-from DataStructures import Value, Function, Pattern, Context, Parameter, NoMatchingOptionError
+from DataStructures import Value, Function, Pattern, Context, Parameter, NoMatchingOptionError, OperatorError
 from BuiltIns import Op, BuiltIns
 from Expressions import Expression, get_option, eval_node
 
@@ -122,7 +122,20 @@ Op['if'].static = if_fn
 
 def option_exists(lhs: list[Node], mid: list[Node], rhs: list[Node]) -> Value:
     try:
-        Expression(lhs).evaluate()
+        last = lhs[-1]
+        if isinstance(last, List):
+            key = eval_node(last)
+        elif last.type in (TokenType.Name, TokenType.PatternName):
+            key = [Value(last.source_text)]
+        else:
+            raise OperatorError(f"Line {Context.line}: right-most arg of ? operator must be a name or arg-list.")
+        if len(lhs) == 1:
+            fn = Context.env
+        else:
+            # assert lhs[-1] is '.' or '.['
+            fn = Expression(lhs[:-2]).evaluate().value
+            assert isinstance(fn, Function)
+        fn.select(key)
         return Value(True)
     except NoMatchingOptionError:
         return Value(False)
