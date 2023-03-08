@@ -71,6 +71,11 @@ print 'test 22 passed' if test[22] else 'test 22 failed'
 test[23] = (Dog[23] ?? "23") == "23" and (spot.name ?? "no name") == 'Rover'
 print 'test 23 passed' if test[23] else 'test 23 failed'
 
+debug
+foo[str|int]: 'it worked'
+test[24] = foo[4] + foo["4"]
+print test[24]
+
 exit
 # ***********************
 

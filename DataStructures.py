@@ -1,3 +1,4 @@
+import math
 import types
 
 from Syntax import BasicType, Block, Node
@@ -70,7 +71,7 @@ class Value:
         return f"<{self.type.value}:{repr(self.value)}>"
 
 
-class Parameter:
+class Parameter1:
     def __init__(self, name: str = None, value: Value = None, basic_type=None, fn=None):
         assert (0 if name else 1) <= bool(value) + bool(basic_type) < 2
         self.name = name
@@ -135,43 +136,162 @@ A Pattern is like a regex for types; it can match one very specific type, or eve
 or it can match a type on certain conditions (eg int>0), or union of types
 """
 class Pattern:
-    def __init__(self, *required_params, optional_parameters=None):
-        self.required_parameters = required_params
-        self.optional_parameters = optional_parameters or tuple([])
-        self.specificity = sum(p.specificity() for p in self.all_parameters)
-    @property
-    def all_parameters(self):
-        return self.required_parameters + self.optional_parameters
-    def zip(self, args: list):
-        assert len(self.required_parameters) <= len(args) <= len(self.all_parameters)
-        d = {}
-        for i, param in enumerate(self.all_parameters):
-            if i == len(args):
-                break
-            if param.name:
-                patt = Pattern(Parameter(param.name))
-                d[patt] = args[i]
-        return d
-    def __len__(self):
-        return len(self.required_parameters)
-    def __getitem__(self, item):
-        return self.required_parameters[item]
+    def __init__(self, name: str = None, guard: Guard = None):
+        self.name = name
+        self.guard = guard
+    def match_score(self, arg):
+        if arg.type == BasicType.String and arg.value == self.name:
+            return 7560
+        match self:
+            case ValuePattern(value=value):
+                return 7560 * (arg == value)
+            case Type(basic_type=basic_type):
+                score = 2520 * (arg.type == basic_type)
+            case Prototype(prototype=prototype):
+                if arg.type != BasicType.Function:
+                    return 0
+                fn: Function = arg.value
+                score = 5040 * (fn.instanceof(prototype))
+            case Union(patterns=patterns):
+                count = len(self)
+                if BasicType.Any in (getattr(p, "basic_type", None) for p in patterns):
+                    count += len(BasicType)
+                for patt in patterns:
+                    m_score = patt.match_score(arg)
+                    if m_score:
+                        score = m_score // count
+                        break
+                else:
+                    score = 0
+            # NOTE: ListPatt overrides match_score method, since more complex logic is required
+            case _:
+                raise NotImplemented(f"Line: {Context.line}: Unknown pattern type: ", self)
+        if not score:
+            return 0
+        if self.guard:
+            score += 2520 * evaluate(self.guard)
+        return score
     def __repr__(self):
-        return f"[{', '.join(map(repr, self.required_parameters))}]"
+        return f"Pattern({self.name})"
     def __str__(self):
-        return f"[{', '.join(map(repr, self.required_parameters))}]"
+        return f"{self.name}"
     def __eq__(self, other):
-        return (self.required_parameters, self.optional_parameters) \
-                == (other.required_parameters, other.optional_parameters)
+        return hash(self) == hash(other)
     def __hash__(self):
-        return hash((self.required_parameters, self.optional_parameters))
+        return hash((self.name, self.guard))
 
-# shortcut function
-def name_patt(name: str) -> Pattern:
-    return Pattern(Parameter(name))
-# shortcut function
-# def val_func(pyval):
-#     return Function(value=Value(pyval))
+class Parameter:
+    def __init__(self, pattern, name=None, quantifier="", inverse=False):
+        self.name = name or pattern.name
+        self.pattern = pattern
+        self.quantifier = quantifier
+        match quantifier:
+            case "":  self.count = (1, 1)
+            case "?": self.count = (0, 1)
+            case "+": self.count = (1, math.inf)
+            case "*": self.count = (0, math.inf)
+        self.optional = quantifier in ("?", "*")
+        self.multi = quantifier in ("+", "*")
+        self.inverse = inverse
+    def specificity(self) -> int: ...
+    def match_score(self, arg):
+        if arg.type == BasicType.String and arg.value == self.name:
+            return 7560
+        score = 0
+        score += self.pattern.match_score(arg)
+        return score
+    def __eq__(self, other):
+        return self.pattern == other.pattern and self.name == other.name and \
+            self.quantifier == other.quantifier and self.inverse == other.inverse
+    def __hash__(self):
+        return hash((self.pattern, self.name, self.quantifier, self.inverse))
+
+class ValuePattern(Pattern):
+    value: Value
+    def __init__(self, value: Value, name: str = None):
+        super().__init__(name)
+        self.value = value
+    def __eq__(self, other):
+        return self.value == other.value and self.name == other.name
+    def __hash__(self):
+        return hash((self.value, self.name))
+
+class Type(Pattern):
+    basic_type: BasicType
+    def __init__(self, basic_type, name=None, guard=None):
+        super().__init__(name, guard)
+        self.basic_type = basic_type
+    def __eq__(self, other):
+        return isinstance(other, Type) and self.basic_type == other.basic_type and super().__eq__(super(other))
+    def __hash__(self):
+        return has((self.basic_type, self.))
+
+class Prototype(Pattern):
+    def __init__(self, prototype, name=None, guard=None):
+        super().__init__(name, guard)
+        self.prototype = prototype
+
+class Union(Pattern):
+    patterns: frozenset[Pattern]
+    def __init__(self, *patterns: Pattern, name=None, guard=None):
+        super().__init__(name, guard)
+        patts: list[Pattern] = []
+        for i, patt in enumerate(patterns):
+            if isinstance(patt, Union) and not (patt.name or patt.guard):
+                list(patts.append(p) for p in patt.patterns)
+            else:
+                patts.append(patt)
+        self.patterns = frozenset(patts)
+    def __len__(self):
+        return len(self.patterns)
+
+
+class ListPatt(Pattern):
+    def __init__(self, *parameters: Parameter, name=None, guard=None):
+        super().__init__(name, guard)
+        self.parameters = tuple(parameters)
+    def zip(self, args: list):
+        assert self.min_len() <= len(args) <= self.max_len()
+        d = {}
+        params = (p for p in self.parameters)
+        param = next(params)
+        for arg in args:
+            if param.name:
+                patt = Pattern(param.name)
+                d[patt] = arg
+            param = next(params)
+        return d
+    def min_len(self):
+        count = 0
+        for param in self.parameters:
+            # count += int(param.quantifier in ("", "+"))
+            count += not param.optional
+        return count
+    def max_len(self):
+        count = 0
+        for param in self.parameters:
+            if param.quantifier in ("+", "*"):
+                return math.inf
+            count += int(param.quantifier != "?")
+        return count
+    def __len__(self):
+        return len(self.parameters)
+    def __getitem__(self, item):
+        return self.parameters[item]
+    def match_score(self, list_value):
+        if list_value.type != BasicType.List:
+            return 0
+        params = (param for param in self.parameters)
+        param = next(params)
+        score = 0
+        for arg in list_value.value:
+            p_score = param.match_score(arg)
+            if not p_score:
+                return 0
+            score += p_score
+            param = next(params)
+            # not yet implemented param.multi and param.optional
+        return score
 
 def make_expr(nodes: list[Node]):
     raise NotImplemented
@@ -185,9 +305,9 @@ class Option:
     fn = None
     def __init__(self, pattern, value=None):
         if isinstance(pattern, str):
-            self.params = name_patt(pattern)
+            self.pattern = Pattern(pattern)
         elif isinstance(pattern, Parameter):
-            self.params = Pattern(pattern)
+            self.pattern = ListPatt(pattern)
         else:
             self.pattern = pattern
         self.assign(value)
@@ -363,6 +483,10 @@ class Function:
     #         fn.assign_option(Pattern(param), Function(value=arg))
     #     fn.args = key
     #     return fn
+
+    def instanceof(self, prototype):
+        return self == prototype or \
+            bool(self.prototype) and (self.prototype == prototype or self.prototype.instanceof(prototype))
 
     def clone(self):
         fn = Function(prototype=self.prototype, env=self.env)
