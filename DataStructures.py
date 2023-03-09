@@ -163,7 +163,7 @@ class Parameter:
     def __init__(self, pattern, name=None, quantifier="", inverse=False):
         if isinstance(pattern, str):
             self.name = pattern
-            self.pattern = Type(BasicType.Any, pattern)
+            self.pattern = ValuePattern(Value(pattern), pattern)
         else:
             self.name = name or pattern.name
             self.pattern = pattern
@@ -238,6 +238,8 @@ class ListPatt(Pattern):
     def zip(self, args: list):
         assert self.min_len() <= len(args) <= self.max_len()
         d = {}
+        if len(args) == 0:
+            return d
         params = (p for p in self.parameters)
         param = next(params)
         for arg in args:
@@ -267,6 +269,8 @@ class ListPatt(Pattern):
         if list_value.type != BasicType.List:
             return 0
         args = list_value.value
+        if not self.min_len() <= len(args) <= self.max_len():
+            return 0
         if len(args) == 0:
             if len(self) == 0:
                 return 1
@@ -298,7 +302,11 @@ def make_patt(val):
 # opt_value_type = Value | Block | callable | None
 
 class Option:
-    def __init__(self, pattern, value=None):
+    resolution = None
+    value = None
+    block = None
+    fn = None
+    def __init__(self, pattern, resolution=None):
         match pattern:
             case ListPatt():
                 self.pattern = pattern
@@ -308,7 +316,8 @@ class Option:
                 self.pattern = ListPatt(pattern)
             case Pattern():
                 self.pattern = ListPatt(Parameter(pattern))
-        self.assign(value)
+        if resolution is not None:
+            self.assign(resolution)
 
     def is_null(self):
         return (self.value and self.block and self.fn) is None
@@ -330,7 +339,8 @@ class Option:
             return self.value
         if self.fn:
             return self.fn(*args)
-        assert self.block is not None
+        if self.block is None:
+            raise NoMatchingOptionError("Could not resolve null option")
         fn = Function(options=self.pattern.zip(args), prototype=proto, env=env)
         Context.push(fn)
         for statement in self.block.statements:
@@ -480,7 +490,7 @@ class Function:
                 except NoMatchingOptionError:
                     pass
             raise e
-        return option.execute(key, self, self)
+        return option.resolve(key, self, self)
 
     def deref(self, name: str, ascend_env=True):
         return self.call([Value(name)], ascend=ascend_env)

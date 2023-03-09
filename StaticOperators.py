@@ -1,7 +1,7 @@
 from Syntax import Node, Token, TokenType, List, Statement, Block
 from DataStructures import Value, Function, Pattern, Context, Parameter, NoMatchingOptionError, OperatorError
 from BuiltIns import Op, BuiltIns
-from Expressions import Expression, get_option, eval_node
+from Expressions import Expression, read_option, eval_node
 
 def static_fn(lhs: list[Node], mid: list[Node], rhs: list[Node]) -> Value:
     return Value("this is just a function signature")
@@ -72,13 +72,13 @@ def static_fn(lhs: list[Node], mid: list[Node], rhs: list[Node]) -> Value:
 
 def assign_val(lhs: list[Node], mid: list[Node], rhs: list[Node]) -> Value:
     value = Expression(rhs).evaluate().clone()
-    option = get_option(lhs)
+    option = read_option(lhs)
     option.value = value
     return value
 
 def assign_alias(lhs: list[Node], mid: list[Node], rhs: list[Node]) -> Value:
     value = Expression(rhs).evaluate()
-    option = get_option(lhs)
+    option = read_option(lhs)
     option.value = value
     return value
 
@@ -88,7 +88,7 @@ def assign_fn(lhs: list[Node], mid: list[Node], rhs: list[Node]) -> Value:
     else:
         return_statement = Statement([Token('return')] + rhs)  # noqa
         block = Block([return_statement])
-    option = get_option(lhs)
+    option = read_option(lhs)
     option.block = block
     return Value(None)
 

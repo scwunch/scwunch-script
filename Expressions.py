@@ -203,8 +203,8 @@ def eval_node(node: Node) -> Value:
         case Token() as node:
             return eval_token(node)
         case Block() as node:
-            opt = Option(Pattern(), node)
-            return opt.execute([])
+            opt = Option(ListPatt(), node)
+            return opt.resolve([])
         case List() as node:
             # return Value([eval_node(n) for n in node.nodes])
             return Value(list(map(eval_node, node.nodes)), BasicType.List)
@@ -222,12 +222,14 @@ def eval_token(tok: Token) -> Value:
             return Value(number(s))
         case TokenType.String:
             return Value(string(s), BasicType.String)
-        case TokenType.Name | TokenType.Type:
+        case TokenType.Type:
+            return Value(type_mapper(s), BasicType.Type)
+        case TokenType.Name:
             return Context.env.deref(s)
         case TokenType.PatternName:
             return Value(s, BasicType.Name)
         case TokenType.PatternName:
-            return Value(Pattern(Parameter(name=s)), BasicType.Pattern)
+            return Value(ListPatt(Parameter(s)), BasicType.Pattern)
         case _:
             raise Exception("Could not evaluate token", tok)
 

@@ -1,3 +1,4 @@
+import re
 from baseconvert import base
 from Syntax import BasicType
 from DataStructures import *
@@ -169,8 +170,25 @@ Operator('.',
                                     Parameter(Type(BasicType.List), quantifier="?")
                                    ): dot_call}),
          binop=15, ternary='[')
+def type_guard(a: Value, b: Value) -> Value:
+    fn = None
+    match a.value, *b.value:
+        case BasicType.Integer | BasicType.Float, \
+             Value(value=int() | float() as min), Value(value=int() | float() as max):
+            fn = lambda x: min <= x < max
+        case BasicType.String, Value(value=int() | float() as min), Value(value=int() | float() as max):
+            fn = lambda s: min <= len(s) <= max
+        case BasicType.String, Value(value=str() as regex):
+            fn = lambda s: re.fullmatch(regex, s)
+        case BasicType.String, Value(value=str() as regex), Value(value=str() as flags):
+            f = 0
+            for c in flags.upper():
+                f |= getattr(re, c)
+            fn = lambda s: re.fullmatch(regex, s, f)
+    return Value(Type(a.value, guard=fn))
 Operator('.[',
-         Function(ListPatt(FunctionParam, ListParam), lambda a, b: a.value.call(b.value)),
+         Function(ListPatt(FunctionParam, ListParam), lambda a, b: a.value.call(b.value),
+                  options={ListPatt(TypeParam, ListParam): type_guard}),
          binop=15)
 
 

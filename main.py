@@ -16,10 +16,10 @@ if __name__ == "__main__":
 
     tokenizer = Tokenizer(script_string)
     ast = AST(tokenizer)
-    builtin_env = Function(env=None)
+    builtins_env = Function(env=None)
     for key, builtin in BuiltIns.items():
-        builtin_env.add_option(Pattern(Parameter(key)), Value(builtin))
-    root = Function(Pattern(), ast.block, env=builtin_env)
+        builtins_env.add_option(ListPatt(Parameter(key)), Value(builtin))
+    root = Function(ListPatt(), ast.block, env=builtins_env)
     Context.root = root
     Context.env = root
     output = root.call([])

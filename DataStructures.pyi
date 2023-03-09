@@ -133,6 +133,7 @@ opt_type = Value | Block | callable | None
 
 class Option:
     pattern: ListPatt
+    resolution: opt_type
     value: Value
     block: Block
     fn: callable
