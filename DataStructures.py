@@ -62,9 +62,19 @@ class Value:
         return Value(val, self.type)
 
     def __eq__(self, other):
-        return isinstance(other, Value) and self.value == other.value
+        try:
+            # assume List
+            return tuple(self.value) == tuple(other.value)
+        except TypeError:
+            return isinstance(other, Value) and self.value == other.value
     def __hash__(self):
-        return hash(self.value)
+        match self.type:
+            case BasicType.List:
+                return hash(tuple(self.value))
+            case BasicType.Function:
+                return hash(id(self.value))
+            case _:
+                return hash(self.value)
     def __str__(self):
         return str(self.value)
     def __repr__(self):
@@ -100,66 +110,35 @@ class Parameter1:
         return ('|'.join(t.value for t in self.base_types) + ' ' if self.base_types else '') \
             + f"{self.value or ''}{'[fn] ' if self.fn else ''} {self.name or ''}"
 
-def is_match(val: Value | Parameter, param: Parameter):
-    if isinstance(val, Parameter):
-        return val == param
-    if param.name and val.type == BasicType.String and param.name == val.value:
-        return True
-    if param.value:
-        return param.value == val
-    if BasicType.Any in param.base_types:
-        return True
-    if val.type not in param.base_types:
-        return False
-    if param.fn:
-        return param.fn.call([val]).value
-    # other subtype checks?
-    return True
-
-# score is out 7560, this number is 3*2520 (the smallest int divisible by all integers up to 10)
-def match_score(val: Value, param: Parameter) -> int:
-    if val == param.value or val.value == param.name:
-        return 7560
-    score = 0
-    if BasicType.Any in param.base_types:
-        score += 252
-    elif val.type in param.base_types:
-        score += int(2520 / len(param.base_types))
-    if param.fn:
-        score += 2520 * param.fn.call([val]).value
-    # other subtype checks?
-    return score
-
-
 """
 A Pattern is like a regex for types; it can match one very specific type, or even one specific value
 or it can match a type on certain conditions (eg int>0), or union of types
 """
 class Pattern:
-    def __init__(self, name: str = None, guard: Guard = None):
+    def __init__(self, name: str = None, guard=None):
         self.name = name
         self.guard = guard
     def match_score(self, arg):
         if arg.type == BasicType.String and arg.value == self.name:
-            return 7560
+            return 1
         match self:
             case ValuePattern(value=value):
-                return 7560 * (arg == value)
+                return int(arg == value)
             case Type(basic_type=basic_type):
-                score = 2520 * (arg.type == basic_type)
+                score = (arg.type == basic_type) / 2
             case Prototype(prototype=prototype):
                 if arg.type != BasicType.Function:
                     return 0
                 fn: Function = arg.value
-                score = 5040 * (fn.instanceof(prototype))
+                score = (fn.instanceof(prototype)) * 2/3
             case Union(patterns=patterns):
                 count = len(self)
                 if BasicType.Any in (getattr(p, "basic_type", None) for p in patterns):
-                    count += len(BasicType)
+                    count += len(BasicType) - 1
                 for patt in patterns:
                     m_score = patt.match_score(arg)
                     if m_score:
-                        score = m_score // count
+                        score = m_score / count
                         break
                 else:
                     score = 0
@@ -169,7 +148,7 @@ class Pattern:
         if not score:
             return 0
         if self.guard:
-            score += 2520 * evaluate(self.guard)
+            pass  # score += evaluate(self.guard)
         return score
     def __repr__(self):
         return f"Pattern({self.name})"
@@ -182,8 +161,12 @@ class Pattern:
 
 class Parameter:
     def __init__(self, pattern, name=None, quantifier="", inverse=False):
-        self.name = name or pattern.name
-        self.pattern = pattern
+        if isinstance(pattern, str):
+            self.name = pattern
+            self.pattern = Type(BasicType.Any, pattern)
+        else:
+            self.name = name or pattern.name
+            self.pattern = pattern
         self.quantifier = quantifier
         match quantifier:
             case "":  self.count = (1, 1)
@@ -196,10 +179,8 @@ class Parameter:
     def specificity(self) -> int: ...
     def match_score(self, arg):
         if arg.type == BasicType.String and arg.value == self.name:
-            return 7560
-        score = 0
-        score += self.pattern.match_score(arg)
-        return score
+            return 1
+        return self.pattern.match_score(arg)
     def __eq__(self, other):
         return self.pattern == other.pattern and self.name == other.name and \
             self.quantifier == other.quantifier and self.inverse == other.inverse
@@ -224,12 +205,16 @@ class Type(Pattern):
     def __eq__(self, other):
         return isinstance(other, Type) and self.basic_type == other.basic_type and super().__eq__(super(other))
     def __hash__(self):
-        return has((self.basic_type, self.))
+        return hash((self.basic_type, super()))
 
 class Prototype(Pattern):
     def __init__(self, prototype, name=None, guard=None):
         super().__init__(name, guard)
         self.prototype = prototype
+    def __eq__(self, other):
+        return isinstance(other, Prototype) and id(self.prototype) == id(other.prototype) and super().__eq__(super(other))
+    def __hash__(self):
+        return hash((id(self.prototype), super()))
 
 class Union(Pattern):
     patterns: frozenset[Pattern]
@@ -281,35 +266,48 @@ class ListPatt(Pattern):
     def match_score(self, list_value):
         if list_value.type != BasicType.List:
             return 0
+        args = list_value.value
+        if len(args) == 0:
+            if len(self) == 0:
+                return 1
+            else:
+                return int(self.min_len() == 0) / len(self)
         params = (param for param in self.parameters)
         param = next(params)
         score = 0
-        for arg in list_value.value:
+        for arg in args:
             p_score = param.match_score(arg)
             if not p_score:
                 return 0
             score += p_score
             param = next(params)
             # not yet implemented param.multi and param.optional
-        return score
+        return score / len(args)
 
 def make_expr(nodes: list[Node]):
     raise NotImplemented
 
+def make_patt(val):
+    if val.type == BasicType.Pattern:
+        return val.value
+    elif val.type == BasicType.Type:
+        return Type(val.value)
+    else:
+        return ValuePattern(val)
 
 # opt_value_type = Value | Block | callable | None
 
 class Option:
-    value = None
-    block = None
-    fn = None
     def __init__(self, pattern, value=None):
-        if isinstance(pattern, str):
-            self.pattern = Pattern(pattern)
-        elif isinstance(pattern, Parameter):
-            self.pattern = ListPatt(pattern)
-        else:
-            self.pattern = pattern
+        match pattern:
+            case ListPatt():
+                self.pattern = pattern
+            case str():
+                self.pattern = ListPatt(Parameter(pattern))
+            case Parameter():
+                self.pattern = ListPatt(pattern)
+            case Pattern():
+                self.pattern = ListPatt(Parameter(pattern))
         self.assign(value)
 
     def is_null(self):
@@ -317,14 +315,17 @@ class Option:
     def not_null(self):
         return (self.value or self.block or self.fn) is not None
     def assign(self, val_block_fn):
+        self.resolution = val_block_fn
         match val_block_fn:
             case Value(): self.value = val_block_fn
             case Block(): self.block = val_block_fn
-            case types.FunctionType: self.fn = val_block_fn
+            # case types.FunctionType: self.fn = val_block_fn
             case types.FunctionType(): self.fn = val_block_fn
-            case fn if callable(fn): self.fn = fn
+            # case fn if callable(fn): self.fn = fn
+            case _:
+                raise ValueError("Could not assign resolution: ", val_block_fn)
 
-    def execute(self, args, proto=None, env=Context.env):
+    def resolve(self, args, proto=None, env=Context.env):
         if self.value:
             return self.value
         if self.fn:
@@ -380,13 +381,14 @@ class Function:
         option = Option(pattern, val_or_block)
         name = None
         match pattern:
-            case str(): name = pattern
+            case str():       name = pattern
             case Parameter(): name = pattern.name
-            case Pattern(): name = pattern[0].name if len(pattern) == 1 else None
+            case ListPatt():  name = pattern[0].name if len(pattern) == 1 else None
+            case Pattern():   name = pattern.name
         if name is not None:
             self.named_options[name] = option
         self.options.insert(0, option)
-        self.options.sort(key=lambda opt: opt.pattern.specificity, reverse=True)
+        # self.options.sort(key=lambda opt: opt.pattern.specificity, reverse=True)
         return option
 
     def assign_option(self, pattern, val_or_block):
@@ -403,24 +405,31 @@ class Function:
     def index_of(self, key: list[Value]) -> int | None:
         idx = None
         high_score = 0
+        arg_list = Value(key)
         for i, opt in enumerate(self.options):
-            params = opt.pattern.all_parameters
-            if not (len(opt.pattern.required_parameters) <= len(key) <= len(params)):
-                continue
-            score = 0
-            for j in range(len(params)):
-                if j == len(key):
-                    return i
-                param_score = match_score(key[j], params[j])
-                if not param_score:
-                    break  # no match; continue outer loop
-                score += param_score
-            else:
-                if score == 7560 * len(key):  # perfect match
-                    return i
-                elif score > high_score:
-                    high_score = score
-                    idx = i
+            score = opt.pattern.match_score(arg_list)
+            if score == 7560:
+                return i
+            if score > high_score:
+                high_score = score
+                idx = i
+            # params = opt.pattern.parameters
+            # if not (len(opt.pattern.required_parameters) <= len(key) <= len(params)):
+            #     continue
+            # score = 0
+            # for j in range(len(params)):
+            #     if j == len(key):
+            #         return i
+            #     param_score = match_score(key[j], params[j])
+            #     if not param_score:
+            #         break  # no match; continue outer loop
+            #     score += param_score
+            # else:
+            #     if score == 7560 * len(key):  # perfect match
+            #         return i
+            #     elif score > high_score:
+            #         high_score = score
+            #         idx = i
         return idx
 
     def select(self, key: Pattern | list[Value], walk_prototype_chain=True, ascend_env=False):
@@ -509,15 +518,6 @@ BuiltIns = {}
 
 
 class Operator:
-    text: str
-    prefix = False
-    postfix = False
-    binop = False
-    ternary = False
-    precedence: int
-    associativity: str
-    fn: Function
-
     def __init__(self, text, fn=None,
                  prefix=None, postfix=None, binop=None, ternary=None,
                  associativity='left', static=False):

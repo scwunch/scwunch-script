@@ -78,38 +78,10 @@ Operator('or',
          binop=4, static=True)
 Operator('and',
          binop=5, static=True)
-def union1(a: Value, b: Value):
-    match a.value, b.value:
-        case Pattern(), Pattern():
-            if len(a.value) > 1 or len(b.value) > 1:
-                raise OperatorError(f'Line {Context.line}: Cannot union on patterns with multiple parameters.')
-            if not a.value or not b.value:
-                return Value(a.value or b.value)
-            param1, param2 = a.value[0], b.value[0]
-            if param1.name and param2.name or param1.value and param2.value or param1.fn or param2.fn:
-                raise OperatorError(f'Line {Context.line}: Cannot union two patterns with names and values or guards.')
-            return Value(Pattern(Parameter(param1.name or param2.name,
-                                           param1.value or param2.value,
-                                           param1.base_types.union(param2.base_types))))
-        case Pattern()|BasicType(), Pattern()|BasicType():
-            if isinstance(a.value, Pattern):
-                patt = a.value
-                t = b.value
-            elif isinstance(b.value, Pattern):
-                patt = b.value
-                t = a.value
-            else:
-                return Pattern(Parameter(basic_type=(a.value, b.value)))
-            if len(patt) != 1 or patt[0].fn:
-                raise OperatorError(f"Line {Context.line}: Cannot union with a pattern with multiple parameters or guard")
-            return Pattern(Parameter(patt[0].name, patt[0].value, patt[0].base_types.union({t})))
-def union(a: Value, b: Value) -> Union:
-    patt1 = Type(a.value) if a.type == BasicType.Type else a.value
-    patt2 = Type(b.value) if b.type == BasicType.Type else b.value
-    return Union(patt1, patt2)
 Operator('|',
-         Function(ListPatt(TypeOrPatternParam, TypeOrPatternParam), union),
+         Function(ListPatt(TypeOrPatternParam, TypeOrPatternParam), lambda a, b: Union(make_patt(a), make_patt(b))),
          binop=4)
+Op['|'].fn.add_option(AnyBinopPattern, lambda a, b: Union(make_patt(a), make_patt(b)))
 # Operator('&',
 #          Function(),
 #          binop=5)
@@ -192,8 +164,9 @@ def dot_call(a: Value, b: Value, c: Value = None):
 
 Operator('.',
          Function(ListPatt(FunctionParam, Parameter(Type(BasicType.Name))), lambda a, b: a.call(Value(b[0].name)),
-                  options={Pattern(AnyParam,
-                                   Parameter(Type(BasicType.Name)), optional_parameters=(ListParam,)
+                  options={ListPatt(AnyParam,
+                                    Parameter(Type(BasicType.Name)),
+                                    Parameter(Type(BasicType.List), quantifier="?")
                                    ): dot_call}),
          binop=15, ternary='[')
 Operator('.[',
@@ -202,24 +175,24 @@ Operator('.[',
 
 
 # Add shortcut syntax for adding function guards to type checks.  Eg `int > 0` or `float < 1.0`
-def number_guard(a: Value, b: Value, op_sym: str):
-    # assert a.value == b.type
-    return Pattern(Parameter(basic_type=a.value,
-                             fn=lambda n: Op[op_sym].fn.call([n, b])))
-
-# generating functions with syntax like `str > 5` => `[str x]: len(x) > 5`
-def string_guard(a: Value, b: Value, op_sym: str):
-    assert a.value == BasicType.String and b.type in (BasicType.Integer, BasicType.Float)
-    return Pattern(Parameter(basic_type=BasicType.String,
-                             fn=lambda s: Op[op_sym].fn.call([Value(len(s.value)), b])))
-
-for op in ('>', '<', '>=', '<='):
-    Op[op].fn.assign_option(ListPatt(Parameter(value=Value(BasicType.Integer)), NumberParam),
-                            lambda a, b: number_guard(a, b, op))
-    Op[op].fn.assign_option(ListPatt(Parameter(value=Value(BasicType.Float)), NumberParam),
-                            lambda a, b: number_guard(a, b, op))
-    Op[op].fn.assign_option(ListPatt(Parameter(value=Value(BasicType.String)), NumberParam),
-                            lambda a, b: string_guard(a, b, op))
-
-
-
+# def number_guard(a: Value, b: Value, op_sym: str):
+#     # assert a.value == b.type
+#     return Pattern(Parameter(basic_type=a.value,
+#                              fn=lambda n: Op[op_sym].fn.call([n, b])))
+#
+# # generating functions with syntax like `str > 5` => `[str x]: len(x) > 5`
+# def string_guard(a: Value, b: Value, op_sym: str):
+#     assert a.value == BasicType.String and b.type in (BasicType.Integer, BasicType.Float)
+#     return Pattern(Parameter(basic_type=BasicType.String,
+#                              fn=lambda s: Op[op_sym].fn.call([Value(len(s.value)), b])))
+#
+# for op in ('>', '<', '>=', '<='):
+#     Op[op].fn.assign_option(ListPatt(Parameter(value=Value(BasicType.Integer)), NumberParam),
+#                             lambda a, b: number_guard(a, b, op))
+#     Op[op].fn.assign_option(ListPatt(Parameter(value=Value(BasicType.Float)), NumberParam),
+#                             lambda a, b: number_guard(a, b, op))
+#     Op[op].fn.assign_option(ListPatt(Parameter(value=Value(BasicType.String)), NumberParam),
+#                             lambda a, b: string_guard(a, b, op))
+#
+#
+#

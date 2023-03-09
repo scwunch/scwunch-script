@@ -253,6 +253,27 @@ def string(text: str):
     return text[1:-1]
     # TO IMPLEMENT: "string {formatting}"
 
+def make_param_old(param_nodes: list[Node]) -> Parameter:
+    last = param_nodes[-1]
+    if isinstance(last, Token) and last.type in (TokenType.Name, TokenType.PatternName):
+        name = last.source_text
+        param_nodes = param_nodes[:-1]
+    else:
+        name = None
+    if not param_nodes:
+        return Parameter(name)
+    if len(param_nodes) == 1 and isinstance(tok := param_nodes[0], Token):
+        basic_type = type_mapper(tok.source_text)
+        if basic_type:
+            return Parameter(name, basic_type=basic_type)
+    value = Expression(param_nodes).evaluate()
+    if isinstance(value, Pattern):
+        value[0].name = name
+        return value[0]
+    if value.type == BasicType.Type:
+        return Parameter(name, basic_type=value.value)
+    return Parameter(name, value)
+
 def make_param(param_nodes: list[Node]) -> Parameter:
     last = param_nodes[-1]
     if isinstance(last, Token) and last.type in (TokenType.Name, TokenType.PatternName):
@@ -262,6 +283,10 @@ def make_param(param_nodes: list[Node]) -> Parameter:
         name = None
     if not param_nodes:
         return Parameter(name)
+    expr_val = Expression(param_nodes).evaluate()
+    pattern = make_patt(expr_val)
+    return Parameter(pattern, name)
+
     if len(param_nodes) == 1 and isinstance(tok := param_nodes[0], Token):
         basic_type = type_mapper(tok.source_text)
         if basic_type:
@@ -318,5 +343,36 @@ def get_option(nodes: list[Node]) -> Option:
     except NoMatchingOptionError:
         return fn.add_option(patt)
 
+def read_option(nodes: list[Node]) -> Option:
+    fn_nodes, fn = [], Context.env
+    match nodes:
+        case [*fn_nodes, _, List() as param_list]:
+            param_list = [item.nodes for item in param_list.nodes]
+        case [*fn_nodes, Token(source_text='.'), Token(type=TokenType.PatternName) as name_tok]:
+            param_list = [[name_tok]]
+        case _:
+            param_list = split(nodes, TokenType.Comma)
+    if fn_nodes:
+        try:
+            fn_val = Expression(fn_nodes).evaluate()
+        except NoMatchingOptionError:
+            opt = get_option(fn_nodes)
+            if opt.is_null():
+                fn_val = Value(Function())
+                opt.value = fn_val
+            else:
+                fn_val = opt.value
+            # how many levels deep should this go?
+            # This will recurse infinitely, potentially creating many function
+        if fn_val.type != BasicType.Function:
+            raise RuntimeErr(f"Line {Context.line}: "
+                             f"Cannot add option to {fn_val.type.value} {' '.join((map(str, fn_nodes)))}")
+        fn = fn_val.value
+    params = map(make_param, param_list)
+    patt = ListPatt(*params)
+    try:
+        return fn.select(patt, ascend_env=True)
+    except NoMatchingOptionError:
+        return fn.add_option(patt)
 
 
