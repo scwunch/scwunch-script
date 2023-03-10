@@ -78,6 +78,19 @@ class Value:
     def __str__(self):
         return str(self.value)
     def __repr__(self):
+        match self.type:
+            case BasicType.none:
+                return "NULL"
+            case BasicType.Boolean | BasicType.Integer | BasicType.Float | BasicType.Name:
+                return str(self.value)
+            case BasicType.String:
+                return f'"{self.value}"'
+            case BasicType.Type:
+                return self.value.value
+            case BasicType.Function:
+                return str(self.value)
+            case BasicType.Pattern:
+                return str(self.value)
         return f"<{self.type.value}:{repr(self.value)}>"
 
 
@@ -109,6 +122,7 @@ class Parameter1:
     def __repr__(self):
         return ('|'.join(t.value for t in self.base_types) + ' ' if self.base_types else '') \
             + f"{self.value or ''}{'[fn] ' if self.fn else ''} {self.name or ''}"
+
 
 """
 A Pattern is like a regex for types; it can match one very specific type, or even one specific value
@@ -152,10 +166,8 @@ class Pattern:
         return score
     def __repr__(self):
         return f"Pattern({self.name})"
-    def __str__(self):
-        return f"{self.name}"
     def __eq__(self, other):
-        return hash(self) == hash(other)
+        return type(self) == type(other) and self.name == other.name and self.guard == other.guard
     def __hash__(self):
         return hash((self.name, self.guard))
 
@@ -186,6 +198,8 @@ class Parameter:
             self.quantifier == other.quantifier and self.inverse == other.inverse
     def __hash__(self):
         return hash((self.pattern, self.name, self.quantifier, self.inverse))
+    def __repr__(self):
+        return f"{'!' * self.inverse}{self.pattern}" + (' ' + self.name if self.name else '')
 
 class ValuePattern(Pattern):
     value: Value
@@ -196,6 +210,8 @@ class ValuePattern(Pattern):
         return self.value == other.value and self.name == other.name
     def __hash__(self):
         return hash((self.value, self.name))
+    def __repr__(self):
+        return repr(self.value)
 
 class Type(Pattern):
     basic_type: BasicType
@@ -206,15 +222,20 @@ class Type(Pattern):
         return isinstance(other, Type) and self.basic_type == other.basic_type and super().__eq__(super(other))
     def __hash__(self):
         return hash((self.basic_type, super()))
+    def __repr__(self):
+        return self.basic_type.value
 
 class Prototype(Pattern):
     def __init__(self, prototype, name=None, guard=None):
         super().__init__(name, guard)
         self.prototype = prototype
     def __eq__(self, other):
-        return isinstance(other, Prototype) and id(self.prototype) == id(other.prototype) and super().__eq__(super(other))
+        return isinstance(other, Prototype) and \
+            id(self.prototype) == id(other.prototype) and super().__eq__(super(other))
     def __hash__(self):
         return hash((id(self.prototype), super()))
+    def __repr__(self):
+        return f"@{self.prototype}"
 
 class Union(Pattern):
     patterns: frozenset[Pattern]
@@ -229,7 +250,8 @@ class Union(Pattern):
         self.patterns = frozenset(patts)
     def __len__(self):
         return len(self.patterns)
-
+    def __repr__(self):
+        return '|'.join(map(repr, self.patterns))
 
 class ListPatt(Pattern):
     def __init__(self, *parameters: Parameter, name=None, guard=None):
@@ -287,9 +309,12 @@ class ListPatt(Pattern):
             param = next(params)
             # not yet implemented param.multi and param.optional
         return score / len(args)
+    def __repr__(self):
+        return f"[{', '.join(map(repr, self.parameters))}]"
+
 
 def make_expr(nodes: list[Node]):
-    raise NotImplemented
+    raise NotImplemented(nodes)
 
 def make_patt(val):
     if val.type == BasicType.Pattern:
@@ -346,7 +371,7 @@ class Option:
         for statement in self.block.statements:
             Context.line = statement.pos[0]
             expr = Context.make_expr(statement.nodes)
-            result = expr.evaluate()
+            expr.evaluate()
             if fn.return_value:
                 Context.pop()
                 return fn.return_value
@@ -447,8 +472,6 @@ class Function:
         :param key: list of args, or pattern of params
         :param walk_prototype_chain: bool=True search options of prototype if not found
         :param ascend_env: bool=False search containing environment if not found
-        :param create_if_not_exists: create a null function option if not found
-                (I think these two options should probably be mutually exclusive)
         :returns the matching option, creating a null option if none exists
         """
         if isinstance(key, Pattern):
