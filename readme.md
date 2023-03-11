@@ -339,7 +339,7 @@ I guess I could avoid this weirdness by only defining the parameters options at 
 > 
 > However, the following program will, since the function is executed immediately:
 > ```
-> myStrFunction :=
+> myStrFunction =
 > 	index: 0
 > print[myStrFunction["index"]]
 > ```
@@ -347,7 +347,6 @@ I guess I could avoid this weirdness by only defining the parameters options at 
 
 
 
-***
 ***
 
 ## Implementation
