@@ -4,24 +4,6 @@ from Syntax import BasicType
 from DataStructures import *
 from Expressions import number
 
-
-# NoneParam = Parameter(Type(BasicType.none))
-# BoolParam = Parameter(Type(BasicType.Boolean))
-# IntParam = Parameter(Type(BasicType.Integer))
-# FloatParam = Parameter(Type(BasicType.Float))
-# NumberParam = Parameter(basic_type=(BasicType.Integer, BasicType.Float))
-# LogNumParam = Parameter(basic_type=(BasicType.Boolean, BasicType.Integer, BasicType.Float))
-# StringParam = Parameter(Type(BasicType.String))
-# NormalParam = Parameter(basic_type=(BasicType.Boolean, BasicType.Integer, BasicType.Float, BasicType.String))
-# ListParam = Param = Parameter(Type(BasicType.List))
-# TypeParam = Parameter(Type(BasicType.Type))
-# TypeOrPatternParam = Parameter(basic_type=(BasicType.Type, BasicType.Pattern))
-# FunctionParam = Parameter(Type(BasicType.Function))
-# # OptionParam = Parameter(Type(BasicType.Option))
-# AnyParam = Parameter(Type(BasicType.Any))
-# NormalBinopPattern = Pattern(NormalParam, NormalParam)
-# AnyBinopPattern = Pattern(AnyParam, AnyParam)
-
 NoneParam = Parameter(Type(BasicType.none))
 BoolParam = Parameter(Type(BasicType.Boolean))
 IntParam = Parameter(Type(BasicType.Integer))
@@ -35,7 +17,6 @@ ListParam = Param = Parameter(Type(BasicType.List))
 TypeParam = Parameter(Type(BasicType.Type))
 TypeOrPatternParam = Parameter(Union(Type(BasicType.Type), Type(BasicType.Pattern)))
 FunctionParam = Parameter(Type(BasicType.Function))
-# OptionParam = Parameter(Type(BasicType.Option))
 AnyParam = Parameter(Type(BasicType.Any))
 NormalBinopPattern = ListPatt(NormalParam, NormalParam)
 AnyBinopPattern = ListPatt(AnyParam, AnyParam)
@@ -46,13 +27,11 @@ BuiltIns['number'] = Function(ListPatt(NormalParam),
                               lambda x: Value(int(x.value)) if x.type == BasicType.Boolean else Value(number(x.value)))
 BuiltIns['integer'] = Function(ListPatt(NormalParam), lambda x: Value(int(BuiltIns['number'].call([x]).value)))
 BuiltIns['float'] = Function(ListPatt(NormalParam), lambda x: Value(float(BuiltIns['number'].call([x]).value)))
-ToString = Function()
-# ToString.add_option(ListPatt(), lambda: Value(BasicType.String))
-ToString.add_option(ListPatt(NumberParam),
-                    lambda n: Value('-' * (n.value < 0) + base(abs(n.value), 10, 6, string=True, recurring=False)))
-ToString.add_option(ListPatt(AnyParam), lambda x: Value(str(x.value)))
-ToString.add_option(ListPatt(Parameter(Type(BasicType.Type))), lambda t: Value(t.value.name))
-BuiltIns['string'] = ToString
+BuiltIns['string'] = Function(ListPatt(AnyParam), lambda x: Value(str(x.value)))
+BuiltIns['string'].add_option(ListPatt(NumberParam),
+                              lambda n: Value('-' * (n.value < 0) +
+                                              base(abs(n.value), 10, 6, string=True, recurring=False)))
+BuiltIns['string'].add_option(ListPatt(Parameter(Type(BasicType.Type))), lambda t: Value(t.value.name))
 
 BuiltIns['type'] = Function(ListPatt(AnyParam), lambda v: Value(v.type, BasicType.Type))
 
@@ -82,9 +61,6 @@ Operator('|',
          Function(ListPatt(TypeOrPatternParam, TypeOrPatternParam), lambda a, b: Value(Union(make_patt(a), make_patt(b)))),
          binop=4)
 Op['|'].fn.add_option(AnyBinopPattern, lambda a, b: Value(Union(make_patt(a), make_patt(b))))
-# Operator('&',
-#          Function(),
-#          binop=5)
 Operator('not',
          Function(ListPatt(AnyParam), lambda a: Value(not BuiltIns['boolean'].call([a]).value)),
          prefix=6)

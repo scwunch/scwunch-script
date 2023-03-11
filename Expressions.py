@@ -1,6 +1,7 @@
 from baseconvert import base
 from Syntax import *
 from DataStructures import *
+from Env import *
 
 
 class ExprType(Enum):

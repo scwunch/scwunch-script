@@ -325,7 +325,6 @@ def make_patt(val):
     else:
         return ValuePattern(val)
 
-# opt_value_type = Value | Block | callable | None
 
 class Option:
     resolution = None
@@ -481,21 +480,6 @@ class Function:
     def deref(self, name: str, ascend_env=True):
         option = self.select(name, ascend_env=ascend_env)
         return option.resolve(None, self, self)
-
-        # option = self.named_options.get(name, None)
-        # if option:
-        #     return option.resolve(None, self, self)
-        # if self.prototype:
-        #     try:
-        #         option = self.prototype.deref(name, False)
-        #     except NoMatchingOptionError:
-        #         pass
-        # if ascend_env and self.env:
-        #     try:
-        #         return self.env.deref(name)
-        #     except NoMatchingOptionError:
-        #         pass
-        # raise NoMatchingOptionError(f"Line {Context.line}: '{name}' not found.")
 
     def instanceof(self, prototype):
         return self == prototype or \
