@@ -2,22 +2,8 @@ import math
 import types
 
 from Syntax import BasicType, Block, Node
+from Env import *
 
-class Context:
-    _env = []
-    env = None
-    line = 0
-    root = None
-
-    @staticmethod
-    def push(env):
-        Context._env.append(env)
-        Context.env = env
-
-    @staticmethod
-    def pop():
-        Context._env.pop()
-        Context.env = Context._env[-1]
 
 class Value:
     def __init__(self, value, basic_type: BasicType = None):
@@ -132,6 +118,8 @@ class Pattern:
     def __init__(self, name: str = None, guard=None):
         self.name = name
         self.guard = guard
+        if guard:
+            pass
     def match_score(self, arg):
         if arg.type == BasicType.String and arg.value == self.name:
             return 1
@@ -139,7 +127,10 @@ class Pattern:
             case ValuePattern(value=value):
                 return int(arg == value)
             case Type(basic_type=basic_type):
-                score = (arg.type == basic_type) / 2
+                if basic_type == BasicType.Any:
+                    score = 0.1
+                else:
+                    score = (arg.type == basic_type) / 2
             case Prototype(prototype=prototype):
                 if arg.type != BasicType.Function:
                     return 0
@@ -207,7 +198,7 @@ class ValuePattern(Pattern):
         super().__init__(name)
         self.value = value
     def __eq__(self, other):
-        return self.value == other.value and self.name == other.name
+        return isinstance(other, ValuePattern) and self.value == other.value and self.name == other.name
     def __hash__(self):
         return hash((self.value, self.name))
     def __repr__(self):
@@ -219,7 +210,7 @@ class Type(Pattern):
         super().__init__(name, guard)
         self.basic_type = basic_type
     def __eq__(self, other):
-        return isinstance(other, Type) and self.basic_type == other.basic_type and super().__eq__(super(other))
+        return isinstance(other, Type) and self.basic_type == other.basic_type and super().__eq__(other)
     def __hash__(self):
         return hash((self.basic_type, super()))
     def __repr__(self):
@@ -231,7 +222,7 @@ class Prototype(Pattern):
         self.prototype = prototype
     def __eq__(self, other):
         return isinstance(other, Prototype) and \
-            id(self.prototype) == id(other.prototype) and super().__eq__(super(other))
+            id(self.prototype) == id(other.prototype) and super().__eq__(other)
     def __hash__(self):
         return hash((id(self.prototype), super()))
     def __repr__(self):
@@ -250,6 +241,10 @@ class Union(Pattern):
         self.patterns = frozenset(patts)
     def __len__(self):
         return len(self.patterns)
+    def __eq__(self, other):
+        return isinstance(other, Union) and self.patterns == other.patterns and super().__eq__(other)
+    def __hash__(self):
+        return hash((self.patterns, self.name, self.guard))
     def __repr__(self):
         return '|'.join(map(repr, self.patterns))
 
@@ -258,17 +253,18 @@ class ListPatt(Pattern):
         super().__init__(name, guard)
         self.parameters = tuple(parameters)
     def zip(self, args: list):
-        assert self.min_len() <= len(args) <= self.max_len()
         d = {}
+        if args is None:
+            return d
+        assert self.min_len() <= len(args) <= self.max_len()
         if len(args) == 0:
             return d
         params = (p for p in self.parameters)
-        param = next(params)
         for arg in args:
-            if param.name:
-                patt = Pattern(param.name)
-                d[patt] = arg
             param = next(params)
+            if param.name:
+                patt = ListPatt(Parameter(param.name))
+                d[patt] = arg
         return d
     def min_len(self):
         count = 0
@@ -299,16 +295,21 @@ class ListPatt(Pattern):
             else:
                 return int(self.min_len() == 0) / len(self)
         params = (param for param in self.parameters)
-        param = next(params)
         score = 0
         for arg in args:
+            param = next(params, None)
+            if not param:
+                pass
             p_score = param.match_score(arg)
             if not p_score:
                 return 0
             score += p_score
-            param = next(params)
             # not yet implemented param.multi and param.optional
         return score / len(args)
+    def __eq__(self, other):
+        return isinstance(other, ListPatt) and self.parameters == other.parameters and super().__eq__(other)
+    def __hash__(self):
+        return hash((*self.parameters, self.name, self.guard))
     def __repr__(self):
         return f"[{', '.join(map(repr, self.parameters))}]"
 
@@ -359,7 +360,7 @@ class Option:
             case _:
                 raise ValueError("Could not assign resolution: ", val_block_fn)
 
-    def resolve(self, args, proto=None, env=Context.env):
+    def resolve(self, args=None, proto=None, env=Context.env):
         if self.value:
             return self.value
         if self.fn:
@@ -367,7 +368,7 @@ class Option:
         if self.block is None:
             raise NoMatchingOptionError("Could not resolve null option")
         fn = Function(options=self.pattern.zip(args), prototype=proto, env=env)
-        Context.push(fn)
+        Context.push(Context.line, fn, self)
         for statement in self.block.statements:
             Context.line = statement.pos[0]
             expr = Context.make_expr(statement.nodes)
@@ -384,22 +385,12 @@ class Option:
         if self.block or self.fn:
             return f"{self.pattern}: {self.block or self.fn}"
 
-class RuntimeErr(Exception):
-    pass
-class SyntaxErr(Exception):
-    pass
-class NoMatchingOptionError(RuntimeErr):
-    pass
-class OperatorError(SyntaxErr):
-    pass
 
 class Function:
     return_value = None
-    # prototype = None
-    def __init__(self, opt_pattern=None, opt_value=None, options=None, prototype=None, env=Context.env):
-        # self.block = block or Block([])
+    def __init__(self, opt_pattern=None, opt_value=None, options=None, prototype=None, env=None):
         self.prototype = prototype
-        self.env = env
+        self.env = env or Context.env
         self.options = []  # [Option(Pattern(), self)]
         self.named_options = {}
         if options:
@@ -407,10 +398,6 @@ class Function:
                 self.add_option(patt, val)
         if opt_pattern is not None:
             self.assign_option(opt_pattern, opt_value)
-        # self.return_value = value
-        # self.is_null = is_null
-        # if prototype:
-        #     self.options += [opt.copy() for opt in prototype.options.copy()]
 
     def add_option(self, pattern, val_or_block=None):
         option = Option(pattern, val_or_block)
@@ -443,44 +430,22 @@ class Function:
         arg_list = Value(key)
         for i, opt in enumerate(self.options):
             score = opt.pattern.match_score(arg_list)
-            if score == 7560:
+            if score == 1:
                 return i
             if score > high_score:
                 high_score = score
                 idx = i
-            # params = opt.pattern.parameters
-            # if not (len(opt.pattern.required_parameters) <= len(key) <= len(params)):
-            #     continue
-            # score = 0
-            # for j in range(len(params)):
-            #     if j == len(key):
-            #         return i
-            #     param_score = match_score(key[j], params[j])
-            #     if not param_score:
-            #         break  # no match; continue outer loop
-            #     score += param_score
-            # else:
-            #     if score == 7560 * len(key):  # perfect match
-            #         return i
-            #     elif score > high_score:
-            #         high_score = score
-            #         idx = i
         return idx
 
     def select(self, key: Pattern | list[Value], walk_prototype_chain=True, ascend_env=False):
-        """
-        :param key: list of args, or pattern of params
-        :param walk_prototype_chain: bool=True search options of prototype if not found
-        :param ascend_env: bool=False search containing environment if not found
-        :returns the matching option, creating a null option if none exists
-        """
         if isinstance(key, Pattern):
             opt = [opt for opt in self.options if opt.pattern == key]
             if opt:
                 return opt[0]
-            # if ascend_env:
-            #     return self.add_option(key)
-            # raise NoMatchingOptionError(f"No option found in function {self} matching pattern {key}")
+        elif isinstance(key, str):
+            opt = self.named_options.get(key, None)
+            if opt:
+                return opt
         else:
             if len(key) == 1 and key[0].type == BasicType.String:
                 option = self.named_options.get(key[0].value, None)
@@ -489,16 +454,14 @@ class Function:
             i = self.index_of(key)
             if i is not None:
                 return self.options[i]
-        # if create_if_not_exists:
-        #     return self.add_option(Pattern(*[Parameter(value=k) for k in key]))
         if walk_prototype_chain and self.prototype:
             try:
-                return self.prototype.select(key)
+                return self.prototype.select(key, ascend_env=ascend_env)
             except NoMatchingOptionError:
                 pass
         if ascend_env and self.env:
             try:
-                return self.env.select(key)
+                return self.env.select(key, walk_prototype_chain)
             except NoMatchingOptionError:
                 pass
         raise NoMatchingOptionError(f"Line {Context.line}: key {key} not found in function {self}")
@@ -516,15 +479,23 @@ class Function:
         return option.resolve(key, self, self)
 
     def deref(self, name: str, ascend_env=True):
-        return self.call([Value(name)], ascend=ascend_env)
+        option = self.select(name, ascend_env=ascend_env)
+        return option.resolve(None, self, self)
 
-    # def init(self, pattern: Pattern, key: list[Value], parent=None, copy=True):
-    #     parent = parent or self
-    #     fn = Function(block=self.block, prototype=parent, env=parent.env) if copy else self
-    #     for arg, param in zip(key, pattern.required_parameters):
-    #         fn.assign_option(Pattern(param), Function(value=arg))
-    #     fn.args = key
-    #     return fn
+        # option = self.named_options.get(name, None)
+        # if option:
+        #     return option.resolve(None, self, self)
+        # if self.prototype:
+        #     try:
+        #         option = self.prototype.deref(name, False)
+        #     except NoMatchingOptionError:
+        #         pass
+        # if ascend_env and self.env:
+        #     try:
+        #         return self.env.deref(name)
+        #     except NoMatchingOptionError:
+        #         pass
+        # raise NoMatchingOptionError(f"Line {Context.line}: '{name}' not found.")
 
     def instanceof(self, prototype):
         return self == prototype or \
@@ -540,14 +511,12 @@ class Function:
     def __repr__(self):
         if self == Context.root:
             return 'root'
-        if len(self.options) == 1 or True:
-            return f"{{{self.options}}}"
+        if self.prototype == Context.root:
+            return 'root.main'
+        if len(self.options) == 1:
+            return f"{{{self.options[0]}}}"
         else:
-            return f"{{{self.block}}}"
-
-
-Op = {}
-BuiltIns = {}
+            return f"{{{self.named_options}}}"
 
 
 class Operator:

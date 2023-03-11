@@ -54,9 +54,9 @@ class BasicType(Enum):
     String = 'str'
     Function = 'fn'
     List = 'list'
-    Type = 'type'
+    Type = 'pattern.type'
     Pattern = 'pattern'
-    Name = 'NAMEPATTERN'
+    Name = 'pattern.name'
     Any = 'any'
 
 
@@ -224,7 +224,12 @@ class Line:
 class NonTerminal(Node):
     def __init__(self, nodes: list[Node]):
         self.nodes = nodes
-        self.pos = nodes[0].pos if nodes else (-1, -1)
+        for n in nodes:
+            if n.pos != (0, 0) and n.pos != (-1, -1):
+                self.pos = n.pos
+                break
+        else:
+            self.pos = (-1, -1)
         self.source_text = ' '.join(n.source_text for n in nodes)
 
 

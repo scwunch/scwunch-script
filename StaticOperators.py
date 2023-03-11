@@ -104,17 +104,17 @@ Op[':'].static = assign_fn
 
 def or_fn(lhs: list[Node], mid: list[Node], rhs: list[Node]) -> Value:
     condition = Expression(lhs).evaluate()
-    return condition if BuiltIns['bool'].call([condition]).value else Expression(rhs).evaluate()
+    return condition if BuiltIns['boolean'].call([condition]).value else Expression(rhs).evaluate()
 Op['or'].static = or_fn
 
 def and_fn(lhs: list[Node], mid: list[Node], rhs: list[Node]) -> Value:
     condition = Expression(lhs).evaluate()
-    return Expression(rhs).evaluate() if BuiltIns['bool'].call([condition]).value else condition
+    return Expression(rhs).evaluate() if BuiltIns['boolean'].call([condition]).value else condition
 Op['and'].static = and_fn
 
 def if_fn(lhs: list[Node], mid: list[Node], rhs: list[Node]) -> Value:
     condition = Expression(mid).evaluate()
-    if BuiltIns['bool'].call([condition]).value:
+    if BuiltIns['boolean'].call([condition]).value:
         return Expression(lhs).evaluate()
     else:
         return Expression(rhs).evaluate()

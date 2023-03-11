@@ -2,7 +2,7 @@ import re
 from baseconvert import base
 from Syntax import BasicType
 from DataStructures import *
-from Expressions import Expression, number
+from Expressions import number
 
 
 # NoneParam = Parameter(Type(BasicType.none))
@@ -29,7 +29,8 @@ FloatParam = Parameter(Type(BasicType.Float))
 NumberParam = Parameter(Union(Type(BasicType.Integer), Type(BasicType.Float)))
 LogNumParam = Parameter(Union(Type(BasicType.Boolean), Type(BasicType.Integer), Type(BasicType.Float)))
 StringParam = Parameter(Type(BasicType.String))
-NormalParam = Parameter(Union(Type(BasicType.Boolean), Type(BasicType.Integer), Type(BasicType.Float), Type(BasicType.String)))
+NormalParam = Parameter(Union(Type(BasicType.Boolean), Type(BasicType.Integer),
+                              Type(BasicType.Float), Type(BasicType.String)))
 ListParam = Param = Parameter(Type(BasicType.List))
 TypeParam = Parameter(Type(BasicType.Type))
 TypeOrPatternParam = Parameter(Union(Type(BasicType.Type), Type(BasicType.Pattern)))
@@ -40,10 +41,10 @@ NormalBinopPattern = ListPatt(NormalParam, NormalParam)
 AnyBinopPattern = ListPatt(AnyParam, AnyParam)
 
 
-BuiltIns['bool'] = Function(ListPatt(AnyParam), lambda x: Value(bool(x.value), BasicType.Boolean))
+BuiltIns['boolean'] = Function(ListPatt(AnyParam), lambda x: Value(bool(x.value), BasicType.Boolean))
 BuiltIns['number'] = Function(ListPatt(NormalParam),
                               lambda x: Value(int(x.value)) if x.type == BasicType.Boolean else Value(number(x.value)))
-BuiltIns['int'] = Function(ListPatt(NormalParam), lambda x: Value(int(BuiltIns['number'].call([x]).value)))
+BuiltIns['integer'] = Function(ListPatt(NormalParam), lambda x: Value(int(BuiltIns['number'].call([x]).value)))
 BuiltIns['float'] = Function(ListPatt(NormalParam), lambda x: Value(float(BuiltIns['number'].call([x]).value)))
 ToString = Function()
 # ToString.add_option(ListPatt(), lambda: Value(BasicType.String))
@@ -51,7 +52,7 @@ ToString.add_option(ListPatt(NumberParam),
                     lambda n: Value('-' * (n.value < 0) + base(abs(n.value), 10, 6, string=True, recurring=False)))
 ToString.add_option(ListPatt(AnyParam), lambda x: Value(str(x.value)))
 ToString.add_option(ListPatt(Parameter(Type(BasicType.Type))), lambda t: Value(t.value.name))
-BuiltIns['str'] = ToString
+BuiltIns['string'] = ToString
 
 BuiltIns['type'] = Function(ListPatt(AnyParam), lambda v: Value(v.type, BasicType.Type))
 
@@ -62,10 +63,8 @@ BuiltIns['len'].add_option(ListPatt(Parameter(Type(BasicType.Pattern))), lambda 
 
 BuiltIns['prototype'] = Function(ListPatt(FunctionParam), lambda f: Value(f.value.prototype))
 
-def contains(a: Function, b: Value):
-    return Value(b in (opt.value for opt in a.options))
-Contains = Function(ListPatt(FunctionParam, AnyParam), contains)
-BuiltIns['contains'] = Contains
+BuiltIns['contains'] = Function(ListPatt(FunctionParam, AnyParam),
+                                lambda a, b: Value(b in (opt.value for opt in a.options)))
 
 Operator('=', binop=1, static=True, associativity='right')
 Operator(':', binop=1, static=True, associativity='right')
@@ -80,17 +79,17 @@ Operator('or',
 Operator('and',
          binop=5, static=True)
 Operator('|',
-         Function(ListPatt(TypeOrPatternParam, TypeOrPatternParam), lambda a, b: Union(make_patt(a), make_patt(b))),
+         Function(ListPatt(TypeOrPatternParam, TypeOrPatternParam), lambda a, b: Value(Union(make_patt(a), make_patt(b)))),
          binop=4)
-Op['|'].fn.add_option(AnyBinopPattern, lambda a, b: Union(make_patt(a), make_patt(b)))
+Op['|'].fn.add_option(AnyBinopPattern, lambda a, b: Value(Union(make_patt(a), make_patt(b))))
 # Operator('&',
 #          Function(),
 #          binop=5)
 Operator('not',
-         Function(ListPatt(AnyParam), lambda a: Value(not BuiltIns['bool'].call([a]).value)),
+         Function(ListPatt(AnyParam), lambda a: Value(not BuiltIns['boolean'].call([a]).value)),
          prefix=6)
 Operator('in',
-         Function(AnyBinopPattern, lambda a, b: Contains.call([b, a])),
+         Function(AnyBinopPattern, lambda a, b: BuiltIns['contains'].call([b, a])),
          binop=7)
 Operator('==',
          Function(AnyBinopPattern, lambda a, b: Value(a == b)),
@@ -110,27 +109,22 @@ Operator('<=',
 Operator('>=',
          Function(NormalBinopPattern, lambda a, b: Value(a.value >= b.value)),
          binop=10)
-def matchPattern(a: Value, b: Pattern | Value):
-    match b:
-        case Pattern():
-            assert len(b) == 1
-            return Value(bool(match_score(a, b.all_parameters[0])), BasicType.Boolean)
-        case Value():
-            assert b.type == BasicType.Type
-            return Value(a.type == b.value, BasicType.Boolean)
+def match_pattern(a: Value, b: Value):
+    return Value(bool(make_patt(b).match_score(a)))
 Operator('~',
          Function(AnyBinopPattern, lambda a, b: a.type == b.type,
-                  options={Pattern(AnyParam, TypeOrPatternParam): matchPattern}),
+                  options={ListPatt(AnyParam, TypeOrPatternParam): match_pattern}),
          binop=9)
 Operator('+',
          Function(NormalBinopPattern, lambda a, b: Value(a.value + b.value)),
          binop=11)
 Operator('-',
          Function(NormalBinopPattern, lambda a, b: Value(a.value - b.value),
-                  options={Pattern(LogNumParam): lambda a: Value(-a.value)}),
+                  options={ListPatt(LogNumParam): lambda a: Value(-a.value)}),
          binop=11, prefix=13)
 Operator('*',
-         Function(ListPatt(LogNumParam, LogNumParam), lambda a, b: Value(a.value * b.value)),
+         Function(ListPatt(LogNumParam, LogNumParam), lambda a, b: Value(a.value * b.value),
+                  options={ListPatt(StringParam, LogNumParam): lambda a, b: Value(a.value * b.value)}),
          binop=12)
 Operator('/',
          Function(ListPatt(LogNumParam, LogNumParam), lambda a, b: Value(a.value / b.value)),
@@ -154,17 +148,22 @@ def dot_call(a: Value, b: Value, c: Value = None):
         val = a.value.deref(name, ascend_env=False)
     except (AssertionError, NoMatchingOptionError):
         fn = Context.env.deref(name)
-        assert isinstance(fn, Function)
+        if fn.type != BasicType.Function:
+            raise OperatorError(f"Line {Context.line}: '{name}' is not an option or function.")
+        assert isinstance(fn.value, Function)
         args = [a] + args
-        return fn.call(args)
+        return fn.value.call(args)
     if c:
-        assert isinstance(val.value, Function)
-        return val.value.call(args)
+        fn = val.value
+        if not isinstance(fn, Function):
+            raise OperatorError(f"Line {Context.line}: {val.type.value} '{name}' is not function.")
+        return fn.call(args)
     else:
         return val
 
+
 Operator('.',
-         Function(ListPatt(FunctionParam, Parameter(Type(BasicType.Name))), lambda a, b: a.call(Value(b[0].name)),
+         Function(ListPatt(FunctionParam, Parameter(Type(BasicType.Name))), dot_call,
                   options={ListPatt(AnyParam,
                                     Parameter(Type(BasicType.Name)),
                                     Parameter(Type(BasicType.List), quantifier="?")
@@ -186,6 +185,8 @@ def type_guard(a: Value, b: Value) -> Value:
                 f |= getattr(re, c)
             fn = lambda s: re.fullmatch(regex, s, f)
     return Value(Type(a.value, guard=fn))
+
+
 Operator('.[',
          Function(ListPatt(FunctionParam, ListParam), lambda a, b: a.value.call(b.value),
                   options={ListPatt(TypeParam, ListParam): type_guard}),

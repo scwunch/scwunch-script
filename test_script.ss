@@ -14,6 +14,7 @@ my_var[int num]:
 	prop1 = "hello"
 	prop2 = "world"
 	return num + 5
+
 my_var[str text]: text + '!'
 test[3] = my_var[1] == 10
 print 'test 3 passed' if test[3] else 'test 3 failed'
@@ -71,10 +72,14 @@ print 'test 22 passed' if test[22] else 'test 22 failed'
 test[23] = (Dog[23] ?? "23") == "23" and (spot.name ?? "no name") == 'Rover'
 print 'test 23 passed' if test[23] else 'test 23 failed'
 
-debug
 foo[str|int]: 'it worked'
-test[24] = foo[4] + foo["4"]
-print test[24]
+test[24] = foo[4] + foo["4"] == 'it worked' * 2
+print 'test 24 ' + ('passed' if test[24] else 'failed')
+
+debug foo2[str|int|bool var_name]: string[var_name] + ' worked'
+test[25] = foo2[debug 1] == "1 worked"
+print foo2[1]
+print 'test 25 ' + ('passed' if test[25] else 'failed')
 
 exit
 # ***********************

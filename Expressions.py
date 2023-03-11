@@ -1,11 +1,6 @@
-import contextlib
-
 from baseconvert import base
-import math
 from Syntax import *
-from Abstract_Syntax_Tree import Tokenizer, AST
 from DataStructures import *
-# from BuiltIns import *
 
 
 class ExprType(Enum):
@@ -147,13 +142,15 @@ def eval_command(cmd: str, expr: Expression):
             print('Exiting now')
             exit()
         case 'debug':
-            return Value(None)
+            Context.debug = True
+            result = expr.evaluate()
+            return result
         case 'return':
             result = expr.evaluate()
             Context.env.return_value = result
             return result
         case 'print':
-            print('!@>', BuiltIns['str'].call([expr.evaluate()]).value)
+            print('!@>', BuiltIns['string'].call([expr.evaluate()]).value)
             return Value(None)
         case _:
             raise Exception(f"Unhandled command {cmd}")
@@ -204,7 +201,7 @@ def eval_node(node: Node) -> Value:
             return eval_token(node)
         case Block() as node:
             opt = Option(ListPatt(), node)
-            return opt.resolve([])
+            return opt.resolve(None)
         case List() as node:
             # return Value([eval_node(n) for n in node.nodes])
             return Value(list(map(eval_node, node.nodes)), BasicType.List)
@@ -255,27 +252,6 @@ def string(text: str):
     return text[1:-1]
     # TO IMPLEMENT: "string {formatting}"
 
-def make_param_old(param_nodes: list[Node]) -> Parameter:
-    last = param_nodes[-1]
-    if isinstance(last, Token) and last.type in (TokenType.Name, TokenType.PatternName):
-        name = last.source_text
-        param_nodes = param_nodes[:-1]
-    else:
-        name = None
-    if not param_nodes:
-        return Parameter(name)
-    if len(param_nodes) == 1 and isinstance(tok := param_nodes[0], Token):
-        basic_type = type_mapper(tok.source_text)
-        if basic_type:
-            return Parameter(name, basic_type=basic_type)
-    value = Expression(param_nodes).evaluate()
-    if isinstance(value, Pattern):
-        value[0].name = name
-        return value[0]
-    if value.type == BasicType.Type:
-        return Parameter(name, basic_type=value.value)
-    return Parameter(name, value)
-
 def make_param(param_nodes: list[Node]) -> Parameter:
     last = param_nodes[-1]
     if isinstance(last, Token) and last.type in (TokenType.Name, TokenType.PatternName):
@@ -289,18 +265,6 @@ def make_param(param_nodes: list[Node]) -> Parameter:
     pattern = make_patt(expr_val)
     return Parameter(pattern, name)
 
-    if len(param_nodes) == 1 and isinstance(tok := param_nodes[0], Token):
-        basic_type = type_mapper(tok.source_text)
-        if basic_type:
-            return Parameter(name, basic_type=basic_type)
-    value = Expression(param_nodes).evaluate()
-    if isinstance(value, Pattern):
-        value[0].name = name
-        return value[0]
-    if value.type == BasicType.Type:
-        return Parameter(name, basic_type=value.value)
-    return Parameter(name, value)
-
 def split(nodes: list[Node], splitter: TokenType) -> list[list[Node]]:
     start = 0
     groups: list[list[Node]] = []
@@ -311,39 +275,6 @@ def split(nodes: list[Node], splitter: TokenType) -> list[list[Node]]:
     if start < len(nodes):
         groups.append(nodes[start:])
     return groups
-
-def get_option(nodes: list[Node]) -> Option:
-    fn_nodes, fn = [], Context.env
-    match nodes:
-        case [*fn_nodes, _, List() as param_list]:
-            param_list = [item.nodes for item in param_list.nodes]
-        case [*fn_nodes, Token() as dot_op, Token() as name_tok] \
-                if dot_op.source_text == '.' and name_tok.type == TokenType.PatternName:
-            param_list = [[name_tok]]
-        case _:
-            param_list = split(nodes, TokenType.Comma)
-    if fn_nodes:
-        try:
-            fn_val = Expression(fn_nodes).evaluate()
-        except NoMatchingOptionError:
-            opt = get_option(fn_nodes)
-            if opt.is_null():
-                fn_val = Value(Function())
-                opt.value = fn_val
-            else:
-                fn_val = opt.value
-            # how many levels deep should this go?
-            # This will recurse infinitely, potentially creating many function
-        if fn_val.type != BasicType.Function:
-            raise RuntimeErr(f"Line {Context.line}: "
-                             f"Cannot add option to {fn_val.type.value} {' '.join((map(str, fn_nodes)))}")
-        fn = fn_val.value
-    params = map(make_param, param_list)
-    patt = Pattern(*params)
-    try:
-        return fn.select(patt, ascend_env=True)
-    except NoMatchingOptionError:
-        return fn.add_option(patt)
 
 def read_option(nodes: list[Node]) -> Option:
     fn_nodes, fn = [], Context.env
@@ -358,7 +289,7 @@ def read_option(nodes: list[Node]) -> Option:
         try:
             fn_val = Expression(fn_nodes).evaluate()
         except NoMatchingOptionError:
-            opt = get_option(fn_nodes)
+            opt = read_option(fn_nodes)
             if opt.is_null():
                 fn_val = Value(Function())
                 opt.value = fn_val
@@ -370,10 +301,14 @@ def read_option(nodes: list[Node]) -> Option:
             raise RuntimeErr(f"Line {Context.line}: "
                              f"Cannot add option to {fn_val.type.value} {' '.join((map(str, fn_nodes)))}")
         fn = fn_val.value
+        definite_env = True
+    else:
+        fn = Context.env
+        definite_env = False
     params = map(make_param, param_list)
     patt = ListPatt(*params)
     try:
-        return fn.select(patt, ascend_env=True)
+        return fn.select(patt, walk_prototype_chain=False, ascend_env=not definite_env)
     except NoMatchingOptionError:
         return fn.add_option(patt)
 
