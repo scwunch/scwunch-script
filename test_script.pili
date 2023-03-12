@@ -73,13 +73,24 @@ test[23] = (Dog[23] ?? "23") == "23" and (spot.name ?? "no name") == 'Rover'
 print 'test 23 passed' if test[23] else 'test 23 failed'
 
 foo[str|int]: 'it worked'
-test[24] = debug foo[4] + foo["4"] == 'it worked' * 2
+test[24] = foo[4] + foo["4"] == 'it worked' * 2
 print 'test 24 ' + ('passed' if test[24] else 'failed')
 
-debug foo2[str|int|bool var_name]: string[var_name] + ' worked'
-test[25] = foo2[debug 1] == "1 worked"
-print foo2[1]
+foo2[str|int|bool var_name]: string[var_name] + ' worked'
+test[25] = foo2[1] == "1 worked"
 print 'test 25 ' + ('passed' if test[25] else 'failed')
+
+Cat =
+	[str name]:
+		name = "😸 " + name
+		.string: "Cat " + (debug name)
+	meow: "hello my name is " + name
+	.string: "Cat " + (debug name)
+
+my_cat = Cat["Ruby"]
+test[30] = string[my_cat] == my_cat.string and my_cat.string == "Cat 😸 Ruby"
+print 'test 30 ' + ('passed' if test[30] else 'failed')
+
 
 exit
 # ***********************

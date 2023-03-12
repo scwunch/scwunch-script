@@ -282,18 +282,28 @@ def split(nodes: list[Node], splitter: TokenType) -> list[list[Node]]:
     return groups
 
 def read_option(nodes: list[Node]) -> Option:
-    fn_nodes, fn = [], Context.env
+    dot_option = nodes[0].source_text == '.'
     match nodes:
+        case [Token(source_text='.'), node, _, List() as param_list]:
+            fn_nodes = [node]
+        case [Token(source_text='.'), *fn_nodes]:
+            param_list = []
         case [*fn_nodes, _, List() as param_list]:
             param_list = [item.nodes for item in param_list.nodes]
         case [*fn_nodes, Token(source_text='.'), Token(type=TokenType.PatternName) as name_tok]:
             param_list = [[name_tok]]
         case _:
             param_list = split(nodes, TokenType.Comma)
+            fn_nodes = False
     if fn_nodes:
         try:
             fn_val = Expression(fn_nodes).evaluate()
+            if fn_val.type == BasicType.Name:
+                fn_val = Context.env.deref(fn_val.value)
         except NoMatchingOptionError:
+            if dot_option:
+                raise NoMatchingOptionError(f"Line {Context.line}: "
+                                            f"dot option {' '.join((map(str, fn_nodes)))} not found.")
             opt = read_option(fn_nodes)
             if opt.is_null():
                 fn_val = Value(Function())
@@ -311,10 +321,15 @@ def read_option(nodes: list[Node]) -> Option:
         fn = Context.env
         definite_env = False
     params = map(make_param, param_list)
-    patt = ListPatt(*params)
+    if dot_option:
+        patt = ListPatt(Parameter(Prototype(Context.env)), *params)
+    else:
+        patt = ListPatt(*params)
     try:
-        return fn.select(patt, walk_prototype_chain=False, ascend_env=not definite_env)
+        option = fn.select(patt, walk_prototype_chain=False, ascend_env=not definite_env)
     except NoMatchingOptionError:
-        return fn.add_option(patt)
+        option = fn.add_option(patt)
+    option.dot_option = dot_option
+    return option
 
 

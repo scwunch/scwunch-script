@@ -353,6 +353,7 @@ class Option:
     value = None
     block = None
     fn = None
+    dot_option = False
     def __init__(self, pattern, resolution=None):
         match pattern:
             case ListPatt():
@@ -388,6 +389,8 @@ class Option:
             raise NoMatchingOptionError("Could not resolve null option")
         # block = FuncBlock(self.block)
         # fn = Function(options=self.pattern.zip(args), prototype=proto, env=self.block.env)
+        if self.dot_option:
+            proto = args[0].value
         fn = self.block.make_function(self.pattern.zip(args), proto)
         Context.push(Context.line, fn, self)
         for expr in self.block.exprs:
@@ -396,13 +399,6 @@ class Option:
             if fn.return_value:
                 Context.pop()
                 return fn.return_value
-        # for statement in self.block.statements:
-        #     Context.line = statement.pos[0]
-        #     expr = Context.make_expr(statement.nodes)
-        #     expr.evaluate()
-        #     if fn.return_value:
-        #         Context.pop()
-        #         return fn.return_value
         Context.pop()
         return Value(fn)
 
