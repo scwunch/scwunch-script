@@ -145,7 +145,7 @@ Operator('.',
                                     Parameter(Type(BasicType.Name)),
                                     Parameter(Type(BasicType.List), quantifier="?")
                                    ): dot_call}),
-         binop=15, ternary='[')
+         binop=15, ternary='.[')
 def type_guard(a: Value, b: Value) -> Value:
     fn = None
     match a.value, *b.value:

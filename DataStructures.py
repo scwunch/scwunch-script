@@ -274,12 +274,10 @@ class ListPatt(Pattern):
             count += not param.optional
         return count
     def max_len(self):
-        count = 0
         for param in self.parameters:
             if param.quantifier in ("+", "*"):
                 return math.inf
-            count += int(param.quantifier != "?")
-        return count
+        return len(self.parameters)
     def __len__(self):
         return len(self.parameters)
     def __getitem__(self, item):
