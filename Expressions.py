@@ -16,6 +16,7 @@ class ExprType(Enum):
 
 
 class Expression:
+    line: int = None
     nodes: list[Node]
     type: ExprType = None
     operator: Operator
@@ -28,8 +29,11 @@ class Expression:
     lhs = None
     mid = None
     rhs = None
-    def __init__(self, nodes: list[Node]):
+    def __init__(self, nodes: list[Node] | Statement):
         # self.type = ExprType.Unknown
+        if isinstance(nodes, Statement):
+            self.line = nodes.pos[0]
+            nodes = nodes.nodes
         self.nodes = nodes
         if not nodes:
             self.type = ExprType.Empty
@@ -196,12 +200,12 @@ def expr_tree(nodes: list[Node]):
 
 def eval_node(node: Node) -> Value:
     match node:
-        case Statement() as node:
-            return Expression(node.nodes).evaluate()
-        case Token() as node:
-            return eval_token(node)
-        case Block() as node:
-            opt = Option(ListPatt(), node)
+        case Statement() as statement:
+            return Expression(statement.nodes).evaluate()
+        case Token() as tok:
+            return eval_token(tok)
+        case Block() as block:
+            opt = Option(ListPatt(), FuncBlock(block))
             return opt.resolve(None)
         case List() as node:
             # return Value([eval_node(n) for n in node.nodes])

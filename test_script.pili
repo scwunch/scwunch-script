@@ -73,7 +73,7 @@ test[23] = (Dog[23] ?? "23") == "23" and (spot.name ?? "no name") == 'Rover'
 print 'test 23 passed' if test[23] else 'test 23 failed'
 
 foo[str|int]: 'it worked'
-test[24] = foo[4] + foo["4"] == 'it worked' * 2
+test[24] = debug foo[4] + foo["4"] == 'it worked' * 2
 print 'test 24 ' + ('passed' if test[24] else 'failed')
 
 debug foo2[str|int|bool var_name]: string[var_name] + ' worked'
@@ -94,70 +94,70 @@ Dog =
 
 
 
-container =
-	data = {}
-	name = "I'm a container"
-	.len: len[data]
-len[container]  # or container.len
-> 0
-
-Duration[int hr, int min]:
-	is_afternoon: hr >= 12
-	is_morning: hr < 12
-	.["+"][other]:
-		new_hr = hr + other.hr
-		new_min = min + other.min
-		if new_min >= 60
-			new_min -= 60
-			new_hr += 1
-		return Duration[new_hr % 24, new_min]
-dur = Duration[1, 59] + Duration[0, 15]
-print str[dur.hr] + ":" str[dur.min]
-# > "2:14"
-
-
-
-
-
-
-
-
-
-coolFunc[str input: "345", int n: 43]:
-    0: "zero"
-    "string_key": 5
-    string_key: 5   // equivalent to above
-    int: 3 + 3      // key is not string "int", rather the type `int`
-    int<0: "negative integers"
-    return input + str[n]
-
-myFunction[0]: "zero"
-myFunction["string_key"]: 5
-myFunction["string_key"]: 5
-myFunction[int]: 3 + 3
-myFunction[int<0]: "negative integers"
-
-coolFunc["input"]
-
-Token =
-	str[`\s*`]: "SPACE"
-	str src: "other string"
-	str src, int n: src + " " + str[n]
-
-print Token[' '] == "SPACE"
-print Token['blah'] == "other string"
-print Token["my age is", 55] == "my age is 55"
-
-# So maybe what I would want is this:
-Token[str src]:
-	_Token =
-		str[`\s*`] src: "SPACE"
-		str src: "other string"
-		any: None
-	partial_result = _Token[src] ?? false
-	if partial_result
-		return partial_result
-	else
-		return "some default"
-
-
+# container =
+# 	data = {}
+# 	name = "I'm a container"
+# 	.len: len[data]
+# len[container]  # or container.len
+# > 0
+#
+# Duration[int hr, int min]:
+# 	is_afternoon: hr >= 12
+# 	is_morning: hr < 12
+# 	.["+"][other]:
+# 		new_hr = hr + other.hr
+# 		new_min = min + other.min
+# 		if new_min >= 60
+# 			new_min -= 60
+# 			new_hr += 1
+# 		return Duration[new_hr % 24, new_min]
+# dur = Duration[1, 59] + Duration[0, 15]
+# print str[dur.hr] + ":" str[dur.min]
+# # > "2:14"
+#
+#
+#
+#
+#
+#
+#
+#
+#
+# coolFunc[str input: "345", int n: 43]:
+#     0: "zero"
+#     "string_key": 5
+#     string_key: 5   // equivalent to above
+#     int: 3 + 3      // key is not string "int", rather the type `int`
+#     int<0: "negative integers"
+#     return input + str[n]
+#
+# myFunction[0]: "zero"
+# myFunction["string_key"]: 5
+# myFunction["string_key"]: 5
+# myFunction[int]: 3 + 3
+# myFunction[int<0]: "negative integers"
+#
+# coolFunc["input"]
+#
+# Token =
+# 	str[`\s*`]: "SPACE"
+# 	str src: "other string"
+# 	str src, int n: src + " " + str[n]
+#
+# print Token[' '] == "SPACE"
+# print Token['blah'] == "other string"
+# print Token["my age is", 55] == "my age is 55"
+#
+# # So maybe what I would want is this:
+# Token[str src]:
+# 	_Token =
+# 		str[`\s*`] src: "SPACE"
+# 		str src: "other string"
+# 		any: None
+# 	partial_result = _Token[src] ?? false
+# 	if partial_result
+# 		return partial_result
+# 	else
+# 		return "some default"
+#
+#

@@ -1,5 +1,6 @@
 from Syntax import Node, Token, TokenType, List, Statement, Block
-from DataStructures import Value, Function, Pattern, Context, Parameter, NoMatchingOptionError, OperatorError
+from Env import Context, NoMatchingOptionError, OperatorError
+from DataStructures import Value, Function, FuncBlock
 from BuiltIns import Op, BuiltIns
 from Expressions import Expression, read_option, eval_node
 
@@ -83,13 +84,14 @@ def assign_alias(lhs: list[Node], mid: list[Node], rhs: list[Node]) -> Value:
     return value
 
 def assign_fn(lhs: list[Node], mid: list[Node], rhs: list[Node]) -> Value:
-    if len(rhs) == 1 and isinstance(rhs[0], Block):
-        block = rhs[0]
+    blk_nd = rhs[0]
+    if len(rhs) == 1 and isinstance(blk_nd, Block):
+        block: Block = blk_nd
     else:
         return_statement = Statement([Token('return')] + rhs)  # noqa
         block = Block([return_statement])
     option = read_option(lhs)
-    option.block = block
+    option.block = FuncBlock(block)
     return Value(None)
 
 

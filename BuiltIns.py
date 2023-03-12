@@ -1,6 +1,7 @@
 import re
 from baseconvert import base
 from Syntax import BasicType
+from Env import *
 from DataStructures import *
 from Expressions import number
 

@@ -1,5 +1,6 @@
 import math
 import types
+import typing
 
 from Syntax import BasicType, Block, Node
 from Env import *
@@ -325,6 +326,27 @@ def make_patt(val):
     else:
         return ValuePattern(val)
 
+class ReusableMap:
+    fn: types.FunctionType
+    iterable: any
+    indices: set[int]
+    def __init__(self, fn, iterable):
+        self.fn = fn
+        self.iterable = iterable.copy()
+        self.indices = set([])
+    def __getitem__(self, item):
+        if item not in self.indices:
+            self.iterable[item] = self.fn(self.iterable[item])
+        return self.iterable[item]
+
+
+class FuncBlock:
+    def __init__(self, block=Block([]), env=None):
+        self.exprs = list(map(Context.make_expr, block.statements))
+        self.env = env or Context.env
+    def make_function(self, options, prototype):
+        return Function(options=options, prototype=prototype, env=self.env)
+
 
 class Option:
     resolution = None
@@ -343,7 +365,6 @@ class Option:
                 self.pattern = ListPatt(Parameter(pattern))
         if resolution is not None:
             self.assign(resolution)
-
     def is_null(self):
         return (self.value and self.block and self.fn) is None
     def not_null(self):
@@ -352,29 +373,36 @@ class Option:
         self.resolution = val_block_fn
         match val_block_fn:
             case Value(): self.value = val_block_fn
-            case Block(): self.block = val_block_fn
+            case FuncBlock(): self.block = val_block_fn
             # case types.FunctionType: self.fn = val_block_fn
             case types.FunctionType(): self.fn = val_block_fn
             # case fn if callable(fn): self.fn = fn
             case _:
                 raise ValueError("Could not assign resolution: ", val_block_fn)
-
-    def resolve(self, args=None, proto=None, env=Context.env):
+    def resolve(self, args=None, proto=None):
         if self.value:
             return self.value
         if self.fn:
             return self.fn(*args)
         if self.block is None:
             raise NoMatchingOptionError("Could not resolve null option")
-        fn = Function(options=self.pattern.zip(args), prototype=proto, env=env)
+        # block = FuncBlock(self.block)
+        # fn = Function(options=self.pattern.zip(args), prototype=proto, env=self.block.env)
+        fn = self.block.make_function(self.pattern.zip(args), proto)
         Context.push(Context.line, fn, self)
-        for statement in self.block.statements:
-            Context.line = statement.pos[0]
-            expr = Context.make_expr(statement.nodes)
+        for expr in self.block.exprs:
+            Context.line = expr.line
             expr.evaluate()
             if fn.return_value:
                 Context.pop()
                 return fn.return_value
+        # for statement in self.block.statements:
+        #     Context.line = statement.pos[0]
+        #     expr = Context.make_expr(statement.nodes)
+        #     expr.evaluate()
+        #     if fn.return_value:
+        #         Context.pop()
+        #         return fn.return_value
         Context.pop()
         return Value(fn)
 
@@ -387,7 +415,7 @@ class Option:
 
 class Function:
     return_value = None
-    def __init__(self, opt_pattern=None, opt_value=None, options=None, prototype=None, env=None):
+    def __init__(self, opt_pattern=None, resolution=None, options=None, prototype=None, env=None):
         self.prototype = prototype
         self.env = env or Context.env
         self.options = []  # [Option(Pattern(), self)]
@@ -396,10 +424,10 @@ class Function:
             for patt, val in options.items():
                 self.add_option(patt, val)
         if opt_pattern is not None:
-            self.assign_option(opt_pattern, opt_value)
+            self.assign_option(opt_pattern, resolution)
 
-    def add_option(self, pattern, val_or_block=None):
-        option = Option(pattern, val_or_block)
+    def add_option(self, pattern, resolution=None):
+        option = Option(pattern, resolution)
         name = None
         match pattern:
             case str():       name = pattern
@@ -412,14 +440,14 @@ class Function:
         # self.options.sort(key=lambda opt: opt.pattern.specificity, reverse=True)
         return option
 
-    def assign_option(self, pattern, val_or_block):
+    def assign_option(self, pattern, resolution):
         try:
             opt = self.select(pattern)
-            opt.assign(val_or_block)
+            opt.assign(resolution)
         except NoMatchingOptionError:
-            self.add_option(pattern, val_or_block)
-        if isinstance(val_or_block, Value):
-            return val_or_block
+            self.add_option(pattern, resolution)
+        if isinstance(resolution, Value):
+            return resolution
         else:
             return Value(None)
 
@@ -475,11 +503,11 @@ class Function:
                 except NoMatchingOptionError:
                     pass
             raise e
-        return option.resolve(key, self, self)
+        return option.resolve(key, self)
 
     def deref(self, name: str, ascend_env=True):
         option = self.select(name, ascend_env=ascend_env)
-        return option.resolve(None, self, self)
+        return option.resolve(None, self)
 
     def instanceof(self, prototype):
         return self == prototype or \
