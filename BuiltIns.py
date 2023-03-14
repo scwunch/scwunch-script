@@ -1,5 +1,5 @@
 import re
-from baseconvert import base
+# from baseconvert import base
 from Syntax import BasicType
 from Env import *
 from DataStructures import *
@@ -29,9 +29,9 @@ BuiltIns['number'] = Function(ListPatt(NormalParam),
 BuiltIns['integer'] = Function(ListPatt(NormalParam), lambda x: Value(int(BuiltIns['number'].call([x]).value)))
 BuiltIns['float'] = Function(ListPatt(NormalParam), lambda x: Value(float(BuiltIns['number'].call([x]).value)))
 BuiltIns['string'] = Function(ListPatt(AnyParam), lambda x: Value(str(x.value)))
-BuiltIns['string'].add_option(ListPatt(NumberParam),
-                              lambda n: Value('-' * (n.value < 0) +
-                                              base(abs(n.value), 10, 6, string=True, recurring=False)))
+# BuiltIns['string'].add_option(ListPatt(NumberParam),
+#                               lambda n: Value('-' * (n.value < 0) +
+#                                               base(abs(n.value), 10, 6, string=True, recurring=False)))
 BuiltIns['string'].add_option(ListPatt(Parameter(Type(BasicType.Type))), lambda t: Value(t.value.name))
 
 BuiltIns['type'] = Function(ListPatt(AnyParam), lambda v: Value(v.type, BasicType.Type))

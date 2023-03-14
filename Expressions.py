@@ -1,4 +1,4 @@
-from baseconvert import base
+# from baseconvert import base
 from Syntax import *
 from DataStructures import *
 from Env import *
@@ -238,17 +238,22 @@ def eval_token(tok: Token) -> Value:
 def number(text: str) -> int | float:
     if isinstance(text, int) or isinstance(text, float):
         return text
-    if text.endswith('d'):
-        text = text[:-1]
-    else:
-        try:
-            text = base(text, 6, string=True, recurring=False)
-        except ValueError:
-            pass
-    if '.' in text:
-        return float(text)
-    else:
+    try:
         return int(text)
+    except ValueError:
+        return float(text)
+
+    # if text.endswith('d'):
+    #     text = text[:-1]
+    # else:
+    #     try:
+    #         text = base(text, 6, string=True, recurring=False)
+    #     except ValueError:
+    #         pass
+    # if '.' in text:
+    #     return float(text)
+    # else:
+    #     return int(text)
 
 def string(text: str):
     q = text[0]

@@ -29,7 +29,7 @@ print 'test 5 passed' if test[5] else 'test 5 failed'
 
 my_var[3] = "three"
 test[6] = my_var[3] == 'three'
-print 'test 10 passed' if test[10] else 'test 10 failed'
+print 'test 10 passed' if test[6] else 'test 10 failed'
 
 test[7] = not 345 ~ type["345"] and 345 ~ type[3333]
 print 'test 11 passed' if test[7] else 'test 11 failed'
