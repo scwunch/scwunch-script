@@ -31,6 +31,7 @@ class TokenType(Enum):
     ListStart = '['
     ListEnd = ']'
     Comma = ','
+    Backslash = '\\'
 
 
 class Commands(Enum):
@@ -50,6 +51,7 @@ class BasicType(Enum):
     none = 'none'
     Boolean = 'bool'
     Integer = 'int'
+    Rational = 'ratio'
     Float = 'float'
     String = 'str'
     Function = 'fn'
@@ -139,7 +141,7 @@ class Token(Node):
 
         if re.match(r'["\'`]', text):
             self.type = TokenType.String
-        elif re.fullmatch(r'-?\d+(\.\d*)?', text):
+        elif re.fullmatch(r'-?\d+(\.\d*)?d?', text):
             self.type = TokenType.Number
         elif re.match(op_char_patt, text) or text == 'if':
             if text == ':' or text.endswith('='):

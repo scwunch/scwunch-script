@@ -1,6 +1,6 @@
 import math
 import types
-import typing
+from fractions import Fraction
 
 from Syntax import BasicType, Block, Node
 from Env import *
@@ -8,7 +8,10 @@ from Env import *
 
 class Value:
     def __init__(self, value, basic_type: BasicType = None):
-        self.value = value
+        if isinstance(value, Fraction) and value.numerator % value.denominator == 0:
+            self.value = int(value)
+        else:
+            self.value = value
         self.set_type(basic_type)
 
     def set_value(self, new_value):
@@ -31,9 +34,10 @@ class Value:
                 case None: self.type = BasicType.none
                 case bool(): self.type = BasicType.Boolean
                 case int(): self.type = BasicType.Integer
+                case Fraction(): self.type = BasicType.Rational
                 case float(): self.type = BasicType.Float
                 case str(): self.type = BasicType.String
-                case list(): self.type = BasicType.List  # noqa
+                case list(): self.type = BasicType.List
         return self.type
 
     def is_null(self):

@@ -48,6 +48,32 @@ class Tokenizer(Builder):
                f"head:({self.ln}, {self.col})\n\tcurrent_line:{self.current_line}\n\tchar:{self.char}\n"
         return head + "\n".join(repr(line) for line in self.lines)
 
+    def read_tokens(self):
+        tokens: list[Token] = []
+        while self.char:
+            pos = (self.ln, self.col)
+            if re.match(r'\d', self.char):
+                text = self.read_number()
+            elif self.char == '"' or self.char == "'" or self.char == "`":
+                text = self.read_string()
+            elif re.match(r'\w', self.char):
+                text = self.read_word()
+            elif re.match(op_char_patt, self.char):
+                text = self.read_operator()
+            elif re.match(r'[\[\]{}(),]', self.char):
+                text = self.char
+            elif self.char == '\\':
+                text = self.char
+            else:
+                raise Exception("What kind of character is this?", self.char)
+            tokens.append(Token(text, pos))
+            while self.col == pos[1] or self.char and re.match(r'\s', self.char):
+                self.next_char()
+            # if self.char == '\\' and re.match(r'\\\s*', self.current_line.text[self.col:]):
+            #     self.next_line()
+        # self.tokens = tokens
+        return tokens
+
     def next_char(self):
         self.col += 1
         if self.col >= len(self.current_line):
@@ -69,6 +95,7 @@ class Tokenizer(Builder):
             num_text += self.char
         if self.char == 'd':
             num_text += 'd'
+            self.next_char()
         return num_text
 
     def read_string(self):
@@ -102,28 +129,6 @@ class Tokenizer(Builder):
         if 0 <= index < len(self.lines):
             return self.current_line.text[index:index + count]
         return None
-
-    def read_tokens(self):
-        tokens: list[Token] = []
-        while self.char:
-            pos = (self.ln, self.col)
-            if re.match(r'\d', self.char):
-                text = self.read_number()
-            elif self.char == '"' or self.char == "'" or self.char == "`":
-                text = self.read_string()
-            elif re.match(r'\w', self.char):
-                text = self.read_word()
-            elif re.match(op_char_patt, self.char):
-                text = self.read_operator()
-            elif re.match(r'[\[\]{}(),]', self.char):
-                text = self.char
-            else:
-                raise Exception("What kind of character is this?", self.char)
-            tokens.append(Token(text, pos))
-            while self.col == pos[1] or self.char and re.match(r'\s', self.char):
-                self.next_char()
-        # self.tokens = tokens
-        return tokens
 
 
 class AST(Builder):
@@ -215,6 +220,9 @@ class AST(Builder):
             #       I thought I could be smart and automatically transform a `name: inline-function`
             #       pattern to a block ... but it doesn't work because there are some examples where
             #       blocks don't work, like in parameter expressions.
+            elif self.tok.type == TokenType.Backslash:
+                if not super().next_line():
+                    raise SyntaxError("Expected statement after backslash at: ", self.ln, self.col)
             else:
                 nodes.append(self.tok)
             self.seek()

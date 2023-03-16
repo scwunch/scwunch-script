@@ -28,20 +28,20 @@ test[5] = next_var['hahahahaha'] == 'hahahahaha?!?!'
 print 'test 5 passed' if test[5] else 'test 5 failed'
 
 my_var[3] = "three"
-test[6] = my_var[3] == 'three'
-print 'test 10 passed' if test[6] else 'test 10 failed'
+test[6d] = my_var[3] == 'three'
+print 'test 10 passed' if test[6d] else 'test 10 failed'
 
-test[7] = not 345 ~ type["345"] and 345 ~ type[3333]
-print 'test 11 passed' if test[7] else 'test 11 failed'
+test[7d] = not 345 ~ type["345"] and 345 ~ type[3333]
+print 'test 11 passed' if test[7d] else 'test 11 failed'
 
 Dog[str name, str breed]:
 	bark: "hello my name is " + name
 spot = Dog['Spot', 'terrier']
-test[8] = spot.bark == "hello my name is Spot"
-print 'test 12 passed' if test[8] else 'test 12 failed'
+test[8d] = spot.bark == "hello my name is Spot"
+print 'test 12 passed' if test[8d] else 'test 12 failed'
 
-test[9] = (spot.breed == "terrier" or spot.name == "Spot") and (spot.breed != "terrier" or spot.name == "Spot") and not (spot.breed == "terrier" and spot.name != "Spot") and not (spot.breed != "terrier" and spot.name == "Spot")
-print 'test 13 passed' if test[9] else 'test 13 failed'
+test[9d] = (spot.breed == "terrier" or spot.name == "Spot") and (spot.breed != "terrier" or spot.name == "Spot") and not (spot.breed == "terrier" and spot.name != "Spot") and not (spot.breed != "terrier" and spot.name == "Spot")
+print 'test 13 passed' if test[9d] else 'test 13 failed'
 
 spot.name = 'Rover'
 test[14] = spot.name == 'Rover'
@@ -90,11 +90,16 @@ my_cat = Cat["Ruby"]
 test[30] = string[my_cat] == my_cat.string and my_cat.string == "Cat 😸 Ruby"
 print 'test 30 ' + ('passed' if test[30] else 'failed')
 
-number = int|float|bool
+number = int|float|bool|ratio
 add[number a, number b]: integer[a] + b
 fav_num = 5
 test[31] = add[fav_num, 5]  == fav_num.add[5]
 print 'test 31 ' + ('passed' if test[31] else 'failed')
+
+test[32] = type[-10 / 20].string == "Rational" \
+	and type[4 * (1 + (-15 / 4))].string == "Integer" \
+		and type[1.0 / 1 + 1].string == "Float"
+print 'test 32 ' + ('passed' if test[32] else 'failed')
 
 # Math =
 # 	add = add

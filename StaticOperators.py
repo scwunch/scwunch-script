@@ -7,69 +7,6 @@ from Expressions import Expression, read_option, eval_node
 def static_fn(lhs: list[Node], mid: list[Node], rhs: list[Node]) -> Value:
     return Value("this is just a function signature")
 
-# def assign_val(lhs: list[Node], mid: list[Node], rhs: list[Node]) -> Value:
-#     value = Expression(rhs).evaluate()
-#     last_node = lhs[-1]
-#     if isinstance(last_node, List):
-#         if len(lhs) > 1:
-#             param_pattern = evaluate_pattern(last_node)
-#             fn = Expression(lhs[:-2]).evaluate()
-#             assert isinstance(fn, Function)
-#             fn.assign_option(param_pattern, value)
-#             return value
-#         else:
-#             lhs = last_node
-#     pattern = evaluate_pattern(lhs)
-#     Context.env.assign_option(pattern, clone(value))
-#     return value
-#
-# def assign_fn(lhs: list[Node], mid: list[Node], rhs: list[Node]) -> Value:
-#     if len(rhs) == 1 and isinstance(rhs[0], Block):
-#         value = eval_node(rhs[0])
-#     else:
-#         return_statement = Statement([Token('return')] + rhs)  # noqa
-#         value = Function(block=Block([return_statement]), env=Context.env)
-#
-#     last_node = lhs[-1]
-#     if isinstance(last_node, List):
-#         if len(lhs) > 1:
-#             param_pattern = evaluate_pattern(last_node)
-#             if len(lhs) == 3 and lhs[0].type == TokenType.Name:
-#                 fn = eval_node(lhs[0])
-#                 if fn.is_null():
-#                     fn = Context.env.assign_option(
-#                         Pattern(Parameter(lhs[0].source_text)),
-#                         Function(env=Context.env))
-#             else:
-#                 fn = Expression(lhs[:-2]).evaluate()
-#             # if fn.is_null():
-#             #     fn = Context.env.assign_option()
-#             assert isinstance(fn, Function)
-#             value.env = fn
-#             fn.assign_option(param_pattern, value)
-#             return value
-#         else:
-#             lhs = last_node
-#     pattern = evaluate_pattern(lhs)
-#     Context.env.assign_option(pattern, value)
-#     return value
-#
-
-# def assign_alias(lhs: list[Node], mid: list[Node], rhs: list[Node]) -> Value:
-#     value = Expression(rhs).evaluate()
-#     last_node = lhs[-1]
-#     if isinstance(last_node, List):
-#         if len(lhs) > 1:
-#             param_pattern = evaluate_pattern(last_node)
-#             fn = Expression(lhs[:-2]).evaluate()
-#             assert isinstance(fn, Function)
-#             fn.assign_option(param_pattern, value)
-#             return value
-#         else:
-#             lhs = last_node
-#     pattern = evaluate_pattern(lhs)
-#     Context.env.assign_option(pattern, value)
-#     return value
 
 def assign_val(lhs: list[Node], mid: list[Node], rhs: list[Node]) -> Value:
     value = Expression(rhs).evaluate().clone()

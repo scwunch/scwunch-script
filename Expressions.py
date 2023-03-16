@@ -1,7 +1,8 @@
-# from baseconvert import base
+from fractions import Fraction
 from Syntax import *
 from DataStructures import *
 from Env import *
+import numpy
 
 
 class ExprType(Enum):
@@ -178,10 +179,14 @@ def expr_tree(nodes: list[Node]):
             right_idx, min_precedence = i, ternary_op.binop
             op_idx = i_tern
         elif nodes[i].type in (TokenType.Operator, TokenType.OptionSet, TokenType.Keyword, TokenType.ListStart):
+            # if the previous node represents a binary operator, then this one cannot be binary
             op = Op[nodes[i].source_text]
             if op.binop and op.binop < min_precedence or \
                     op.binop == min_precedence and op.associativity == 'left':
-                op_idx, right_idx, min_precedence = i, i, op.binop
+                op_idx, right_idx = i, i
+                min_precedence = op.binop
+                if min_tern_prec and min_precedence < min_tern_prec:
+                    i_tern = min_tern_prec = ternary_op = None
                 if op.ternary:
                     i_tern, min_tern_prec = op_idx, op.binop
                     ternary_second = op.ternary
@@ -221,7 +226,7 @@ def eval_token(tok: Token) -> Value:
             # t = BasicType.none if s == 'none' else BasicType.Float if s == 'inf' else BasicType.Boolean
             # return Value(singleton_mapper(s), t)
         case TokenType.Number:
-            return Value(number(s))
+            return Value(read_number(s))
         case TokenType.String:
             return Value(string(s), BasicType.String)
         case TokenType.Type:
@@ -235,12 +240,13 @@ def eval_token(tok: Token) -> Value:
         case _:
             raise Exception("Could not evaluate token", tok)
 
-def number(text: str) -> int | float:
-    if isinstance(text, int) or isinstance(text, float):
+def read_number(text: str) -> int | float | Fraction:
+    if isinstance(text, int) or isinstance(text, float) or isinstance(text, Fraction):
         return text
     try:
         return int(text)
     except ValueError:
+        parts = text.partition('/')
         return float(text)
 
     # if text.endswith('d'):
@@ -254,6 +260,8 @@ def number(text: str) -> int | float:
     #     return float(text)
     # else:
     #     return int(text)
+
+
 
 def string(text: str):
     q = text[0]
@@ -337,4 +345,91 @@ def read_option(nodes: list[Node]) -> Option:
     option.dot_option = dot_option
     return option
 
+""" takes a number in the form of a string of digits, or digits separated by a / or .
+    if the number ends with a d, it will be read as a decimal"""
+def read_number(text: str, base=6) -> int | float | Fraction:
+    if isinstance(text, int) or isinstance(text, float) or isinstance(text, Fraction):
+        return text
+    if text.endswith('d'):
+        text = text[:-1]
+        try:
+            return int(text)
+        except ValueError:
+            if '/' in text:
+                return Fraction(text)
+            return float(text)
+    try:
+        return int(text, base)
+    except ValueError:
+        if '/' in text:
+            numerator, _, denominator = text.partition('/')
+            return Fraction(int(numerator, base), int(denominator, base))
+        whole, _, frac = text.partition('.')
+        val = int(whole, base) if whole else 0
+        pow = base
+        for c in frac:
+            if int(c) >= base:
+                raise ValueError("invalid digit for base "+str(base))
+            val += int(c) / pow
+            pow *= base
+        return val
+
+
+def num2str(num: int|float|Fraction, base=6, precision=12):
+    if isinstance(num, Fraction):
+        return num2str(num.numerator)+"/"+num2str(num.denominator)
+    sign = "-" * (num < 0)
+    num = abs(num)
+    whole = int(num)
+    frac = num - whole
+
+    ls = sign + nat2str(whole, base)
+    if frac == 0:
+        return ls
+    rs = frac_from_base(frac, base, precision)
+    return f"{ls}.{''.join(str(d) for d in rs)}"
+
+def nat2str(num: int, base=6):
+    if num < base:
+        return str(num)
+    else:
+        return nat2str(num // base, base) + str(num % base)
+
+def frac2str(num: float, base=6):
+    digits = []
+    for i in range(10):
+        dig = int(num*base)
+        num = num*base-dig
+        digits += [dig]
+    return digits
+
+def frac_from_base(num: float, base=6, precision=12):
+    digits = []
+    remainders = []
+    for i in range(precision):
+        tmp = num * base
+        itmp = int(tmp)
+        num = tmp - itmp
+        if 1-num < base ** (i-precision):
+            digits += [itmp+1]
+            break
+        digits += [itmp]
+    return digits
+
+from baseconvert import base
+s = str(1 / 5)
+n = base(s, 10, 6, 25, True, False)
+print(n)
+
+
+
+if __name__ == "__main__":
+    n = read_number("40000.555555555555555")
+    while True:
+        strinput = input()
+        n = read_number(strinput)
+        # n = 999999999/100000000
+        print("decimal: " + str(n))
+        print("senary: "+num2str(n, 6, 25))
+        print("via bc:", base(str(n), 10, 6, 15, True, True))
 

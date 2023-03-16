@@ -1,18 +1,18 @@
 import re
-# from baseconvert import base
+from fractions import Fraction
 from Syntax import BasicType
 from Env import *
 from DataStructures import *
-from Expressions import number
+from Expressions import read_number
 
 NoneParam = Parameter(Type(BasicType.none))
 BoolParam = Parameter(Type(BasicType.Boolean))
-IntParam = Parameter(Type(BasicType.Integer))
+IntegralParam = Parameter(Union(Type(BasicType.Boolean), Type(BasicType.Integer)))
 FloatParam = Parameter(Type(BasicType.Float))
-NumberParam = Parameter(Union(Type(BasicType.Integer), Type(BasicType.Float)))
-LogNumParam = Parameter(Union(Type(BasicType.Boolean), Type(BasicType.Integer), Type(BasicType.Float)))
+RationalParam = Parameter(Union(Type(BasicType.Boolean), Type(BasicType.Integer), Type(BasicType.Rational)))
+NumericParam = Parameter(Union(Type(BasicType.Boolean), Type(BasicType.Integer), Type(BasicType.Rational), Type(BasicType.Float)))
 StringParam = Parameter(Type(BasicType.String))
-NormalParam = Parameter(Union(Type(BasicType.Boolean), Type(BasicType.Integer),
+NormalParam = Parameter(Union(Type(BasicType.Boolean), Type(BasicType.Integer), Type(BasicType.Rational),
                               Type(BasicType.Float), Type(BasicType.String)))
 ListParam = Param = Parameter(Type(BasicType.List))
 TypeParam = Parameter(Type(BasicType.Type))
@@ -24,9 +24,11 @@ AnyBinopPattern = ListPatt(AnyParam, AnyParam)
 
 
 BuiltIns['boolean'] = Function(ListPatt(AnyParam), lambda x: Value(bool(x.value), BasicType.Boolean))
-BuiltIns['number'] = Function(ListPatt(NormalParam),
-                              lambda x: Value(int(x.value)) if x.type == BasicType.Boolean else Value(number(x.value)))
+BuiltIns['number'] = Function(ListPatt(BoolParam), lambda x: Value(int(x.value)),
+                              options={ListPatt(NumericParam): Value.clone,
+                                       ListPatt(StringParam): lambda x: Value(read_number(x.value))})
 BuiltIns['integer'] = Function(ListPatt(NormalParam), lambda x: Value(int(BuiltIns['number'].call([x]).value)))
+BuiltIns['rational'] = Function(ListPatt(NormalParam), lambda x: Value(Fraction(BuiltIns['number'].call([x]).value)))
 BuiltIns['float'] = Function(ListPatt(NormalParam), lambda x: Value(float(BuiltIns['number'].call([x]).value)))
 BuiltIns['string'] = Function(ListPatt(AnyParam), lambda x: Value(str(x.value)))
 # BuiltIns['string'].add_option(ListPatt(NumberParam),
@@ -97,20 +99,25 @@ Operator('+',
          binop=11)
 Operator('-',
          Function(NormalBinopPattern, lambda a, b: Value(a.value - b.value),
-                  options={ListPatt(LogNumParam): lambda a: Value(-a.value)}),
+                  options={ListPatt(NumericParam): lambda a: Value(-a.value)}),
          binop=11, prefix=13)
 Operator('*',
-         Function(ListPatt(LogNumParam, LogNumParam), lambda a, b: Value(a.value * b.value),
-                  options={ListPatt(StringParam, LogNumParam): lambda a, b: Value(a.value * b.value)}),
+         Function(ListPatt(NumericParam, NumericParam), lambda a, b: Value(a.value * b.value),
+                  options={ListPatt(StringParam, IntegralParam): lambda a, b: Value(a.value * b.value)}),
          binop=12)
 Operator('/',
-         Function(ListPatt(LogNumParam, LogNumParam), lambda a, b: Value(a.value / b.value)),
+         Function(ListPatt(NumericParam, NumericParam), lambda a, b: Value(a.value / b.value),
+                  options={ListPatt(RationalParam, RationalParam): lambda a, b:
+                  Value(Fraction(a.value.numerator * b.value.denominator, a.value.denominator * b.value.numerator))}),
+         binop=12)
+Operator('//',
+         Function(ListPatt(NumericParam, NumericParam), lambda a, b: Value(a.value // b.value)),
          binop=12)
 Operator('%',
-         Function(ListPatt(LogNumParam, LogNumParam), lambda a, b: Value(a.value % b.value)),
+         Function(ListPatt(NumericParam, NumericParam), lambda a, b: Value(a.value % b.value)),
          binop=12)
 Operator('**',
-         Function(ListPatt(LogNumParam, LogNumParam), lambda a, b: Value(a.value ** b.value)),
+         Function(ListPatt(NumericParam, NumericParam), lambda a, b: Value(a.value ** b.value)),
          binop=13, associativity='right')
 Operator('?',
          postfix=14, static=True)
