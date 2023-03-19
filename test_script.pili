@@ -106,8 +106,14 @@ test[33] = 1 ~ int_patt and -11 !~ int_patt and 0.0 !~ int_patt
 small_str = str[1, 3]
 word_str = str[`\w+`]
 test[33] = test[33] and 'hi' ~ small_str and '' !~ small_str and 'too long' !~ small_str
-test[33] = test[33] and debug 'hi' ~ word_str and 'two words' !~ word_str
+test[33] = test[33] and 'hi' ~ word_str and 'two words' !~ word_str
 print 'test 33 ' + ('passed' if test[33] else 'failed')
+
+if 1 == 1
+	test[34] = True
+else
+	test[34] = false
+print 'test 34 ' + ('passed' if test[34] else 'failed')
 
 # Math =
 # 	add = add

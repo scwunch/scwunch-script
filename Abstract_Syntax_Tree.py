@@ -210,7 +210,7 @@ class AST(Builder):
             elif self.tok.source_text == '-' and (not self.peek(-1) or self.peek(-1).type == TokenType.Operator):
                 nodes.append(self.tok)
             elif self.tok.source_text == 'if' and not nodes:
-                self.tok.type = TokenType.Command
+                self.tok.type = TokenType.Keyword
                 nodes.append(self.tok)
             # elif self.tok.source_text == ':' and self.peek():
             #     nodes.append(self.tok)

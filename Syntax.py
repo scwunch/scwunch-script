@@ -21,7 +21,7 @@ class TokenType(Enum):
     Singleton = 'singleton'
     Operator = 'operator'
     # OptionSet = ':='
-    Command = 'command'  # if, else, for, while, return, break, continue
+    Command = 'command'  # return, break, continue, ...
     Keyword = 'keyword'  # in, with, ...
     Type = "type"
     Name = 'name'
@@ -37,14 +37,15 @@ class TokenType(Enum):
 class Commands(Enum):
     Print = 'print'
     # If = 'if'
-    Else = 'else'
-    For = 'for'
-    While = 'while'
+    # Else = 'else'
+    # For = 'for'
+    # While = 'while'
     Return = 'return'
     Break = 'break'
     Continue = 'continue'
     Exit = 'exit'
     Debug = 'debug'
+    Else = 'else'
 
 
 class BasicType(Enum):
@@ -100,8 +101,12 @@ class KeyWords(Enum):
     # Is = 'is'
     # Not = 'not'
     # Of = 'of'
-    # If = 'if'
-    Else = 'else'
+    If = 'if'
+    # Else = 'else'  # I made else into a command because it's easier to parse that way
+    For = 'for'
+    While = 'while'
+    Try = 'try'
+    Except = 'except'
 
 
 class MatchPatternType(Enum):

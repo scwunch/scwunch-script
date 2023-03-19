@@ -31,7 +31,7 @@ A Parameter is or has at least one of the following:
 	- *Note: this only applies when the string is not a reserved keyword and does not already refer to a type*
 - a value (eg, `5` or `"five"` or `true`)
 - a type or types (eg, `str` or `int|float`)
-- a restricted type (eg, `int < 4`) 
+- a guard clause or sub-pattern (see [[#Advanced Patterns]])
 
 > [!code] Examples
 > `my_var` only matches the name `my_var` or the string value `"my_var"`
@@ -351,6 +351,39 @@ I guess I could avoid this weirdness by only defining the parameters options at 
 	- `..` the 'swizzle operator' or 'map-dot' operator
 		- left-hand-side is a list, right-hand-side is a name `prop` or arg-list `[args]`
 		- returns a list where the element at `i` is `original_list[i].prop` or `original_list[i][args]`
+
+
+## Advanced Patterns
+In addition to basic types, unions, and prototypes, a pattern may also have further specification.  This comes in the form of a **guard** or **sub-pattern**.
+
+### Pattern Guards
+`int > 0` is an expression that yields a pattern of type `int`, so it will match integer values, but it will only match integer values greater than 0
+
+### Sub-Patterns
+Prototype patterns may also contain sub-patterns such that a function value only matches the pattern when it's prototype matches AND the specified property matches the sub-pattern.
+
+Sub-patterns are usually defined as comma-separated expressions.  Value `foo` matches pattern `patt` with expression `expr` only when all the expressions evaluate to truthy values in the context of `foo`.
+
+```
+pos_point = @Point[x > 0, y > 0]
+
+print Point[0, 5] ~ pos_point
+print Point[-1, -1] ~ pos_point
+print Point[1, 4] ~ pos_point
+```
+this program will print false, false, true
+
+### Function Class Patterns
+maybe some way to pattern-match the keys of a function... meta-patterns
+```
+pos_point = Pattern{
+	x : numeric
+	y : numeric
+}
+```
+
+Either patterns that match patterns... OR check for the existence of an option matched by a given value or values.
+
 
 ## Other Things
 - Classes, types, prototypes, inheritance

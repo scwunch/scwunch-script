@@ -1,137 +1,7 @@
-import operator
 from fractions import Fraction
 from Syntax import *
 from DataStructures import *
 from Env import *
-import numpy
-
-
-class ExprType(Enum):
-    Unknown = '?'
-    Empty = 'empty'
-    Single = 'single node'
-    Option = 'option = statement'
-    Conditional = 'conditional'
-    Loop = 'loop'
-    Command = 'command'
-    Mathological = 'mathological'
-
-
-# class Expression_old:
-#     line: int = None
-#     nodes: list[Node]
-#     type: ExprType = None
-#     operator: Operator
-#     condition = None
-#     consequent = None
-#     alt = None
-#     var = None
-#     block = None
-#     operator = None
-#     lhs = None
-#     mid = None
-#     rhs = None
-#     eval = None
-#     def __init__(self, nodes: list[Node] | Statement):
-#         # self.type = ExprType.Unknown
-#         if isinstance(nodes, Statement):
-#             self.line = nodes.pos[0]
-#             nodes = nodes.nodes
-#         self.nodes = nodes
-#         self.type = self.get_structure(nodes)
-#         match self.type:
-#             case ExprType.Empty:
-#                 pass
-#
-#     def get_structure(self, nodes) -> ExprType:
-#         if not nodes:
-#             self.eval = lambda expr: Value(None)
-#             return ExprType.Empty
-#         if nodes[0].type == TokenType.Command:
-#             self.eval = lambda expr: eval_command(expr[0].source_text, Expression(expr[1:]))
-#             return ExprType.Command
-#         if len(nodes) == 1:
-#             self.eval = lambda expr: eval_node(expr[0])
-#             return ExprType.Single
-#         match nodes[0].source_text:
-#             case 'if':
-#                 self.eval = lambda expr: eval_conditional(expr.nodes, 0)
-#                 return ExprType.Conditional
-#                 self.condition, self.consequent, self.alt = conditional(nodes)
-#             case 'for' | 'while':
-#                 self.eval = lambda expr: eval_loop(expr.nodes, nodes[0].source_text)
-#                 return ExprType.Loop
-#                 self.var, self.iterable, self.block = for_loop(nodes)
-#
-#         for i, node in enumerate(nodes):
-#             pass
-#         self.lhs, self.op_idx, self.rhs = expr_tree(nodes)
-#         return ExprType.Mathological
-#
-#     def __len__(self):
-#         return len(self.nodes)
-#
-#     def __getitem__(self, item):
-#         return self.nodes[item]
-#
-#     def evaluate(self):
-#         if self.eval:
-#             return self.eval(self)
-#         op = Op[self.op_idx]
-#         if op.text == 'if':
-#             for i in range(len(self), -1, -1):
-#                 if self.nodes[i].source_text == 'else':
-#                     condition = Expression(self.nodes[self.op_idx+1:i])
-#                     condition = condition.evaluate()
-#                     break
-#             else:
-#                 raise SyntaxErr(f"Line {Context.line}: If statement with no else clause")
-#             if BuiltIns['boolean'].call([condition]).value:
-#                 return Expression(self.lhs).evaluate()
-#             else:
-#                 return Expression(self.rhs).evaluate()
-#         if op.static:
-#             return op.static(self.lhs, self.mid, self.rhs)
-#         args = op.prepare_args(self.lhs, self.mid, self.rhs)
-#         return op.fn.call(args)
-#
-#         match self.type:
-#             case ExprType.Empty:
-#                 return Value(None)
-#             case ExprType.Single:
-#                 return eval_node(self[0])
-#             case ExprType.Conditional:
-#                 if self.condition.evaluate().value:
-#                     return self.consequent.evaluate()
-#                 else:
-#                     return self.alt.evaluate()
-#             case ExprType.Loop:
-#                 return 'loop not implemented'
-#             case ExprType.Command:
-#                 return eval_command(self[0].source_text, Expression(self[1:]))
-#             case ExprType.Mathological:
-#                 op = self.operator
-#                 if op.static:
-#                     return op.static(self.lhs, self.mid, self.rhs)
-#                 args = op.prepare_args(self.lhs, self.mid, self.rhs)
-#                 return op.fn.call(args)
-#             case _:
-#                 return f'expr_type {self.type} not yet implemented'
-#
-#     def __repr__(self):
-#         match self.type:
-#             case ExprType.Empty:
-#                 return '[empty expression]'
-#             case ExprType.Single:
-#                 return repr(self[0])
-#             case ExprType.Conditional:
-#                 return f'if {self.condition} then {self.consequent}{" else "+repr(self.alt) if self.alt else ""}'
-#             case ExprType.Loop:
-#                 return 'loop'
-#             case ExprType.Command:
-#                 return f"{self[0].source_text} expression"
-#             case ExprType.Mathological:
-#                 return f"{self.lhs}  {self.operator}  {self.rhs}"
 
 
 def expressionize(nodes: list[Node] | Statement):
@@ -237,29 +107,33 @@ class Mathological(Expression):
 
 
 class Conditional(Expression):
-    condition: list[Node]
-    consequent: list[Node]
+    condition: Expression
+    consequent: FuncBlock
     alt: list[Node]
     def __init__(self, nodes: list[Node], line: int | None, source: str):
         super().__init__(line, source)
-        inline = nodes[0].source_text != 'if'
         for i, node in enumerate(nodes):
-            if inline == True and node.source_text == 'if':
-                consequent = expressionize(nodes[:i]) if i else None
-                inline = i
-            elif not inline and isinstance(node, Block):
-                condition = expressionize(nodes[1:i])
-                consequent = expressionize([node])
-            elif node.source_text == 'else':
-                alt = expressionize(nodes[i + 1:])
-                if inline:
-                    pass  # condition = expressionize(nodes[])
+            if isinstance(node, Block):
+                self.condition = expressionize(nodes[1:i])
+                self.consequent = FuncBlock(node)
+                if i+1 == len(nodes):
+                    self.alt = []
+                    break
+                try:
+                    assert len(nodes) > i+2 and nodes[i+1].source_text == 'else' and isinstance(nodes[i+2], Block)
+                    self.alt = nodes[i+1:]
+                except AssertionError:
+                    raise SyntaxErr("Expected else block after if block.")
                 break
-        else:
-            alt = expressionize([])
 
     def evaluate(self):
-        raise NotImplemented
+        condition = self.condition.evaluate()
+        condition = BuiltIns['boolean'].call([condition]).value
+        if condition:
+            opt = Option(ListPatt(), self.consequent)
+            return opt.resolve(None)
+        else:
+            return expressionize(self.alt).evaluate()
 
 
 class Loop(Expression):
@@ -303,7 +177,7 @@ class Command(Expression):
                 print('!@>', BuiltIns['string'].call([self.expr.evaluate()]).value)
                 return Value(None)
             case _:
-                raise NotImplemented(f"Unhandled command {self.command}")
+                raise SyntaxErr(f"Unhandled command {self.command}")
 
 class EmptyExpr(Expression):
     def __init__(self):
