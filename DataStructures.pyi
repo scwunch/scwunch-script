@@ -34,7 +34,7 @@ class Parameter:
 # score is out 7560, this number is 3*2520 (the smallest int divisible by all integers up to 10)
 def match_score(val: Value, param: Parameter) -> int: ...
 
-Guard = Function | Statement
+Guard = Function
 
 class Pattern:
     """
@@ -68,7 +68,8 @@ class Type(Pattern):
 
 class Prototype(Pattern):
     prototype: Function
-    def __init__(self, prototype: Function, name: str = None, guard: Guard = None): ...
+    exprs: list[Expression]
+    def __init__(self, prototype: Function, name: str = None, guard: Guard = None, *exprs: Expression): ...
     def __eq__(self, other): ...
     def __hash__(self): ...
 

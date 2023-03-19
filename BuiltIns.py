@@ -94,6 +94,11 @@ Operator('~',
          Function(AnyBinopPattern, lambda a, b: a.type == b.type,
                   options={ListPatt(AnyParam, TypeOrPatternParam): match_pattern}),
          binop=9, chainable=False)
+Operator('!~',
+         Function(AnyBinopPattern, lambda a, b: a.type != b.type,
+                  options={ListPatt(AnyParam, TypeOrPatternParam):
+                               lambda a, b: Value(not make_patt(b).match_score(a))}),
+         binop=9, chainable=False)
 Operator('+',
          Function(NormalBinopPattern, lambda a, b: Value(a.value + b.value)),
          binop=11)
@@ -166,22 +171,24 @@ Operator('.',
                   #                   ): dot_call}),
          binop=15, ternary='.[')
 
-def type_guard(a: Value, b: Value) -> Value:
+def type_guard(t: Value, args: Value) -> Value:
     fn = None
-    match a.value, *b.value:
-        case BasicType.Integer | BasicType.Float, \
-             Value(value=int() | float() as min), Value(value=int() | float() as max):
-            fn = lambda x: min <= x < max
-        case BasicType.String, Value(value=int() | float() as min), Value(value=int() | float() as max):
-            fn = lambda s: min <= len(s) <= max
+    match t.value, *args.value:
+        case BasicType.Integer | BasicType.Float | BasicType.Rational, \
+             Value(value=int() | float() | Fraction() as min), Value(value=int() | float() | Fraction() as max):
+            fn = lambda x: Value(min <= x.value < max)
+        case BasicType.String, \
+             Value(value=int() | float() | Fraction() as min), Value(value=int() | float() | Fraction() as max):
+            fn = lambda s: Value(min <= len(s.value) <= max)
         case BasicType.String, Value(value=str() as regex):
-            fn = lambda s: re.fullmatch(regex, s)
+            fn = lambda s: Value(bool(re.fullmatch(regex, s.value)))
         case BasicType.String, Value(value=str() as regex), Value(value=str() as flags):
             f = 0
             for c in flags.upper():
                 f |= getattr(re, c)
-            fn = lambda s: re.fullmatch(regex, s, f)
-    return Value(Type(a.value, guard=fn))
+            fn = lambda s: Value(re.fullmatch(regex, s.value, f))
+    function = Function(ListPatt(AnyParam), fn)
+    return Value(Type(t.value, guard=function))
 
 Operator('.[',
          Function(ListPatt(FunctionParam, ListParam), lambda a, b: a.value.call(b.value),

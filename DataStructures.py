@@ -123,8 +123,6 @@ class Pattern:
     def __init__(self, name: str = None, guard=None):
         self.name = name
         self.guard = guard
-        if guard:
-            pass
     def match_score(self, arg):
         if arg.type == BasicType.String and arg.value == self.name:
             return 1
@@ -158,7 +156,8 @@ class Pattern:
         if not score:
             return 0
         if self.guard:
-            pass  # score += evaluate(self.guard)
+            result = self.guard.call([arg])
+            score *= BuiltIns['boolean'].call([result]).value
         return score
     def __repr__(self):
         return f"Pattern({self.name})"
@@ -219,19 +218,20 @@ class Type(Pattern):
     def __hash__(self):
         return hash((self.basic_type, super()))
     def __repr__(self):
-        return self.basic_type.value
+        return self.basic_type.value + ('[]' if self.guard else '')
 
 class Prototype(Pattern):
-    def __init__(self, prototype, name=None, guard=None):
+    def __init__(self, prototype, name=None, guard=None, *exprs):
         super().__init__(name, guard)
         self.prototype = prototype
+        self.exprs = exprs
     def __eq__(self, other):
         return isinstance(other, Prototype) and \
             id(self.prototype) == id(other.prototype) and super().__eq__(other)
     def __hash__(self):
         return hash((id(self.prototype), super()))
     def __repr__(self):
-        return f"@{self.prototype}"
+        return f"@{self.prototype}{'[expr]' if self.exprs else ''}{'[guard]' if self.guard else ''}"
 
 class Union(Pattern):
     patterns: frozenset[Pattern]
