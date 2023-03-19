@@ -214,7 +214,8 @@ class Mathological(Expression):
                         continue
                 op_idx = i
                 min_precedence = op.binop
-# asdf + - 5
+# (foo.getattr)["prop"]
+# try to eval foo.getattr as prop first, then as reverse dot
         if op_idx is None:
             raise OperatorError('No operator found on line ' + str(Context.line))
         self.op_idx = op_idx
@@ -318,18 +319,18 @@ class SingleNode(Expression):
         return eval_node(self.node)
 
 def eval_node(node: Node) -> Value:
-        match node:
-            case Statement() as statement:
-                return expressionize(statement).evaluate()
-            case Token() as tok:
-                return eval_token(tok)
-            case Block() as block:
-                opt = Option(ListPatt(), FuncBlock(block))
-                return opt.resolve(None)
-            case List() as node:
-                # return Value([eval_node(n) for n in node.nodes])
-                return Value(list(map(eval_node, node.nodes)), BasicType.List)
-        raise ValueError(f'Could not evaluate node {node} at line: {node.pos}')
+    match node:
+        case Statement() as statement:
+            return expressionize(statement).evaluate()
+        case Token() as tok:
+            return eval_token(tok)
+        case Block() as block:
+            opt = Option(ListPatt(), FuncBlock(block))
+            return opt.resolve(None)
+        case List() as node:
+            # return Value([eval_node(n) for n in node.nodes])
+            return Value(list(map(eval_node, node.nodes)), BasicType.List)
+    raise ValueError(f'Could not evaluate node {node} at line: {node.pos}')
 
 
 Context.make_expr = expressionize

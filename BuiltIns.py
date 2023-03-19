@@ -121,51 +121,50 @@ Operator('**',
          binop=13, chainable=False, associativity='right')
 Operator('?',
          postfix=14, static=True)
-def dot_call(a: Value, b: Value, c: Value = None):
+# def dot_call(a: Value, b: Value, c: Value = None):
+#     name = b.value
+#     args: list[Value] = []
+#     if c:
+#         assert isinstance(c.value, list)
+#         args = c.value
+#     try:
+#         assert a.type == BasicType.Function and isinstance(a.value, Function)
+#         val = a.value.deref(name, ascend_env=False)
+#     except (AssertionError, NoMatchingOptionError):
+#         fn = Context.env.deref(name)
+#         if fn.type != BasicType.Function:
+#             raise OperatorError(f"Line {Context.line}: '{name}' is not an option or function.")
+#         assert isinstance(fn.value, Function)
+#         args = [a] + args
+#         return fn.value.call(args)
+#     if c:
+#         fn = val.value
+#         if not isinstance(fn, Function):
+#             raise OperatorError(f"Line {Context.line}: {val.type.value} '{name}' is not function.")
+#         return fn.call(args)
+#     else:
+#         return val
+
+def dot_fn(a: Value, b: Value):
     name = b.value
-    args: list[Value] = []
-    if c:
-        assert isinstance(c.value, list)
-        args = c.value
     try:
         assert a.type == BasicType.Function and isinstance(a.value, Function)
-        val = a.value.deref(name, ascend_env=False)
+        return a.value.deref(name, ascend_env=False)
     except (AssertionError, NoMatchingOptionError):
         fn = Context.env.deref(name)
         if fn.type != BasicType.Function:
             raise OperatorError(f"Line {Context.line}: '{name}' is not an option or function.")
         assert isinstance(fn.value, Function)
-        args = [a] + args
-        return fn.value.call(args)
-    if c:
-        fn = val.value
-        if not isinstance(fn, Function):
-            raise OperatorError(f"Line {Context.line}: {val.type.value} '{name}' is not function.")
-        return fn.call(args)
-    else:
-        return val
+        return fn.value.call([a])
 
 
 Operator('.',
-         Function(ListPatt(FunctionParam, Parameter(Type(BasicType.Name))), dot_call,
-                  options={ListPatt(AnyParam,
-                                    Parameter(Type(BasicType.Name)),
-                                    Parameter(Type(BasicType.List), quantifier="?")
-                                   ): dot_call}),
+         Function(ListPatt(AnyParam, Parameter(Type(BasicType.Name))), dot_fn),
+                  # options={ListPatt(AnyParam,
+                  #                   Parameter(Type(BasicType.Name)),
+                  #                   Parameter(Type(BasicType.List), quantifier="?")
+                  #                   ): dot_call}),
          binop=15, ternary='.[')
-
-def prep_dot_args(lhs: list[Node], rhs: list[Node]) -> list[Value]:
-    a = expressionize(lhs).evaluate()
-    if len(rhs) >= 2 and rhs[0].type == TokenType.Name and rhs[1].source_text == '.[':
-        name = eval_node(rhs[0])
-        b = expressionize(rhs[1:]).evaluate()
-        return list((a, name, b))
-    else:
-        b = expressionize(rhs).evaluate()
-        return list((a, b))
-    # return list((a, name, b))
-
-Op['.'].eval_args = prep_dot_args
 
 def type_guard(a: Value, b: Value) -> Value:
     fn = None
@@ -188,7 +187,45 @@ Operator('.[',
          Function(ListPatt(FunctionParam, ListParam), lambda a, b: a.value.call(b.value),
                   options={ListPatt(TypeParam, ListParam): type_guard}),
          binop=15)
+# def prep_dot_args(lhs: list[Node], rhs: list[Node]) -> list[Value]:
+#     a = expressionize(lhs).evaluate()
+#     if len(rhs) >= 2 and rhs[0].type == TokenType.Name and rhs[1].source_text == '.[':
+#         name = rhs[0].source_text
+#         args = expressionize(rhs[1:]).evaluate()
+#         try:
+#             assert a.type == BasicType.Function
+#             fn = a.value.deref(name)
+#         except (AssertionError, NoMatchingOptionError):
+#             fn = Context.env.deref(name)
+#             if fn.type != BasicType.Function:
+#                 raise OperatorError(f"Line {Context.line}: '{name}' is not an option or function.")
+#             assert isinstance(fn.value, Function)
+#             args = Value([a] + args.value)
+#     else:
+#         fn = None
+#         b = expressionize(rhs).evaluate()
+#         return list((a, b))
+#     return [Value(fn), args]
 
+def eval_call_args(lhs: list[Node], rhs: list[Node]) -> list[Value]:
+    args = expressionize(rhs).evaluate()
+    if len(lhs) > 2 and lhs[-1].type == TokenType.PatternName and lhs[-2].source_text == '.':
+        name = lhs[-1].source_text
+        # ((foo.len).max)[2]
+        a = expressionize(lhs[:-2]).evaluate()
+        try:
+            assert a.type == BasicType.Function
+            fn = a.value.deref(name, ascend_env=False)
+        except (AssertionError, NoMatchingOptionError):
+            fn = Context.env.deref(name)
+            if fn.type != BasicType.Function:
+                raise OperatorError(f"Line {Context.line}: '{name}' is not an option or function.")
+            args = Value([a] + args.value)
+    else:
+        fn = expressionize(lhs).evaluate()
+    return [fn, args]
+
+Op['.['].eval_args = eval_call_args
 
 # Add shortcut syntax for adding function guards to type checks.  Eg `int > 0` or `float < 1.0`
 # def number_guard(a: Value, b: Value, op_sym: str):

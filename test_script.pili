@@ -93,13 +93,15 @@ print 'test 30 ' + ('passed' if test[30] else 'failed')
 number = int|float|bool|ratio
 add[number a, number b]: integer[a] + b
 fav_num = 5
-test[31] = add[fav_num, 5]  == fav_num.add[5]
+test[31] = add[fav_num, 5]  == debug fav_num.add[5]
 print 'test 31 ' + ('passed' if test[31] else 'failed')
 
 test[32] = type[-10 / 20].string == "Rational" \
 	and type[4 * (1 + (-15 / 4))].string == "Integer" \
 		and type[1.0 / 1 + 1].string == "Float"
 print 'test 32 ' + ('passed' if test[32] else 'failed')
+
+print -1 ~ int < 0
 
 # Math =
 # 	add = add

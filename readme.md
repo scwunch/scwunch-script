@@ -328,6 +328,30 @@ Ok, that's super weird, and not sure when that might be useful... but sure okay.
 
 I guess I could avoid this weirdness by only defining the parameters options at the time the function is called (which could be immediately with the walrus operator `:=`)
 
+## Operators
+- Logical: 
+	- and, or, not
+- Comparison:
+	- ` ==, <, >, <=, >=, ~`
+	- the `~` operator is the match operator: it will return True if and only if the left-hand-side value matches the pattern on the right-hand-side
+- Mathematical:
+	- `+, -, /, *, %`
+- Assignment: 
+	- `:, =, :=, +=, *=, /=, etc`
+- Function Ops:
+	- `.` select operator / pseudo-method caller
+	- `[]` select and call operator
+- Unary Operators:
+	- `?` option existence checker
+	- `@` function class generator
+		- prefix `@` takes a function value `foo` and returns a pattern that matches any function whose prototype is `foo`
+- Other opeators:
+	- `??` nullish coalescing
+	- `.?` nullish option selection
+	- `..` the 'swizzle operator' or 'map-dot' operator
+		- left-hand-side is a list, right-hand-side is a name `prop` or arg-list `[args]`
+		- returns a list where the element at `i` is `original_list[i].prop` or `original_list[i][args]`
+
 ## Other Things
 - Classes, types, prototypes, inheritance
 - type tree and option tree
