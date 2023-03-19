@@ -532,7 +532,9 @@ class Function:
 class Operator:
     def __init__(self, text, fn=None,
                  prefix=None, postfix=None, binop=None, ternary=None,
-                 associativity='left', static=False):
+                 associativity='left',
+                 chainable=False,
+                 static=False):
         Op[text] = self
         self.text = text
         # self.precedence = precedence
@@ -541,11 +543,13 @@ class Operator:
         self.prefix = prefix  # 'prefix' in flags
         self.postfix = postfix  # 'postfix' in flags
         self.binop = binop  # 'binop' in flags
-        self.static = static  # 'static' in flags
         self.ternary = ternary
+        self.static = static  # 'static' in flags
+        self.chainable = chainable
+
         assert self.binop or self.prefix or self.postfix or self.ternary
 
-    def prepare_args(self, lhs, mid, rhs) -> list[Value]:
+    def eval_args(self, lhs, rhs) -> list[Value]:
         raise NotImplemented('Operator.prepare_args not implemented')
 
     def __repr__(self):

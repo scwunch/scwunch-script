@@ -1,9 +1,9 @@
 import re
 from fractions import Fraction
-from Syntax import BasicType
+from Syntax import BasicType, Node, TokenType
 from Env import *
 from DataStructures import *
-from Expressions import read_number
+from Expressions import expressionize, read_number, eval_node
 
 NoneParam = Parameter(Type(BasicType.none))
 BoolParam = Parameter(Type(BasicType.Boolean))
@@ -78,29 +78,29 @@ Operator('!=',
          binop=9)
 Operator('<',
          Function(NormalBinopPattern, lambda a, b: Value(a.value < b.value)),
-         binop=10)
+         binop=10, chainable=True)
 Operator('>',
          Function(NormalBinopPattern, lambda a, b: Value(a.value > b.value)),
-         binop=10)
+         binop=10, chainable=True)
 Operator('<=',
          Function(NormalBinopPattern, lambda a, b: Value(a.value <= b.value)),
-         binop=10)
+         binop=10, chainable=True)
 Operator('>=',
          Function(NormalBinopPattern, lambda a, b: Value(a.value >= b.value)),
-         binop=10)
+         binop=10, chainable=True)
 def match_pattern(a: Value, b: Value):
     return Value(bool(make_patt(b).match_score(a)))
 Operator('~',
          Function(AnyBinopPattern, lambda a, b: a.type == b.type,
                   options={ListPatt(AnyParam, TypeOrPatternParam): match_pattern}),
-         binop=9)
+         binop=9, chainable=False)
 Operator('+',
          Function(NormalBinopPattern, lambda a, b: Value(a.value + b.value)),
          binop=11)
 Operator('-',
          Function(NormalBinopPattern, lambda a, b: Value(a.value - b.value),
                   options={ListPatt(NumericParam): lambda a: Value(-a.value)}),
-         binop=11, prefix=13)
+         binop=11, chainable=False, prefix=13)
 Operator('*',
          Function(ListPatt(NumericParam, NumericParam), lambda a, b: Value(a.value * b.value),
                   options={ListPatt(StringParam, IntegralParam): lambda a, b: Value(a.value * b.value)}),
@@ -109,16 +109,16 @@ Operator('/',
          Function(ListPatt(NumericParam, NumericParam), lambda a, b: Value(a.value / b.value),
                   options={ListPatt(RationalParam, RationalParam): lambda a, b:
                   Value(Fraction(a.value.numerator * b.value.denominator, a.value.denominator * b.value.numerator))}),
-         binop=12)
+         binop=12, chainable=False)
 Operator('//',
          Function(ListPatt(NumericParam, NumericParam), lambda a, b: Value(a.value // b.value)),
-         binop=12)
+         binop=12, chainable=False)
 Operator('%',
          Function(ListPatt(NumericParam, NumericParam), lambda a, b: Value(a.value % b.value)),
-         binop=12)
+         binop=12, chainable=False)
 Operator('**',
          Function(ListPatt(NumericParam, NumericParam), lambda a, b: Value(a.value ** b.value)),
-         binop=13, associativity='right')
+         binop=13, chainable=False, associativity='right')
 Operator('?',
          postfix=14, static=True)
 def dot_call(a: Value, b: Value, c: Value = None):
@@ -153,6 +153,20 @@ Operator('.',
                                     Parameter(Type(BasicType.List), quantifier="?")
                                    ): dot_call}),
          binop=15, ternary='.[')
+
+def prep_dot_args(lhs: list[Node], rhs: list[Node]) -> list[Value]:
+    a = expressionize(lhs).evaluate()
+    if len(rhs) >= 2 and rhs[0].type == TokenType.Name and rhs[1].source_text == '.[':
+        name = eval_node(rhs[0])
+        b = expressionize(rhs[1:]).evaluate()
+        return list((a, name, b))
+    else:
+        b = expressionize(rhs).evaluate()
+        return list((a, b))
+    # return list((a, name, b))
+
+Op['.'].eval_args = prep_dot_args
+
 def type_guard(a: Value, b: Value) -> Value:
     fn = None
     match a.value, *b.value:
@@ -169,7 +183,6 @@ def type_guard(a: Value, b: Value) -> Value:
                 f |= getattr(re, c)
             fn = lambda s: re.fullmatch(regex, s, f)
     return Value(Type(a.value, guard=fn))
-
 
 Operator('.[',
          Function(ListPatt(FunctionParam, ListParam), lambda a, b: a.value.call(b.value),

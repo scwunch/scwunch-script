@@ -20,7 +20,7 @@ class TokenType(Enum):
     Number = 'number'
     Singleton = 'singleton'
     Operator = 'operator'
-    OptionSet = ':='
+    # OptionSet = ':='
     Command = 'command'  # if, else, for, while, return, break, continue
     Keyword = 'keyword'  # in, with, ...
     Type = "type"
@@ -75,6 +75,16 @@ class OptionType(Enum):
     OrEquals = "|="
     NullEquals = '?='
 
+class OperatorWord(Enum):
+    In = 'in'
+    And = 'and'
+    Or = 'or'
+    Is = 'is'
+    Not = 'not'
+    Of = 'of'
+    If = 'if'
+    # Else = 'else'
+
 
 class Singletons(Enum):
     none = 'none'
@@ -84,13 +94,13 @@ class Singletons(Enum):
 
 
 class KeyWords(Enum):
-    In = 'in'
-    And = 'and'
-    Or = 'or'
-    Is = 'is'
-    Not = 'not'
-    Of = 'of'
-    If = 'if'
+    # In = 'in'
+    # And = 'and'
+    # Or = 'or'
+    # Is = 'is'
+    # Not = 'not'
+    # Of = 'of'
+    # If = 'if'
     Else = 'else'
 
 
@@ -143,11 +153,8 @@ class Token(Node):
             self.type = TokenType.String
         elif re.fullmatch(r'-?\d+(\.\d*)?d?', text):
             self.type = TokenType.Number
-        elif re.match(op_char_patt, text) or text == 'if':
-            if text == ':' or text.endswith('='):
-                self.type = TokenType.OptionSet
-            else:
-                self.type = TokenType.Operator
+        elif re.match(op_char_patt, text) or text in OperatorWord:
+            self.type = TokenType.Operator
         elif text in Commands:
             self.type = TokenType.Command
         elif text.lower() in Singletons:

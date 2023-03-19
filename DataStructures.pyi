@@ -129,6 +129,7 @@ class Option:
     value: Value
     block: FuncBlock
     fn: callable
+    dot_option: bool
     def __init__(self, pattern: ListPatt | Pattern | Parameter | str, resolution: opt_type = None): ...
     def is_null(self) -> bool: ...
     def not_null(self) -> bool: ...
@@ -151,7 +152,7 @@ class Function:
                      options: dict[Pattern | Parameter | str, opt_type] = None,
                      # block: Block = None,
                      prototype: Function = None,
-                     env: Function = Context.env,
+                     env: Function = None,
                      # value: Value = None,
                      # is_null=False
                  ): ...
@@ -168,13 +169,14 @@ class Function:
 
 class Operator:
     text: str
-    prefix: int
-    postfix: int
-    binop: int
-    ternary: str
+    prefix: int | None
+    postfix: int | None
+    binop: int | None
+    ternary: str | None
     associativity: str
     fn: Function
+    chainable: bool
     static: bool | callable
     def __init__(self, text, fn:Function=None, prefix:int=None, postfix:int=None, binop:int=None,
-                 ternary:str=None, associativity='left', static=False): ...
-    def prepare_args(self, lhs, mid, rhs) -> list[Value]: ...
+                 ternary:str=None, associativity='left', chainable:bool=False, static=False): ...
+    def eval_args(self, lhs, rhs) -> list[Value]: ...
