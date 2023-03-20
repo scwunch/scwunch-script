@@ -84,8 +84,7 @@ class Mathological(Expression):
                         continue
                 op_idx = i
                 min_precedence = op.binop
-# (foo.getattr)["prop"]
-# try to eval foo.getattr as prop first, then as reverse dot
+
         if op_idx is None:
             raise OperatorError('No operator found on line ' + str(Context.line))
         self.op_idx = op_idx
@@ -109,7 +108,7 @@ class Mathological(Expression):
 class Conditional(Expression):
     condition: Expression
     consequent: FuncBlock
-    alt: list[Node]
+    alt: list[Node] | FuncBlock
     def __init__(self, nodes: list[Node], line: int | None, source: str):
         super().__init__(line, source)
         for i, node in enumerate(nodes):
@@ -119,19 +118,28 @@ class Conditional(Expression):
                 if i+1 == len(nodes):
                     self.alt = []
                     break
+                elif i+2 == len(nodes):
+                    raise SyntaxErr("Expected else followed by block.  Got ", nodes[i+1])
                 try:
-                    assert len(nodes) > i+2 and nodes[i+1].source_text == 'else' and isinstance(nodes[i+2], Block)
-                    self.alt = nodes[i+1:]
+                    assert nodes[i+1].source_text == 'else' # and isinstance(nodes[i+2], Block)
+                    node = nodes[i+2]
+                    if isinstance(node, Block):
+                        self.alt = FuncBlock(node)
+                    elif node.source_text == 'if':
+                        self.alt = nodes[i+2:]
+                    else:
+                        assert False
                 except AssertionError:
-                    raise SyntaxErr("Expected else block after if block.")
+                    raise SyntaxErr("Expected 'else' block or 'else if' after if block.  Got ", nodes[i+1:])
                 break
 
     def evaluate(self):
         condition = self.condition.evaluate()
         condition = BuiltIns['boolean'].call([condition]).value
         if condition:
-            opt = Option(ListPatt(), self.consequent)
-            return opt.resolve(None)
+            return self.consequent.execute()
+        elif isinstance(self.alt, FuncBlock):
+            return self.alt.execute()
         else:
             return expressionize(self.alt).evaluate()
 

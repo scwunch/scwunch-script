@@ -5,6 +5,8 @@ class Context:
     root = None
     debug = False
     trace = []
+    break_ = 0
+    continue_ = 0
 
     @staticmethod
     def push(line, env, option):

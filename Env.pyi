@@ -7,6 +7,8 @@ class Context:
     root: Function
     debug: bool
     trace: list[Call]
+    break_: int
+    continue_: int
     @staticmethod
     def push(line: int, env: Function, option: Option): ...
     @staticmethod

@@ -109,11 +109,15 @@ test[33] = test[33] and 'hi' ~ small_str and '' !~ small_str and 'too long' !~ s
 test[33] = test[33] and 'hi' ~ word_str and 'two words' !~ word_str
 print 'test 33 ' + ('passed' if test[33] else 'failed')
 
-if 1 == 1
-	test[34] = True
+test[34] = 0
+if 1 == 2
+	test[34] = 1
+else if 1 == 1
+	test[34] = test[34] + 10
 else
-	test[34] = false
-print 'test 34 ' + ('passed' if test[34] else 'failed')
+	test[34] = test[34] + 100
+
+print 'test 34 ' + ('passed' if test[34] == 10 else 'failed')
 
 # Math =
 # 	add = add

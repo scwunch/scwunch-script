@@ -317,9 +317,6 @@ class ListPatt(Pattern):
         return f"[{', '.join(map(repr, self.parameters))}]"
 
 
-def make_expr(nodes: list[Node]):
-    raise NotImplemented(nodes)
-
 def make_patt(val):
     if val.type == BasicType.Pattern:
         return val.value
@@ -348,6 +345,17 @@ class FuncBlock:
         self.env = env or Context.env
     def make_function(self, options, prototype):
         return Function(options=options, prototype=prototype, env=self.env)
+    def execute(self):
+        """ execute the block in the current context, do not create function """
+        for expr in self.exprs:
+            Context.line = expr.line
+            expr.evaluate()
+            if Context.env.return_value:
+                return Context.env.return_value
+            if Context.break_:
+                Context.break_ -= 1
+                break
+        return Value(None)
 
 
 class Option:

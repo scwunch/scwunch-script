@@ -235,9 +235,9 @@ class AST(Builder):
             if self.current_line.indent > indent:
                 sub_block = self.read_block()
                 nodes.append(sub_block)
-            elif self.tok and self.tok.source_text == 'else':
-                self.seek()
-                nodes.append(self.read_statement())
+                if self.tok and self.tok.source_text == 'else':
+                    # self.seek()
+                    nodes += self.read_statement().nodes
 
         executable = Statement(nodes)
         return executable
