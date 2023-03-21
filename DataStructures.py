@@ -395,20 +395,6 @@ class Option:
         fn = self.block.make_function(self.pattern.zip(args), proto)
         Context.push(Context.line, fn, self)
         return self.block.execute(args, fn)
-        # fn = self.block.make_function(self.pattern.zip(args), proto)
-        # Context.push(Context.line, fn, self)
-        # if self.block.native:
-        #     result = self.block.native(*args)
-        #     Context.pop()
-        #     return result
-        # for expr in self.block.exprs:
-        #     Context.line = expr.line
-        #     expr.evaluate()
-        #     if fn.return_value:
-        #         Context.pop()
-        #         return fn.return_value
-        # Context.pop()
-        # return Value(fn)
 
     def __repr__(self):
         if self.value:

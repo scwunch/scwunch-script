@@ -113,7 +113,7 @@ neg_int = int < 0
 long_str = str >= 5
 test[34] = -1 ~ neg_int and 1 !~ neg_int
 test[34] = test[34] and 'hi' !~ long_str # and 'hello there' ~ long_str
-print 'test 34 ' + ('passed' if test[34] == 10 else 'failed')
+print 'test 34 ' + ('passed' if test[34] else 'failed')
 
 test[35] = 0
 if 1 == 2
@@ -133,17 +133,9 @@ my_list['not a number'] = 7d
 # my_list[0] = 'zero'
 # my_list[-1] = 'not right'
 my_list[3] = 'three'
-# List.push =
-# 	any val:
-# 		[.len + 1] = val
 my_list.push['another value']
 print len[my_list]
 print debug my_list[-2]
-
-# Math =
-# 	add = add
-#
-# print Math.add[1, 2]
 
 
 exit

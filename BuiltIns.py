@@ -60,7 +60,6 @@ def neg_index(scope: ListFunc, *args: Value):
         return fn.call([index])
     else:
         raise NotImplemented
-# lambda i: Context.env.call([Value(BuiltIns['len'].call([Value(Context.env)]).value + 1 + i.value)]))
 BuiltIns['List'].add_option(ListPatt(NegativeRationalParam), FuncBlock(neg_index))
 def push(scope: ListFunc, *args: Value):
     if len(args) == 1:
