@@ -52,17 +52,26 @@ BuiltIns['contains'] = Function(ListPatt(FunctionParam, AnyParam),
 BuiltIns['List'] = Function(ListPatt(Parameter(Type(BasicType.Any), quantifier='*')),
                             lambda *vals: Value(ListFunc(*vals)))
 BuiltIns['len'].add_option(ListPatt(Parameter(Prototype(BuiltIns['List']))), lambda l: Value(len(l.value.array)-1))
-def neg_index(scope: ListFunc, *args):
+def neg_index(scope: ListFunc, *args: Value):
+    fn = scope.prototype
     if len(args) == 1:
-        length = BuiltIns['len'].call([Value(scope)]).value
+        length = BuiltIns['len'].call([Value(fn)]).value
         index = Value(length + 1 + args[0].value)
-        return scope.call([index])
+        return fn.call([index])
     else:
         raise NotImplemented
 # lambda i: Context.env.call([Value(BuiltIns['len'].call([Value(Context.env)]).value + 1 + i.value)]))
 BuiltIns['List'].add_option(ListPatt(NegativeRationalParam), FuncBlock(neg_index))
+def push(scope: ListFunc, *args: Value):
+    if len(args) == 1:
+        val = args[0]
+        """ Yikes, the actual parent list object that I wish to push to is not available from scope! """
+        scope.env.add_option(ValuePattern(Value(len(scope.env.array))), val)
+        return Value(scope.env)
+    else:
+        raise NotImplemented
 
-Push = Function()
+Push = Function(ListPatt(AnyParam), FuncBlock(push, env=BuiltIns['List']), env=BuiltIns['List'])
 BuiltIns['List'].add_option(named_patt('push'), Value(Push))
 
 #############################################################################################

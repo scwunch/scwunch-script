@@ -415,6 +415,7 @@ class Option:
             return f"{self.pattern}={self.value}"
         if self.block or self.fn:
             return f"{self.pattern}: {self.block or self.fn}"
+        return f"{self.pattern} -> null"
 
 
 class Function:
@@ -424,7 +425,7 @@ class Function:
         self.env = env or Context.env
         self.options = []  # [Option(Pattern(), self)]
         self.named_options = {}
-        self.array = [self]
+        self.array = [Option(ListPatt(Parameter(ValuePattern(Value(0)))))]
         if options:
             for patt, val in options.items():
                 self.add_option(patt, val)

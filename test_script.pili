@@ -133,8 +133,12 @@ my_list['not a number'] = 7d
 # my_list[0] = 'zero'
 # my_list[-1] = 'not right'
 my_list[3] = 'three'
+# List.push =
+# 	any val:
+# 		[.len + 1] = val
+my_list.push['another value']
 print len[my_list]
-print my_list[-1]
+print debug my_list[-2]
 
 # Math =
 # 	add = add
