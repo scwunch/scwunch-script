@@ -65,11 +65,10 @@ class Mathological(Expression):
                 min_precedence = post_op.postfix
                 op_idx = len(nodes) - 1
 
-        i = 0
         def get_op(idx: int) -> Operator | None:
-            if nodes[i].type != TokenType.Operator:
+            if nodes[idx].type != TokenType.Operator:
                 return None
-            return Op[nodes[i].source_text]
+            return Op[nodes[idx].source_text]
         prev_op = get_op(0)
         for i in range(1, len(nodes) - 1):
             op = get_op(i)

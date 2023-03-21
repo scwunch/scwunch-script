@@ -109,15 +109,32 @@ test[33] = test[33] and 'hi' ~ small_str and '' !~ small_str and 'too long' !~ s
 test[33] = test[33] and 'hi' ~ word_str and 'two words' !~ word_str
 print 'test 33 ' + ('passed' if test[33] else 'failed')
 
-test[34] = 0
-if 1 == 2
-	test[34] = 1
-else if 1 == 1
-	test[34] = test[34] + 10
-else
-	test[34] = test[34] + 100
-
+neg_int = int < 0
+long_str = str >= 5
+test[34] = -1 ~ neg_int and 1 !~ neg_int
+test[34] = test[34] and 'hi' !~ long_str # and 'hello there' ~ long_str
 print 'test 34 ' + ('passed' if test[34] == 10 else 'failed')
+
+test[35] = 0
+if 1 == 2
+	test[35] = 1
+else if 1 == 1
+	test[35] = test[35] + 10
+else
+	test[35] = test[35] + 100
+
+print 'test 35 ' + ('passed' if test[35] == 10 else 'failed')
+
+
+my_list = List[]
+my_list[1] = 'one'
+my_list[2] = 'two'
+my_list['not a number'] = 7d
+# my_list[0] = 'zero'
+# my_list[-1] = 'not right'
+my_list[3] = 'three'
+print len[my_list]
+print my_list[-1]
 
 # Math =
 # 	add = add

@@ -84,37 +84,6 @@ class Value:
                 return str(self.value)
         return f"<{self.type.value}:{repr(self.value)}>"
 
-
-class Parameter1:
-    def __init__(self, name: str = None, value: Value = None, basic_type=None, fn=None):
-        assert (0 if name else 1) <= bool(value) + bool(basic_type) < 2
-        self.name = name
-        self.value = value
-        try:
-            self.base_types = frozenset(basic_type or [])
-        except TypeError:
-            self.base_types = frozenset([basic_type])
-        assert bool(fn) <= bool(basic_type)
-        self.fn: Function = fn
-
-    def specificity(self) -> int:
-        if (self.name or self.value) and not self.base_types and not self.fn:
-            return 7560
-        spec = 0  # 2520 * bool(self.name or self.value)
-        if self.base_types:
-            spec += 252 if BasicType.Any in self.base_types else int(2520 / len(self.base_types))
-        return spec + 2520 * bool(self.fn)
-
-    def __eq__(self, other):
-        return (self.name, self.value, self.base_types, self.fn) \
-                == (other.name, other.value, other.base_types, other.fn)
-    def __hash__(self):
-        return hash((self.name, self.value, self.base_types, self.fn))
-    def __repr__(self):
-        return ('|'.join(t.value for t in self.base_types) + ' ' if self.base_types else '') \
-            + f"{self.value or ''}{'[fn] ' if self.fn else ''} {self.name or ''}"
-
-
 """
 A Pattern is like a regex for types; it can match one very specific type, or even one specific value
 or it can match a type on certain conditions (eg int>0), or union of types
@@ -122,6 +91,8 @@ or it can match a type on certain conditions (eg int>0), or union of types
 class Pattern:
     def __init__(self, name: str = None, guard=None):
         self.name = name
+        if guard and not isinstance(guard, Function):
+            guard = Function(ListPatt(Parameter(Type(BasicType.Any))), guard)
         self.guard = guard
     def match_score(self, arg):
         if arg.type == BasicType.String and arg.value == self.name:
@@ -150,9 +121,11 @@ class Pattern:
                         break
                 else:
                     score = 0
+            case Pattern(name=name):
+                return int(arg.type == BasicType.String and name == arg.value)
             # NOTE: ListPatt overrides match_score method, since more complex logic is required
             case _:
-                raise NotImplemented(f"Line: {Context.line}: Unknown pattern type: ", self)
+                raise Exception(f"Line: {Context.line}: Unknown pattern type: ", self)
         if not score:
             return 0
         if self.guard:
@@ -325,6 +298,11 @@ def make_patt(val):
     else:
         return ValuePattern(val)
 
+def named_patt(name: str) -> ListPatt:
+    return ListPatt(Parameter(Pattern(name)))
+def numbered_patt(index: int | Fraction) -> ListPatt:
+    return ListPatt(Parameter(ValuePattern(Value(index))))
+
 class ReusableMap:
     fn: types.FunctionType
     iterable: any
@@ -340,22 +318,37 @@ class ReusableMap:
 
 
 class FuncBlock:
-    def __init__(self, block=Block([]), env=None):
-        self.exprs = list(map(Context.make_expr, block.statements))
+    native = None
+    def __init__(self, block, env=None):
+        if isinstance(block, Block):
+            self.exprs = list(map(Context.make_expr, block.statements))
+        else:
+            self.native = block
         self.env = env or Context.env
     def make_function(self, options, prototype):
         return Function(options=options, prototype=prototype, env=self.env)
-    def execute(self):
-        """ execute the block in the current context, do not create function """
+    def execute(self, args=None, scope=None):
+        if scope:
+            def break_():
+                Context.pop()
+                return scope.return_value or Value(scope)
+        else:
+            scope = Context.env
+            def break_():
+                return Value(None)
+
+        if self.native:
+            result = self.native(scope, *args)
+            return break_() and result
         for expr in self.exprs:
             Context.line = expr.line
             expr.evaluate()
-            if Context.env.return_value:
-                return Context.env.return_value
+            if scope.return_value:
+                break
             if Context.break_:
                 Context.break_ -= 1
                 break
-        return Value(None)
+        return break_()
 
 
 class Option:
@@ -397,20 +390,25 @@ class Option:
             return self.fn(*args)
         if self.block is None:
             raise NoMatchingOptionError("Could not resolve null option")
-        # block = FuncBlock(self.block)
-        # fn = Function(options=self.pattern.zip(args), prototype=proto, env=self.block.env)
         if self.dot_option:
             proto = args[0].value
         fn = self.block.make_function(self.pattern.zip(args), proto)
         Context.push(Context.line, fn, self)
-        for expr in self.block.exprs:
-            Context.line = expr.line
-            expr.evaluate()
-            if fn.return_value:
-                Context.pop()
-                return fn.return_value
-        Context.pop()
-        return Value(fn)
+        return self.block.execute(args, fn)
+        # fn = self.block.make_function(self.pattern.zip(args), proto)
+        # Context.push(Context.line, fn, self)
+        # if self.block.native:
+        #     result = self.block.native(*args)
+        #     Context.pop()
+        #     return result
+        # for expr in self.block.exprs:
+        #     Context.line = expr.line
+        #     expr.evaluate()
+        #     if fn.return_value:
+        #         Context.pop()
+        #         return fn.return_value
+        # Context.pop()
+        # return Value(fn)
 
     def __repr__(self):
         if self.value:
@@ -426,6 +424,7 @@ class Function:
         self.env = env or Context.env
         self.options = []  # [Option(Pattern(), self)]
         self.named_options = {}
+        self.array = [self]
         if options:
             for patt, val in options.items():
                 self.add_option(patt, val)
@@ -434,14 +433,21 @@ class Function:
 
     def add_option(self, pattern, resolution=None):
         option = Option(pattern, resolution)
-        name = None
+        name = num = None
         match pattern:
+            case int() as i:  num: int = i
             case str():       name = pattern
             case Parameter(): name = pattern.name
             case ListPatt():  name = pattern[0].name if len(pattern) == 1 else None
             case Pattern():   name = pattern.name
         if name is not None:
             self.named_options[name] = option
+        if not num and len(option.pattern) == 1:
+            patt = option.pattern.parameters[0].pattern
+            if isinstance(patt, ValuePattern) and patt.value.type == BasicType.Integer:
+                num = patt.value.value
+        if num == len(self.array):
+            self.array.append(option)
         self.options.insert(0, option)
         # self.options.sort(key=lambda opt: opt.pattern.specificity, reverse=True)
         return option
@@ -471,22 +477,25 @@ class Function:
         return idx
 
     def select(self, key: Pattern | list[Value], walk_prototype_chain=True, ascend_env=False):
-        if isinstance(key, Pattern):
-            opt = [opt for opt in self.options if opt.pattern == key]
-            if opt:
-                return opt[0]
-        elif isinstance(key, str):
-            opt = self.named_options.get(key, None)
-            if opt:
-                return opt
-        else:
-            if len(key) == 1 and key[0].type == BasicType.String:
-                option = self.named_options.get(key[0].value, None)
-                if option:
-                    return option
-            i = self.index_of(key)
-            if i is not None:
-                return self.options[i]
+        try:
+            match key:
+                case Pattern():
+                    opt = [opt for opt in self.options if opt.pattern == key]
+                    if opt:
+                        return opt[0]
+                case str() as key:
+                    return self.named_options[key]
+                case int() as key if key > 0:
+                    return self.array[key]
+                case [arg] if arg.type == BasicType.String:
+                    return self.named_options[arg.value]
+                case [arg] if arg.type == BasicType.Integer and arg.value > 0:
+                    return self.array[arg.value]
+        except (IndexError, KeyError):
+            pass
+        i = self.index_of(key)
+        if i is not None:
+            return self.options[i]
         if walk_prototype_chain and self.prototype:
             try:
                 return self.prototype.select(key, ascend_env=ascend_env)
@@ -536,6 +545,18 @@ class Function:
         else:
             return f"{{{self.named_options}}}"
 
+class ListFunc(Function):
+    def __init__(self, *values: Value):
+        super().__init__(prototype=BuiltIns['List'])
+        for i, val in enumerate(values):
+            self.add_option(ListPatt(Parameter(ValuePattern(Value(i)))), val)
+    def push(self, val):
+        self.add_option(numbered_patt(self.len()+1), val)
+        return self
+    def pop(self, index: int = -1) -> Value:
+        return self.remove_option(Value(index))
+    def len(self) -> int:
+        return len(self.options)
 
 class Operator:
     def __init__(self, text, fn=None,

@@ -21,8 +21,10 @@ FunctionParam = Parameter(Type(BasicType.Function))
 AnyParam = Parameter(Type(BasicType.Any))
 NormalBinopPattern = ListPatt(NormalParam, NormalParam)
 AnyBinopPattern = ListPatt(AnyParam, AnyParam)
+NegativeRationalParam = Parameter(Union(Type(BasicType.Boolean), Type(BasicType.Integer), Type(BasicType.Rational),
+                                        guard=lambda x: Value(x.value < 0)))
 
-
+BuiltIns['numeric'] = Union(Type(BasicType.Boolean), Type(BasicType.Integer), Type(BasicType.Rational), Type(BasicType.Float))
 BuiltIns['boolean'] = Function(ListPatt(AnyParam), lambda x: Value(bool(x.value), BasicType.Boolean))
 BuiltIns['number'] = Function(ListPatt(BoolParam), lambda x: Value(int(x.value)),
                               options={ListPatt(NumericParam): Value.clone,
@@ -47,6 +49,23 @@ BuiltIns['prototype'] = Function(ListPatt(FunctionParam), lambda f: Value(f.valu
 
 BuiltIns['contains'] = Function(ListPatt(FunctionParam, AnyParam),
                                 lambda a, b: Value(b in (opt.value for opt in a.options)))
+BuiltIns['List'] = Function(ListPatt(Parameter(Type(BasicType.Any), quantifier='*')),
+                            lambda *vals: Value(ListFunc(*vals)))
+BuiltIns['len'].add_option(ListPatt(Parameter(Prototype(BuiltIns['List']))), lambda l: Value(len(l.value.array)-1))
+def neg_index(scope: ListFunc, *args):
+    if len(args) == 1:
+        length = BuiltIns['len'].call([Value(scope)]).value
+        index = Value(length + 1 + args[0].value)
+        return scope.call([index])
+    else:
+        raise NotImplemented
+# lambda i: Context.env.call([Value(BuiltIns['len'].call([Value(Context.env)]).value + 1 + i.value)]))
+BuiltIns['List'].add_option(ListPatt(NegativeRationalParam), FuncBlock(neg_index))
+
+Push = Function()
+BuiltIns['List'].add_option(named_patt('push'), Value(Push))
+
+#############################################################################################
 
 Operator('=', binop=1, static=True, associativity='right')
 Operator(':', binop=1, static=True, associativity='right')
@@ -100,11 +119,12 @@ Operator('!~',
                                lambda a, b: Value(not make_patt(b).match_score(a))}),
          binop=9, chainable=False)
 Operator('+',
-         Function(NormalBinopPattern, lambda a, b: Value(a.value + b.value)),
-         binop=11)
+         Function(NormalBinopPattern, lambda a, b: Value(a.value + b.value),
+                  options={ListPatt(AnyParam): lambda a: BuiltIns['number'].call([a])}),
+         binop=11, prefix=13)
 Operator('-',
          Function(NormalBinopPattern, lambda a, b: Value(a.value - b.value),
-                  options={ListPatt(NumericParam): lambda a: Value(-a.value)}),
+                  options={ListPatt(AnyParam): lambda a: Value(-BuiltIns['number'].call([a]).value)}),
          binop=11, chainable=False, prefix=13)
 Operator('*',
          Function(ListPatt(NumericParam, NumericParam), lambda a, b: Value(a.value * b.value),
@@ -162,14 +182,14 @@ def dot_fn(a: Value, b: Value):
         assert isinstance(fn.value, Function)
         return fn.value.call([a])
 
-
 Operator('.',
-         Function(ListPatt(AnyParam, Parameter(Type(BasicType.Name))), dot_fn),
+         Function(ListPatt(AnyParam, Parameter(Type(BasicType.Name))), dot_fn,
+                  options={ListPatt(Parameter(Type(BasicType.Name))): lambda a: dot_fn(Value(Context.env), a)}),
                   # options={ListPatt(AnyParam,
                   #                   Parameter(Type(BasicType.Name)),
                   #                   Parameter(Type(BasicType.List), quantifier="?")
                   #                   ): dot_call}),
-         binop=15, ternary='.[')
+         binop=15, prefix=15, ternary='.[')
 
 def type_guard(t: Value, args: Value) -> Value:
     fn = None
@@ -187,32 +207,14 @@ def type_guard(t: Value, args: Value) -> Value:
             for c in flags.upper():
                 f |= getattr(re, c)
             fn = lambda s: Value(re.fullmatch(regex, s.value, f))
-    function = Function(ListPatt(AnyParam), fn)
-    return Value(Type(t.value, guard=function))
+    # function = Function(ListPatt(AnyParam), fn)
+    return Value(Type(t.value, guard=fn))
 
 Operator('.[',
          Function(ListPatt(FunctionParam, ListParam), lambda a, b: a.value.call(b.value),
-                  options={ListPatt(TypeParam, ListParam): type_guard}),
-         binop=15)
-# def prep_dot_args(lhs: list[Node], rhs: list[Node]) -> list[Value]:
-#     a = expressionize(lhs).evaluate()
-#     if len(rhs) >= 2 and rhs[0].type == TokenType.Name and rhs[1].source_text == '.[':
-#         name = rhs[0].source_text
-#         args = expressionize(rhs[1:]).evaluate()
-#         try:
-#             assert a.type == BasicType.Function
-#             fn = a.value.deref(name)
-#         except (AssertionError, NoMatchingOptionError):
-#             fn = Context.env.deref(name)
-#             if fn.type != BasicType.Function:
-#                 raise OperatorError(f"Line {Context.line}: '{name}' is not an option or function.")
-#             assert isinstance(fn.value, Function)
-#             args = Value([a] + args.value)
-#     else:
-#         fn = None
-#         b = expressionize(rhs).evaluate()
-#         return list((a, b))
-#     return [Value(fn), args]
+                  options={ListPatt(TypeParam, ListParam): type_guard,
+                           ListPatt(ListParam): lambda a: Context.env.call(a.value)}),
+         binop=15, prefix=15)
 
 def eval_call_args(lhs: list[Node], rhs: list[Node]) -> list[Value]:
     args = expressionize(rhs).evaluate()
@@ -235,24 +237,28 @@ def eval_call_args(lhs: list[Node], rhs: list[Node]) -> list[Value]:
 Op['.['].eval_args = eval_call_args
 
 # Add shortcut syntax for adding function guards to type checks.  Eg `int > 0` or `float < 1.0`
-# def number_guard(a: Value, b: Value, op_sym: str):
-#     # assert a.value == b.type
-#     return Pattern(Parameter(basic_type=a.value,
-#                              fn=lambda n: Op[op_sym].fn.call([n, b])))
-#
-# # generating functions with syntax like `str > 5` => `[str x]: len(x) > 5`
-# def string_guard(a: Value, b: Value, op_sym: str):
-#     assert a.value == BasicType.String and b.type in (BasicType.Integer, BasicType.Float)
-#     return Pattern(Parameter(basic_type=BasicType.String,
-#                              fn=lambda s: Op[op_sym].fn.call([Value(len(s.value)), b])))
-#
-# for op in ('>', '<', '>=', '<='):
-#     Op[op].fn.assign_option(ListPatt(Parameter(value=Value(BasicType.Integer)), NumberParam),
-#                             lambda a, b: number_guard(a, b, op))
-#     Op[op].fn.assign_option(ListPatt(Parameter(value=Value(BasicType.Float)), NumberParam),
-#                             lambda a, b: number_guard(a, b, op))
-#     Op[op].fn.assign_option(ListPatt(Parameter(value=Value(BasicType.String)), NumberParam),
-#                             lambda a, b: string_guard(a, b, op))
-#
-#
-#
+def number_guard(a: Value, b: Value, op_sym: str):
+    # assert a.value == b.type
+    return Value(Type(a.value, guard=lambda n: Op[op_sym].fn.call([n, b])))
+
+# generating functions with syntax like `str > 5` => `[str x]: len(x) > 5`
+def string_guard(a: Value, b: Value, op_sym: str):
+    assert a.value == BasicType.String and b.type in (BasicType.Integer, BasicType.Float)
+    def guard(x, y):
+        return Value(Type(BasicType.String, guard=lambda s: Op[op_sym].fn.call([Value(len(s.value)), b])))
+    # return guard
+    return Value(Type(BasicType.String, guard=lambda s: Op[op_sym].fn.call([Value(len(s.value)), b])))
+
+def add_guards(op_sym: str):
+    Op[op_sym].fn.assign_option(ListPatt(Parameter(ValuePattern(Value(BasicType.Integer))), NumericParam),
+                                lambda a, b: number_guard(a, b, op_sym))
+    Op[op_sym].fn.assign_option(ListPatt(Parameter(ValuePattern(Value(BasicType.Float))), NumericParam),
+                                lambda a, b: number_guard(a, b, op_sym))
+    Op[op_sym].fn.assign_option(ListPatt(Parameter(ValuePattern(Value(BasicType.Rational))), NumericParam),
+                                lambda a, b: number_guard(a, b, op_sym))
+    Op[op_sym].fn.assign_option(ListPatt(Parameter(ValuePattern(Value(BasicType.String))), NumericParam),
+                                lambda a, b: string_guard(a, b, op_sym))
+
+
+for op in ('>', '<', '>=', '<='):
+    add_guards(op)
