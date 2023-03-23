@@ -385,6 +385,73 @@ pos_point = Pattern{
 Either patterns that match patterns... OR check for the existence of an option matched by a given value or values.
 
 
+## Prototypes
+
+> [!warning] Stub
+> This section is not developed yet, just some ideas floating around.
+
+Right now, "basic types" are separate from "prototypes".   But would it be feasible to combine them?
+- one advantage: I could change the syntax of pattern expressions to automatically interpret Function values as prototype patterns, so then `str` would be the `str` *prototype* rather than `BasicType.String`.
+
+If I no longer have basic types, then that also means I no longer have any basic values.  Just Functions.
+
+So, eg, a string *value* (ie, what is returned from a string literal expression) is now a Function with prototype=`str` and python property `value` equal to the python string value.  And I could put a few more options on the prototype as well, if need be.
+
+This might simplify some things.  Mostly pattern-related, I guess.  But I would also have to make the Function class even more powerful than it already is.  It would need an init for python values.  Actually, a lot of the work might be skippable by simply making the `Value` class a child of the `Function` class.
+
+I could also drop the word "prototype" completely and just say "type".
+
+## Idea: Converge on Dot Options
+[[#Virtual Options or Dot Options]] already form a core part of the functionality of Pili.  What if we turn towards more fully relying on dot options to replace names and even function properties/methods?
+
+> [!Currently] 
+> - `name` is equivalent to `["name"]` in a given scope
+> - `scope.name` is equivalent to `scope["name"]`
+> - `foo.bar` is equivalent to `bar[foo]`
+> - `foo.bar[args]` is equivalent to `bar[foo, args]`
+
+### Proposal
+- only one scope for all names
+- `name = "hello"` defines a name in the namespace.  `name` is not an option of any function.
+- `name` is not equivalent to `["name"]` as the latter calls an option with the string argument `"name"`
+- `foo.bar` is still equivalent to `bar[foo]`, but both `foo` and `bar` are global names
+	- the dot-call only works if `bar` resolves to a function that has an option whose pattern matches `[foo]` — otherwise an OptionError occurs.
+- `foo.bar[args]` is also still equivalent to `bar[foo, args]`
+- `foo.bar.baz` is likewise equivalent to `baz[bar[foo]]`
+- `len` selects the global name `len` which can then be used in any expression like `len[foo]`
+- `.len` (without any leading name) is equivalent to calling `len` on the current context.
+
+### Problems
+- [x] Will there be many options for any given name in the namespace?
+	- probably not actually... likely just one or a few prototypes for each name.  Just like there is not usually a substantial amount of overlap in property names of different objects.  
+	- And for each prototype, probably also just one or a few options.
+	- I guess one name is likely to have many options: `i`.
+- [x] Will I ever have the need to refer to properties by their constructed string name, rather than literal names?
+	- [x] well, in regular programming, no, so why should it be any different here?
+- [ ] in order to call name on the given context, a `.` prefix is required.  Will this lead to excessive dotting?
+	- [ ] cause every time you want to use a non-function variable in a piece of code, you have to prefix it with a dot!
+	- [ ] So what if we reverse the syntax, or just get rid of the need to prefix with a dot
+
+By default, `len` on it's own will be called on the current context as if it was `scope.len`.  So now we have two possibilities: 
+- since `len` on it's own is essentially `scope.len` then either:
+1. `len[foo]` => `scope.len[foo]` => `len[scope, foo]` (ie, the context is *always* the first argument)
+2. `len[foo]` loses the scope when given an argument
+
+Number 2 is more consistent, I think.  Otherwise `foo.len` is actually `scope.foo[len]` which is weird. 
+
+so then the next problem is, how do we get the actual `len` function as an argument, if using the word `len` actually calls the function?  Well, perhaps the `len[root]` option could return the `len` function itself.
+
+That works for now... we'll see if it holds up
+
+### Defining Dot Options
+- `name = "Hello"` => defines a function `name` which, when called with an argument matching the prototype pattern of the current context, returns the value `"Hello"` 
+	- it is functionally equivalent to `name: "Hello"`
+- `foo[str bar]: "Hello "+bar`
+	- defines a function `foo` with an option with pattern `[scope, str bar]`
+
+Alright, I think I'm realizing this is not actually any different to the current state of affairs.  It's just moving all the names to one place, and moving the context to the first argument.
+
+
 ## Other Things
 - Classes, types, prototypes, inheritance
 - type tree and option tree
