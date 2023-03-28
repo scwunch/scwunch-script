@@ -46,3 +46,4 @@ class OperatorError(SyntaxErr):
 
 Op = {}
 BuiltIns = {}
+TypeMap = {}

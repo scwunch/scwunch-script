@@ -43,17 +43,17 @@ Op[':'].static = assign_fn
 
 def or_fn(lhs: list[Node], rhs: list[Node]) -> Value:
     condition = expressionize(lhs).evaluate()
-    return condition if BuiltIns['boolean'].call([condition]).value else expressionize(rhs).evaluate()
+    return condition if BuiltIns['bool'].call([condition]).value else expressionize(rhs).evaluate()
 Op['or'].static = or_fn
 
 def and_fn(lhs: list[Node], rhs: list[Node]) -> Value:
     condition = expressionize(lhs).evaluate()
-    return expressionize(rhs).evaluate() if BuiltIns['boolean'].call([condition]).value else condition
+    return expressionize(rhs).evaluate() if BuiltIns['bool'].call([condition]).value else condition
 Op['and'].static = and_fn
 
 # def if_fn(lhs: list[Node], rhs: list[Node]) -> Value:
 #     condition = expressionize(mid).evaluate()
-#     if BuiltIns['boolean'].call([condition]).value:
+#     if BuiltIns['bool'].call([condition]).value:
 #         return expressionize(lhs).evaluate()
 #     else:
 #         return expressionize(rhs).evaluate()
@@ -66,7 +66,7 @@ def if_fn(lhs: list[Node], rhs: list[Node]) -> Value:
             break
     else:
         raise SyntaxErr(f"Line {Context.line}: If statement with no else clause")
-    if BuiltIns['boolean'].call([condition]).value:
+    if BuiltIns['bool'].call([condition]).value:
         return expressionize(lhs).evaluate()
     else:
         return expressionize(rhs).evaluate()
@@ -85,8 +85,8 @@ def option_exists(lhs: list[Node], rhs: list[Node]) -> Value:
             fn = Context.env
         else:
             # assert lhs[-1] is '.' or '.['
-            fn = expressionize(lhs[:-2]).evaluate().value
-            assert isinstance(fn, Function)
+            fn = expressionize(lhs[:-2]).evaluate()
+            # assert isinstance(fn, Function)
         fn.select(key)
         return Value(True)
     except NoMatchingOptionError:

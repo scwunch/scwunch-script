@@ -33,3 +33,4 @@ class OperatorError(SyntaxErr): ...
 
 Op: dict[str, Operator]
 BuiltIns: dict[str, Function | Pattern]
+TypeMap: dict[type, Function]

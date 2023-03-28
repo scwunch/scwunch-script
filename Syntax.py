@@ -23,7 +23,7 @@ class TokenType(Enum):
     # OptionSet = ':='
     Command = 'command'  # return, break, continue, ...
     Keyword = 'keyword'  # in, with, ...
-    Type = "type"
+    # Type = "type"
     Name = 'name'
     PatternName = 'pattern name'
     GroupStart = '('
@@ -48,19 +48,19 @@ class Commands(Enum):
     Else = 'else'
 
 
-class BasicType(Enum):
-    none = 'none'
-    Boolean = 'bool'
-    Integer = 'int'
-    Rational = 'ratio'
-    Float = 'float'
-    String = 'str'
-    Function = 'fn'
-    List = 'list'
-    Type = 'pattern.type'
-    Pattern = 'pattern'
-    Name = 'pattern.name'
-    Any = 'any'
+# class BasicType(Enum):
+#     none = 'none'
+#     Boolean = 'bool'
+#     Integer = 'int'
+#     Rational = 'ratio'
+#     Float = 'float'
+#     String = 'str'
+#     Function = 'fn'
+#     List = 'list'
+#     Type = 'pattern.type'
+#     Pattern = 'pattern'
+#     Name = 'pattern.name'
+#     Any = 'any'
 
 
 class OptionType(Enum):
@@ -128,9 +128,9 @@ def keyword_mapper(item: str) -> KeyWords:
     return KeyWords._value2member_map_.get(item, None)
 def match_pattern_type_mapper(item: str) -> MatchPatternType:
     return MatchPatternType._value2member_map_.get(item, None)
-def type_mapper(item: str | type) -> BasicType:
-    if isinstance(item, str):
-        return BasicType._value2member_map_.get(item, None)
+# def type_mapper(item: str | type) -> BasicType:
+#     if isinstance(item, str):
+#         return BasicType._value2member_map_.get(item, None)
 
 
 class Node:
@@ -165,8 +165,8 @@ class Token(Node):
         elif text.lower() in Singletons:
             self.source_text = text.lower()
             self.type = TokenType.Singleton
-        elif text in BasicType:
-            self.type = TokenType.Type
+        # elif text in BasicType:
+        #     self.type = TokenType.Type
         elif text in KeyWords:
             self.type = TokenType.Keyword
         elif re.fullmatch(r'\w+', text):

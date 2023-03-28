@@ -1,59 +1,92 @@
 import re
 from fractions import Fraction
-from Syntax import BasicType, Node, TokenType
+from Syntax import Node, TokenType
 from Env import *
 from DataStructures import *
-from Expressions import expressionize, read_number, eval_node
+from Expressions import expressionize, read_number
 
-NoneParam = Parameter(Type(BasicType.none))
-BoolParam = Parameter(Type(BasicType.Boolean))
-IntegralParam = Parameter(Union(Type(BasicType.Boolean), Type(BasicType.Integer)))
-FloatParam = Parameter(Type(BasicType.Float))
-RationalParam = Parameter(Union(Type(BasicType.Boolean), Type(BasicType.Integer), Type(BasicType.Rational)))
-NumericParam = Parameter(Union(Type(BasicType.Boolean), Type(BasicType.Integer), Type(BasicType.Rational), Type(BasicType.Float)))
-StringParam = Parameter(Type(BasicType.String))
-NormalParam = Parameter(Union(Type(BasicType.Boolean), Type(BasicType.Integer), Type(BasicType.Rational),
-                              Type(BasicType.Float), Type(BasicType.String)))
-ListParam = Param = Parameter(Type(BasicType.List))
-TypeParam = Parameter(Type(BasicType.Type))
-TypeOrPatternParam = Parameter(Union(Type(BasicType.Type), Type(BasicType.Pattern)))
-FunctionParam = Parameter(Type(BasicType.Function))
-AnyParam = Parameter(Type(BasicType.Any))
+BuiltIns['_base_prototype'] = Function(name='any', type=True)  # noqa
+BuiltIns['_base_prototype'].type = None
+MetaType = Function(name="Type", type=BuiltIns['_base_prototype'])
+BuiltIns['BasicType'] = MetaType
+BuiltIns['none'] = Function(name='none', type=MetaType)
+BuiltIns['numeric'] = Function(name="numeric", type=MetaType)
+BuiltIns['float'] = Function(name='float', type=BuiltIns['numeric'])
+BuiltIns['ratio'] = Function(name='ratio', type=BuiltIns['numeric'])
+BuiltIns['int'] = Function(name='int', type=BuiltIns['ratio'])
+BuiltIns['bool'] = Function(name='bool', type=BuiltIns['int'])
+BuiltIns['str'] = Function(name='str', type=MetaType)
+BuiltIns['list'] = Function(name='list', type=MetaType)
+BuiltIns['pattern'] = Function(name='pattern', type=MetaType)
+BuiltIns['value_pattern'] = Function(name='value_pattern', type=BuiltIns['pattern'])
+BuiltIns['union'] = Function(name='union', type=BuiltIns['pattern'])
+BuiltIns['type_pattern'] = Function(name='type_pattern', type=BuiltIns['pattern'])
+BuiltIns['parameters'] = Function(name='parameters', type=BuiltIns['pattern'])
+BuiltIns['fn'] = Function(name='fn', type=BuiltIns['_base_prototype'])
+TypeMap.update({
+    type(None): BuiltIns['none'],
+    bool: BuiltIns['bool'],
+    int: BuiltIns['int'],
+    Fraction: BuiltIns['ratio'],
+    float: BuiltIns['float'],
+    str: BuiltIns['str'],
+    list: BuiltIns['list'],
+    Pattern: BuiltIns['pattern'],
+    ValuePattern: BuiltIns['value_pattern'],
+    Prototype: BuiltIns['type_pattern'],
+    Union: BuiltIns['union'],
+    ListPatt: BuiltIns['parameters']
+})
+
+NoneParam = Parameter(Prototype(BuiltIns["none"]))
+BoolParam = Parameter(Prototype(BuiltIns["bool"]))
+IntegralParam = Parameter(Union(Prototype(BuiltIns["bool"]), Prototype(BuiltIns["int"])))
+FloatParam = Parameter(Prototype(BuiltIns["float"]))
+RationalParam = Parameter(Union(Prototype(BuiltIns["bool"]), Prototype(BuiltIns["int"]), Prototype(BuiltIns["ratio"])))
+NumericParam = Parameter(Union(Prototype(BuiltIns["bool"]), Prototype(BuiltIns["int"]), Prototype(BuiltIns["ratio"]), Prototype(BuiltIns["float"])))
+StringParam = Parameter(Prototype(BuiltIns["str"]))
+# NormalParam = Parameter(Union(Prototype(BuiltIns["bool"]), Prototype(BuiltIns["int"]), Prototype(BuiltIns["ratio"]),
+#                               Prototype(BuiltIns["float"]), Prototype(BuiltIns["str"])))
+NormalParam = Parameter(Union(Prototype(BuiltIns['numeric']), Prototype(BuiltIns['str'])))
+ListParam = Param = Parameter(Prototype(BuiltIns["list"]))
+# TypeParam = Parameter(Prototype(BuiltIns["Type"]))
+PatternParam = Parameter(Prototype(BuiltIns["pattern"]))
+FunctionParam = Parameter(Prototype(BuiltIns["fn"]))
+AnyParam = Parameter(Any)
 NormalBinopPattern = ListPatt(NormalParam, NormalParam)
 AnyBinopPattern = ListPatt(AnyParam, AnyParam)
-NegativeRationalParam = Parameter(Union(Type(BasicType.Boolean), Type(BasicType.Integer), Type(BasicType.Rational),
-                                        guard=lambda x: Value(x.value < 0)))
 
-BuiltIns['numeric'] = Union(Type(BasicType.Boolean), Type(BasicType.Integer), Type(BasicType.Rational), Type(BasicType.Float))
-BuiltIns['boolean'] = Function(ListPatt(AnyParam), lambda x: Value(bool(x.value), BasicType.Boolean))
+NegativeRationalParam = Parameter(Prototype(BuiltIns["ratio"], guard=lambda x: Value(x.value < 0)))
+# BuiltIns['numeric'] = Union(Prototype(BuiltIns["bool"]), Prototype(BuiltIns["int"]), Prototype(BuiltIns["ratio"]), Prototype(BuiltIns["float"]))
+BuiltIns['bool'].add_option(ListPatt(AnyParam), lambda x: Value(bool(x.value)))
 BuiltIns['number'] = Function(ListPatt(BoolParam), lambda x: Value(int(x.value)),
                               options={ListPatt(NumericParam): Value.clone,
                                        ListPatt(StringParam): lambda x: Value(read_number(x.value))})
 BuiltIns['integer'] = Function(ListPatt(NormalParam), lambda x: Value(int(BuiltIns['number'].call([x]).value)))
 BuiltIns['rational'] = Function(ListPatt(NormalParam), lambda x: Value(Fraction(BuiltIns['number'].call([x]).value)))
-BuiltIns['float'] = Function(ListPatt(NormalParam), lambda x: Value(float(BuiltIns['number'].call([x]).value)))
+# BuiltIns['float'] = Function(ListPatt(NormalParam), lambda x: Value(float(BuiltIns['number'].call([x]).value)))
 BuiltIns['string'] = Function(ListPatt(AnyParam), lambda x: Value(str(x.value)))
 # BuiltIns['string'].add_option(ListPatt(NumberParam),
 #                               lambda n: Value('-' * (n.value < 0) +
 #                                               base(abs(n.value), 10, 6, string=True, recurring=False)))
-BuiltIns['string'].add_option(ListPatt(Parameter(Type(BasicType.Type))), lambda t: Value(t.value.name))
+# BuiltIns['string'].add_option(ListPatt(Parameter(Prototype(BuiltIns["Type"]))), lambda t: Value(t.value.name))
 
-BuiltIns['type'] = Function(ListPatt(AnyParam), lambda v: Value(v.type, BasicType.Type))
+BuiltIns['type'] = Function(ListPatt(AnyParam), lambda v: v.type)
 
 BuiltIns['len'] = Function(ListPatt(StringParam), lambda s: Value(len(s.value)))
 BuiltIns['len'].add_option(ListPatt(FunctionParam), lambda f: Value(len(f.value.options)))
 BuiltIns['len'].add_option(ListPatt(ListParam), lambda l: Value(len(l.value)))
-BuiltIns['len'].add_option(ListPatt(Parameter(Type(BasicType.Pattern))), lambda p: Value(len(p.value)))
+BuiltIns['len'].add_option(ListPatt(Parameter(Prototype(BuiltIns["pattern"]))), lambda p: Value(len(p.value)))
 
-BuiltIns['prototype'] = Function(ListPatt(FunctionParam), lambda f: Value(f.value.prototype))
+# BuiltIns['prototype'] = Function(ListPatt(FunctionParam), lambda f: Value(f.value.prototype))
 
 BuiltIns['contains'] = Function(ListPatt(FunctionParam, AnyParam),
                                 lambda a, b: Value(b in (opt.value for opt in a.options)))
-BuiltIns['List'] = Function(ListPatt(Parameter(Type(BasicType.Any), quantifier='*')),
-                            lambda *vals: Value(ListFunc(*vals)))
-BuiltIns['len'].add_option(ListPatt(Parameter(Prototype(BuiltIns['List']))), lambda l: Value(len(l.value.array)-1))
-def neg_index(scope: ListFunc, *args: Value):
-    fn = scope.prototype
+BuiltIns['List'] = Function(ListPatt(Parameter(Any, quantifier='*')),
+                            lambda *vals: Value(list(*vals)))
+BuiltIns['len'].add_option(ListPatt(Parameter(Prototype(BuiltIns['list']))), lambda l: Value(len(l.value)-1))
+def neg_index(scope: Function, *args: Value):
+    fn = scope.type
     if len(args) == 1:
         length = BuiltIns['len'].call([Value(fn)]).value
         index = Value(length + 1 + args[0].value)
@@ -79,11 +112,11 @@ Operator('or',
 Operator('and',
          binop=5, static=True)
 Operator('|',
-         Function(ListPatt(TypeOrPatternParam, TypeOrPatternParam), lambda a, b: Value(Union(make_patt(a), make_patt(b)))),
+         Function(ListPatt(PatternParam, PatternParam), lambda a, b: Value(Union(patternize(a), patternize(b)))),
          binop=4)
-Op['|'].fn.add_option(AnyBinopPattern, lambda a, b: Value(Union(make_patt(a), make_patt(b))))
+Op['|'].fn.add_option(AnyBinopPattern, lambda a, b: Value(Union(patternize(a), patternize(b))))
 Operator('not',
-         Function(ListPatt(AnyParam), lambda a: Value(not BuiltIns['boolean'].call([a]).value)),
+         Function(ListPatt(AnyParam), lambda a: Value(not BuiltIns['bool'].call([a]).value)),
          prefix=6)
 Operator('in',
          Function(AnyBinopPattern, lambda a, b: BuiltIns['contains'].call([b, a])),
@@ -106,16 +139,11 @@ Operator('<=',
 Operator('>=',
          Function(NormalBinopPattern, lambda a, b: Value(a.value >= b.value)),
          binop=10, chainable=True)
-def match_pattern(a: Value, b: Value):
-    return Value(bool(make_patt(b).match_score(a)))
 Operator('~',
-         Function(AnyBinopPattern, lambda a, b: a.type == b.type,
-                  options={ListPatt(AnyParam, TypeOrPatternParam): match_pattern}),
+         Function(AnyBinopPattern, lambda a, b: Value(bool(patternize(b).match_score(a)))),
          binop=9, chainable=False)
 Operator('!~',
-         Function(AnyBinopPattern, lambda a, b: a.type != b.type,
-                  options={ListPatt(AnyParam, TypeOrPatternParam):
-                               lambda a, b: Value(not make_patt(b).match_score(a))}),
+         Function(AnyBinopPattern, lambda a, b: Value(not patternize(b).match_score(a))),
          binop=9, chainable=False)
 Operator('+',
          Function(NormalBinopPattern, lambda a, b: Value(a.value + b.value),
@@ -152,15 +180,15 @@ Operator('?',
 #         assert isinstance(c.value, list)
 #         args = c.value
 #     try:
-#         assert a.type == BasicType.Function and isinstance(a.value, Function)
+#         assert a.type == BuiltIns['fn'] and isinstance(a.value, Function)
 #         val = a.value.deref(name, ascend_env=False)
 #     except (AssertionError, NoMatchingOptionError):
 #         fn = Context.env.deref(name)
-#         if fn.type != BasicType.Function:
+#         if fn.type != BuiltIns['fn']:
 #             raise OperatorError(f"Line {Context.line}: '{name}' is not an option or function.")
 #         assert isinstance(fn.value, Function)
 #         args = [a] + args
-#         return fn.value.call(args)
+#         return fn.call(args)
 #     if c:
 #         fn = val.value
 #         if not isinstance(fn, Function):
@@ -169,49 +197,49 @@ Operator('?',
 #     else:
 #         return val
 
-def dot_fn(a: Value, b: Value):
+def dot_fn(a: Function, b: Value):
     name = b.value
     try:
-        assert a.type == BasicType.Function and isinstance(a.value, Function)
-        return a.value.deref(name, ascend_env=False)
+        # assert a.type == BuiltIns['fn'] and isinstance(a.value, Function)
+        return a.deref(name, ascend_env=False)
     except (AssertionError, NoMatchingOptionError):
         fn = Context.env.deref(name)
-        if fn.type != BasicType.Function:
+        if not fn.instanceof(BuiltIns['fn']):
             raise OperatorError(f"Line {Context.line}: '{name}' is not an option or function.")
-        assert isinstance(fn.value, Function)
-        return fn.value.call([a])
+        # assert isinstance(fn.value, Function)
+        return fn.call([a])
 
 Operator('.',
-         Function(ListPatt(AnyParam, Parameter(Type(BasicType.Name))), dot_fn,
-                  options={ListPatt(Parameter(Type(BasicType.Name))): lambda a: dot_fn(Value(Context.env), a)}),
+         Function(ListPatt(AnyParam, StringParam), dot_fn,
+                  options={ListPatt(StringParam): lambda a: dot_fn(Value(Context.env), a)}),
                   # options={ListPatt(AnyParam,
-                  #                   Parameter(Type(BasicType.Name)),
-                  #                   Parameter(Type(BasicType.List), quantifier="?")
+                  #                   Parameter(Prototype(BuiltIns["Name"])),
+                  #                   Parameter(Prototype(BuiltIns["List"]), quantifier="?")
                   #                   ): dot_call}),
          binop=15, prefix=15, ternary='.[')
 
 def type_guard(t: Value, args: Value) -> Value:
     fn = None
     match t.value, *args.value:
-        case BasicType.Integer | BasicType.Float | BasicType.Rational, \
+        case Function(name='int') | Function(name='float') | Function(name='ratio'), \
              Value(value=int() | float() | Fraction() as min), Value(value=int() | float() | Fraction() as max):
             fn = lambda x: Value(min <= x.value < max)
-        case BasicType.String, \
+        case Function(name='str'), \
              Value(value=int() | float() | Fraction() as min), Value(value=int() | float() | Fraction() as max):
             fn = lambda s: Value(min <= len(s.value) <= max)
-        case BasicType.String, Value(value=str() as regex):
+        case Function(name='str'), Value(value=str() as regex):
             fn = lambda s: Value(bool(re.fullmatch(regex, s.value)))
-        case BasicType.String, Value(value=str() as regex), Value(value=str() as flags):
+        case Function(name='str'), Value(value=str() as regex), Value(value=str() as flags):
             f = 0
             for c in flags.upper():
                 f |= getattr(re, c)
             fn = lambda s: Value(re.fullmatch(regex, s.value, f))
     # function = Function(ListPatt(AnyParam), fn)
-    return Value(Type(t.value, guard=fn))
+    return Value(Prototype(t.value, guard=fn))
 
 Operator('.[',
-         Function(ListPatt(FunctionParam, ListParam), lambda a, b: a.value.call(b.value),
-                  options={ListPatt(TypeParam, ListParam): type_guard,
+         Function(ListPatt(FunctionParam, ListParam), lambda a, b: a.call(b.value),
+                  options={ListPatt(PatternParam, ListParam): type_guard,
                            ListPatt(ListParam): lambda a: Context.env.call(a.value)}),
          binop=15, prefix=15)
 
@@ -222,11 +250,11 @@ def eval_call_args(lhs: list[Node], rhs: list[Node]) -> list[Value]:
         # ((foo.len).max)[2]
         a = expressionize(lhs[:-2]).evaluate()
         try:
-            assert a.type == BasicType.Function
+            assert a.instanceof(BuiltIns['fn'])
             fn = a.value.deref(name, ascend_env=False)
         except (AssertionError, NoMatchingOptionError):
             fn = Context.env.deref(name)
-            if fn.type != BasicType.Function:
+            if fn.type != BuiltIns['fn']:
                 raise OperatorError(f"Line {Context.line}: '{name}' is not an option or function.")
             args = Value([a] + args.value)
     else:
@@ -238,24 +266,24 @@ Op['.['].eval_args = eval_call_args
 # Add shortcut syntax for adding function guards to type checks.  Eg `int > 0` or `float < 1.0`
 def number_guard(a: Value, b: Value, op_sym: str):
     # assert a.value == b.type
-    return Value(Type(a.value, guard=lambda n: Op[op_sym].fn.call([n, b])))
+    return Value(Prototype(a.value, guard=lambda n: Op[op_sym].fn.call([n, b])))
 
 # generating functions with syntax like `str > 5` => `[str x]: len(x) > 5`
 def string_guard(a: Value, b: Value, op_sym: str):
-    assert a.value == BasicType.String and b.type in (BasicType.Integer, BasicType.Float)
+    assert a.value == BuiltIns['str'] and b.type in (BuiltIns['int'], BuiltIns['float'])
     def guard(x, y):
-        return Value(Type(BasicType.String, guard=lambda s: Op[op_sym].fn.call([Value(len(s.value)), b])))
+        return Value(Prototype(BuiltIns['str'], guard=lambda s: Op[op_sym].fn.call([Value(len(s.value)), b])))
     # return guard
-    return Value(Type(BasicType.String, guard=lambda s: Op[op_sym].fn.call([Value(len(s.value)), b])))
+    return Value(Prototype(BuiltIns['str'], guard=lambda s: Op[op_sym].fn.call([Value(len(s.value)), b])))
 
 def add_guards(op_sym: str):
-    Op[op_sym].fn.assign_option(ListPatt(Parameter(ValuePattern(Value(BasicType.Integer))), NumericParam),
+    Op[op_sym].fn.assign_option(ListPatt(Parameter(ValuePattern(BuiltIns['int'])), NumericParam),
                                 lambda a, b: number_guard(a, b, op_sym))
-    Op[op_sym].fn.assign_option(ListPatt(Parameter(ValuePattern(Value(BasicType.Float))), NumericParam),
+    Op[op_sym].fn.assign_option(ListPatt(Parameter(ValuePattern(BuiltIns['float'])), NumericParam),
                                 lambda a, b: number_guard(a, b, op_sym))
-    Op[op_sym].fn.assign_option(ListPatt(Parameter(ValuePattern(Value(BasicType.Rational))), NumericParam),
+    Op[op_sym].fn.assign_option(ListPatt(Parameter(ValuePattern(BuiltIns['ratio'])), NumericParam),
                                 lambda a, b: number_guard(a, b, op_sym))
-    Op[op_sym].fn.assign_option(ListPatt(Parameter(ValuePattern(Value(BasicType.String))), NumericParam),
+    Op[op_sym].fn.assign_option(ListPatt(Parameter(ValuePattern(BuiltIns['str'])), NumericParam),
                                 lambda a, b: string_guard(a, b, op_sym))
 
 

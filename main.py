@@ -10,7 +10,7 @@ tokenizer = Tokenizer(script_string)
 ast = AST(tokenizer)
 root = Function(ListPatt(Parameter('main')), FuncBlock(ast.block))
 for key, builtin in BuiltIns.items():
-    root.add_option(ListPatt(Parameter(key)), Value(builtin))
+    root.add_option(ListPatt(Parameter(key)), builtin)
 Context.root = root
 Context.env = root
 output = root.deref('main')

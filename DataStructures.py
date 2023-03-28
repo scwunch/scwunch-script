@@ -1,88 +1,8 @@
 import math
 import types
 from fractions import Fraction
-
-from Syntax import BasicType, Block, Node
+from Syntax import Block
 from Env import *
-
-
-class Value:
-    def __init__(self, value, basic_type: BasicType = None):
-        if isinstance(value, Fraction) and value.numerator % value.denominator == 0:
-            self.value = int(value)
-        else:
-            self.value = value
-        self.set_type(basic_type)
-
-    def set_value(self, new_value):
-        if isinstance(new_value, Value):
-            self.value = new_value.value
-            self.set_type(new_value.type)
-        else:
-            self.value = new_value
-            self.set_type()
-        return self
-
-    def set_type(self, basic_type=None):
-        if basic_type:
-            self.type = basic_type
-        else:
-            match self.value:
-                case BasicType(): self.type = BasicType.Type
-                case Function(): self.type = BasicType.Function
-                case Pattern(): self.type = BasicType.Pattern
-                case None: self.type = BasicType.none
-                case bool(): self.type = BasicType.Boolean
-                case int(): self.type = BasicType.Integer
-                case Fraction(): self.type = BasicType.Rational
-                case float(): self.type = BasicType.Float
-                case str(): self.type = BasicType.String
-                case list(): self.type = BasicType.List
-        return self.type
-
-    def is_null(self):
-        return self.value is None
-    def not_null(self):
-        return self.value is not None
-    def clone(self):
-        val = self.value
-        if val == BasicType.Function:
-            val = val.clone()
-        if val == BasicType.List:
-            val = val.copy()
-        return Value(val, self.type)
-
-    def __eq__(self, other):
-        try:
-            # assume List
-            return tuple(self.value) == tuple(other.value)
-        except TypeError:
-            return isinstance(other, Value) and self.value == other.value
-    def __hash__(self):
-        match self.type:
-            case BasicType.List:
-                return hash(tuple(self.value))
-            case BasicType.Function:
-                return hash(id(self.value))
-            case _:
-                return hash(self.value)
-    def __str__(self):
-        return str(self.value)
-    def __repr__(self):
-        match self.type:
-            case BasicType.none:
-                return "NULL"
-            case BasicType.Boolean | BasicType.Integer | BasicType.Float | BasicType.Name:
-                return str(self.value)
-            case BasicType.String:
-                return f'"{self.value}"'
-            case BasicType.Type:
-                return self.value.value
-            case BasicType.Function:
-                return str(self.value)
-            case BasicType.Pattern:
-                return str(self.value)
-        return f"<{self.type.value}:{repr(self.value)}>"
 
 """
 A Pattern is like a regex for types; it can match one very specific type, or even one specific value
@@ -92,28 +12,20 @@ class Pattern:
     def __init__(self, name: str = None, guard=None):
         self.name = name
         if guard and not isinstance(guard, Function):
-            guard = Function(ListPatt(Parameter(Type(BasicType.Any))), guard)
+            guard = Function(ListPatt(Parameter(Any)), guard)
         self.guard = guard
     def match_score(self, arg):
-        if arg.type == BasicType.String and arg.value == self.name:
+        if isinstance(arg, Value) and arg.value == self.name:
             return 1
         match self:
             case ValuePattern(value=value):
                 return int(arg == value)
-            case Type(basic_type=basic_type):
-                if basic_type == BasicType.Any:
-                    score = 0.1
-                else:
-                    score = (arg.type == basic_type) / 2
             case Prototype(prototype=prototype):
-                if arg.type != BasicType.Function:
-                    return 0
-                fn: Function = arg.value
-                score = (fn.instanceof(prototype)) * 2/3
+                score = (arg.instanceof(prototype)) * 2/3
             case Union(patterns=patterns):
                 count = len(self)
-                if BasicType.Any in (getattr(p, "basic_type", None) for p in patterns):
-                    count += len(BasicType) - 1
+                # if BasicType.Any in (getattr(p, "basic_type", None) for p in patterns):
+                #     count += len(BasicType) - 1
                 for patt in patterns:
                     m_score = patt.match_score(arg)
                     if m_score:
@@ -122,7 +34,7 @@ class Pattern:
                 else:
                     score = 0
             case Pattern(name=name):
-                return int(arg.type == BasicType.String and name == arg.value)
+                return int(isinstance(arg, Value) and name == arg.value)
             # NOTE: ListPatt overrides match_score method, since more complex logic is required
             case _:
                 raise Exception(f"Line: {Context.line}: Unknown pattern type: ", self)
@@ -130,7 +42,7 @@ class Pattern:
             return 0
         if self.guard:
             result = self.guard.call([arg])
-            score *= BuiltIns['boolean'].call([result]).value
+            score *= BuiltIns['bool'].call([result]).value  # noqa
         return score
     def __repr__(self):
         return f"Pattern({self.name})"
@@ -139,11 +51,25 @@ class Pattern:
     def __hash__(self):
         return hash((self.name, self.guard))
 
+class AnyPattern(Pattern):
+    def __init__(self, name=None):
+        super().__init__(name, None)
+    def match_score(self, arg):
+        return 1
+    def __repr__(self):
+        return "Any"
+
+
+Any = AnyPattern()
+
 class Parameter:
     def __init__(self, pattern, name=None, quantifier="", inverse=False):
         if isinstance(pattern, str):
             self.name = pattern
             self.pattern = ValuePattern(Value(pattern), pattern)
+        elif isinstance(pattern, Function):
+            self.pattern = Prototype(pattern)
+            self.name = name
         else:
             self.name = name or pattern.name
             self.pattern = pattern
@@ -158,7 +84,7 @@ class Parameter:
         self.inverse = inverse
     def specificity(self) -> int: ...
     def match_score(self, arg):
-        if arg.type == BasicType.String and arg.value == self.name:
+        if arg.type == BuiltIns['str'] and arg.value == self.name:
             return 1
         return self.pattern.match_score(arg)
     def __eq__(self, other):
@@ -170,8 +96,7 @@ class Parameter:
         return f"{'!' * self.inverse}{self.pattern}" + (' ' + self.name if self.name else '')
 
 class ValuePattern(Pattern):
-    value: Value
-    def __init__(self, value: Value, name: str = None):
+    def __init__(self, value, name: str = None):
         super().__init__(name)
         self.value = value
     def __eq__(self, other):
@@ -179,19 +104,19 @@ class ValuePattern(Pattern):
     def __hash__(self):
         return hash((self.value, self.name))
     def __repr__(self):
-        return repr(self.value)
+        return "ValuePattern("+repr(self.value)+")"
 
-class Type(Pattern):
-    basic_type: BasicType
-    def __init__(self, basic_type, name=None, guard=None):
-        super().__init__(name, guard)
-        self.basic_type = basic_type
-    def __eq__(self, other):
-        return isinstance(other, Type) and self.basic_type == other.basic_type and super().__eq__(other)
-    def __hash__(self):
-        return hash((self.basic_type, super()))
-    def __repr__(self):
-        return self.basic_type.value + ('[]' if self.guard else '')
+# class Type(Pattern):
+#     basic_type: BasicType
+#     def __init__(self, basic_type, name=None, guard=None):
+#         super().__init__(name, guard)
+#         self.basic_type = basic_type
+#     def __eq__(self, other):
+#         return isinstance(other, Type) and self.basic_type == other.basic_type and super().__eq__(other)
+#     def __hash__(self):
+#         return hash((self.basic_type, super()))
+#     def __repr__(self):
+#         return self.basic_type.value + ( '[]' if self.guard else '' )
 
 class Prototype(Pattern):
     def __init__(self, prototype, name=None, guard=None, *exprs):
@@ -204,7 +129,7 @@ class Prototype(Pattern):
     def __hash__(self):
         return hash((id(self.prototype), super()))
     def __repr__(self):
-        return f"@{self.prototype}{'[expr]' if self.exprs else ''}{'[guard]' if self.guard else ''}"
+        return f"Prototype({self.prototype}{'[expr]' if self.exprs else ''}{'[guard]' if self.guard else ''})"
 
 class Union(Pattern):
     patterns: frozenset[Pattern]
@@ -260,7 +185,7 @@ class ListPatt(Pattern):
     def __getitem__(self, item):
         return self.parameters[item]
     def match_score(self, list_value):
-        if list_value.type != BasicType.List:
+        if list_value.type != BuiltIns['list']:
             return 0
         args = list_value.value
         if not self.min_len() <= len(args) <= self.max_len():
@@ -290,13 +215,12 @@ class ListPatt(Pattern):
         return f"[{', '.join(map(repr, self.parameters))}]"
 
 
-def make_patt(val):
-    if val.type == BasicType.Pattern:
-        return val.value
-    elif val.type == BasicType.Type:
-        return Type(val.value)
-    else:
+def patternize(val):
+    if isinstance(val, Value):
+        if isinstance(val.value, Pattern):
+            return val.value
         return ValuePattern(val)
+    return Prototype(val)
 
 def named_patt(name: str) -> ListPatt:
     return ListPatt(Parameter(Pattern(name)))
@@ -326,14 +250,15 @@ class FuncBlock:
             self.native = block
         self.env = env or Context.env
     def make_function(self, options, prototype):
-        return Function(options=options, prototype=prototype, env=self.env)
+        return Function(options=options, type=prototype, env=self.env)
     def execute(self, args=None, scope=None):
         if scope:
             def break_():
                 Context.pop()
-                return scope.return_value or Value(scope)
+                return scope.return_value or scope
         else:
             scope = Context.env
+
             def break_():
                 return Value(None)
 
@@ -373,16 +298,22 @@ class Option:
         return (self.value and self.block and self.fn) is None
     def not_null(self):
         return (self.value or self.block or self.fn) is not None
-    def assign(self, val_block_fn):
-        self.resolution = val_block_fn
-        match val_block_fn:
-            case Value(): self.value = val_block_fn
-            case FuncBlock(): self.block = val_block_fn
-            # case types.FunctionType: self.fn = val_block_fn
-            case types.FunctionType(): self.fn = val_block_fn
-            # case fn if callable(fn): self.fn = fn
+    def nullify(self):
+        self.resolution = None
+        if self.value:
+            del self.value
+        if self.block:
+            del self.block
+        if self.fn:
+            del self.fn
+    def assign(self, resolution):
+        self.resolution = resolution
+        match resolution:
+            case Function(): self.value = resolution
+            case FuncBlock(): self.block = resolution
+            case types.FunctionType(): self.fn = resolution
             case _:
-                raise ValueError("Could not assign resolution: ", val_block_fn)
+                raise ValueError("Could not assign resolution: ", resolution)
     def resolve(self, args=None, proto=None):
         if self.value:
             return self.value
@@ -391,7 +322,7 @@ class Option:
         if self.block is None:
             raise NoMatchingOptionError("Could not resolve null option")
         if self.dot_option:
-            proto = args[0].value
+            proto = args[0]
         fn = self.block.make_function(self.pattern.zip(args), proto)
         Context.push(Context.line, fn, self)
         return self.block.execute(args, fn)
@@ -406,12 +337,13 @@ class Option:
 
 class Function:
     return_value = None
-    def __init__(self, opt_pattern=None, resolution=None, options=None, prototype=None, env=None):
-        self.prototype = prototype
+    def __init__(self, opt_pattern=None, resolution=None, options=None, type=None, env=None, name=None):
+        self.name = name
+        self.type = type or BuiltIns['fn']
         self.env = env or Context.env
         self.options = []  # [Option(Pattern(), self)]
         self.named_options = {}
-        self.array = [Option(ListPatt(Parameter(ValuePattern(Value(0)))))]
+#        self.array = [Option(ListPatt(Parameter(ValuePattern(Value(0)))))]
         if options:
             for patt, val in options.items():
                 self.add_option(patt, val)
@@ -422,26 +354,32 @@ class Function:
         option = Option(pattern, resolution)
         name = num = None
         match pattern:
-            case int() as i:  num: int = i
+            case int() as i:  num = i
             case str():       name = pattern
             case Parameter(): name = pattern.name
             case ListPatt():  name = pattern[0].name if len(pattern) == 1 else None
             case Pattern():   name = pattern.name
         if name is not None:
             self.named_options[name] = option
-        if not num and len(option.pattern) == 1:
-            patt = option.pattern.parameters[0].pattern
-            if isinstance(patt, ValuePattern) and patt.value.type == BasicType.Integer:
-                num = patt.value.value
-        if num == len(self.array):
-            self.array.append(option)
+        if hasattr(self, "value") and isinstance(self.value, list):
+            if not num and len(option.pattern) == 1:
+                patt = option.pattern.parameters[0].pattern
+                if isinstance(patt, ValuePattern) and isinstance(patt.value, Value):
+                    num = patt.value.value
+            if num == len(self.value):
+                self.value.append(option)
         self.options.insert(0, option)
         # self.options.sort(key=lambda opt: opt.pattern.specificity, reverse=True)
         return option
 
+    def remove_option(self, pattern):
+        opt = self.select(pattern)
+        opt.nullify()
+
     def assign_option(self, pattern, resolution):
         try:
             opt = self.select(pattern)
+            opt.nullify()
             opt.assign(resolution)
         except NoMatchingOptionError:
             self.add_option(pattern, resolution)
@@ -450,7 +388,7 @@ class Function:
         else:
             return Value(None)
 
-    def index_of(self, key: list[Value]) -> int | None:
+    def index_of(self, key) -> int | None:
         idx = None
         high_score = 0
         arg_list = Value(key)
@@ -463,7 +401,7 @@ class Function:
                 idx = i
         return idx
 
-    def select(self, key: Pattern | list[Value], walk_prototype_chain=True, ascend_env=False):
+    def select(self, key, walk_prototype_chain=True, ascend_env=False):
         try:
             match key:
                 case Pattern():
@@ -472,20 +410,20 @@ class Function:
                         return opt[0]
                 case str() as key:
                     return self.named_options[key]
-                case int() as key if key > 0:
-                    return self.array[key]
-                case [arg] if arg.type == BasicType.String:
+                # case int() as key if key > 0:
+                #     return self.array[key]
+                case [arg] if arg.instanceof(BuiltIns['str']):
                     return self.named_options[arg.value]
-                case [arg] if arg.type == BasicType.Integer and arg.value > 0:
-                    return self.array[arg.value]
+                # case [arg] if arg.instanceof(BuiltIns['int']) and arg.value > 0:
+                #     return self.array[arg.value]
         except (IndexError, KeyError):
             pass
         i = self.index_of(key)
         if i is not None:
             return self.options[i]
-        if walk_prototype_chain and self.prototype:
+        if walk_prototype_chain and self.type:
             try:
-                return self.prototype.select(key, ascend_env=ascend_env)
+                return self.type.select(key, ascend_env=ascend_env)
             except NoMatchingOptionError:
                 pass
         if ascend_env and self.env:
@@ -495,7 +433,7 @@ class Function:
                 pass
         raise NoMatchingOptionError(f"Line {Context.line}: key {key} not found in function {self}")
 
-    def call(self, key: list[Value], ascend=False) -> Value | None:
+    def call(self, key, ascend=False):
         try:
             option = self.select(key)
         except NoMatchingOptionError as e:
@@ -512,38 +450,114 @@ class Function:
         return option.resolve(None, self)
 
     def instanceof(self, prototype):
-        return self == prototype or \
-            bool(self.prototype) and (self.prototype == prototype or self.prototype.instanceof(prototype))
+        return bool(self.type == prototype or self.type and self.type.instanceof(prototype))
 
     def clone(self):
-        fn = Function(prototype=self.prototype, env=self.env)
+        if hasattr(self, "value"):
+            fn = Value(self.value)
+            fn.type = self.type
+            fn.env = self.env
+        else:
+            fn = Function(type=self.type, env=self.env)
         for opt in self.options:
             fn.assign_option(opt.pattern,
                              opt.value.clone() if opt.value else opt.block or opt.fn)
         return fn
 
+    def __eq__(self, other):
+        if id(self) == id(other):
+            return True
+        if not isinstance(other, Function):
+            return False
+        if self.type != other.type:
+            return False
+        if getattr(self, "value", object()) == getattr(other, "value", object()):
+            return True
+        if self.env != other.env:
+            return False
+        try:
+            for opt in self.options:
+                assert opt.resolution == other.select(opt.pattern).resolution
+        except NoMatchingOptionError:
+            return False
+        return True
+
     def __repr__(self):
         if self == Context.root:
             return 'root'
-        if self.prototype == Context.root:
+        if self.type == Context.root:
             return 'root.main'
+        try:
+            return repr(self.value)  # noqa
+        except AttributeError:
+            pass
+        prefix = self.name or ""
         if len(self.options) == 1:
-            return f"{{{self.options[0]}}}"
+            return f"{prefix}{{{self.options[0]}}}"
         else:
-            return f"{{{self.named_options}}}"
+            return f"{prefix}{self.named_options}"
 
-class ListFunc(Function):
-    def __init__(self, *values: Value):
-        super().__init__(prototype=BuiltIns['List'])
-        for i, val in enumerate(values):
-            self.add_option(ListPatt(Parameter(ValuePattern(Value(i)))), val)
-    def push(self, val):
-        self.add_option(numbered_patt(self.len()+1), val)
+class Value(Function):
+    def __init__(self, value, type_=None):
+        super().__init__(type=type_ or TypeMap[type(value)])
+        if isinstance(value, Fraction) and value.numerator % value.denominator == 0:
+            self.value = int(value)
+        else:
+            self.value = value
+
+    def set_value(self, new_value):
+        if isinstance(new_value, Value):
+            self.value = new_value.value
+            self.type = new_value.type
+        else:
+            self.value = new_value
+            self.type = TypeMap[type(new_value.value)]
         return self
-    def pop(self, index: int = -1) -> Value:
-        return self.remove_option(Value(index))
-    def len(self) -> int:
-        return len(self.options)
+
+    def is_null(self):
+        return self.value is None
+    def not_null(self):
+        return self.value is not None
+    def clone(self):
+        c = super().clone()
+        c.value = self.value
+        return c
+    # def clone(self):
+    #     val = self.value
+    #     if val == BasicType.Function:
+    #         val = val.clone()
+    #     if val == BasicType.List:
+    #         val = val.copy()
+    #     return Value(val, self.type)
+
+    def __eq__(self, other):
+        try:
+            # assume List
+            return tuple(self.value) == tuple(other.value)
+        except TypeError:
+            return isinstance(other, Value) and self.value == other.value
+    def __hash__(self):
+        if self.type == BuiltIns['list']:
+            return hash(tuple(self.value))
+        return hash(self.value)
+    def __str__(self):
+        return str(self.value)
+    def __repr__(self):
+        return repr(self.value)
+
+# class ListFunc(Function):
+#     def __init__(self, *values: Value):
+#         super().__init__(type=BuiltIns['List'])
+#         for i, val in enumerate(values):
+#             self.add_option(ListPatt(Parameter(ValuePattern(Value(i)))), val)
+#     def push(self, val):
+#         self.add_option(numbered_patt(self.len()+1), val)
+#         return self
+#     def pop(self, index: int = -1) -> Value:
+#         return self.remove_option(Value(index))
+#     def len(self) -> int:
+#         return len(self.options)
+
 
 class Operator:
     def __init__(self, text, fn=None,
@@ -570,17 +584,6 @@ class Operator:
 
     def __repr__(self):
         return self.text
-
-
-def clone(val: Value | Function):
-    match val:
-        case Function():
-            return val.clone()
-        case Pattern():
-            return val
-        case Value():
-            return Value(val.value, val.type)
-
 
 
 if __name__ == "__main__":

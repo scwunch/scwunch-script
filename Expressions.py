@@ -120,7 +120,7 @@ class Conditional(Expression):
                 elif i+2 == len(nodes):
                     raise SyntaxErr("Expected else followed by block.  Got ", nodes[i+1])
                 try:
-                    assert nodes[i+1].source_text == 'else' # and isinstance(nodes[i+2], Block)
+                    assert nodes[i+1].source_text == 'else'  # and isinstance(nodes[i+2], Block)
                     node = nodes[i+2]
                     if isinstance(node, Block):
                         self.alt = FuncBlock(node)
@@ -134,7 +134,7 @@ class Conditional(Expression):
 
     def evaluate(self):
         condition = self.condition.evaluate()
-        condition = BuiltIns['boolean'].call([condition]).value
+        condition = BuiltIns['bool'].call([condition]).value
         if condition:
             return self.consequent.execute()
         elif isinstance(self.alt, FuncBlock):
@@ -199,7 +199,7 @@ class SingleNode(Expression):
     def evaluate(self):
         return eval_node(self.node)
 
-def eval_node(node: Node) -> Value:
+def eval_node(node: Node) -> Function:
     match node:
         case Statement() as statement:
             return expressionize(statement).evaluate()
@@ -210,7 +210,7 @@ def eval_node(node: Node) -> Value:
             return opt.resolve(None)
         case List() as node:
             # return Value([eval_node(n) for n in node.nodes])
-            return Value(list(map(eval_node, node.nodes)), BasicType.List)
+            return Value(list(map(eval_node, node.nodes)))
     raise ValueError(f'Could not evaluate node {node} at line: {node.pos}')
 
 
@@ -225,7 +225,9 @@ def precook_args(op: Operator, lhs, rhs) -> list[Value]:
         raise ArithmeticError("Mismatch between operator type and operand positions.")
     return args
 
+
 Operator.eval_args = precook_args
+
 
 def expr_tree_old(nodes: list[Node]):
     pre_op = Op[nodes[0].source_text] if nodes[0].type in (TokenType.Operator, TokenType.Keyword) else None
@@ -244,7 +246,7 @@ def expr_tree_old(nodes: list[Node]):
         if ternary_op and nodes[i].source_text == ternary_op.ternary:
             right_idx, min_precedence = i, ternary_op.binop
             op_idx = i_tern
-        elif nodes[i].type in (TokenType.Operator, TokenType.OptionSet, TokenType.Keyword, TokenType.ListStart):
+        elif nodes[i].type in (TokenType.Operator, TokenType.Keyword, TokenType.ListStart):
             # if the previous node represents a binary operator, then this one cannot be binary
             op = Op[nodes[i].source_text]
             if op.binop and op.binop < min_precedence or \
@@ -281,7 +283,7 @@ class OpSplitter:
         self.fix = fix
 
 
-def eval_token(tok: Token) -> Value:
+def eval_token(tok: Token) -> Function:
     s = tok.source_text
     match tok.type:
         case TokenType.Singleton:
@@ -292,15 +294,13 @@ def eval_token(tok: Token) -> Value:
         case TokenType.Number:
             return Value(read_number(s))
         case TokenType.String:
-            return Value(string(s), BasicType.String)
-        case TokenType.Type:
-            return Value(type_mapper(s), BasicType.Type)
+            return Value(string(s))
+        # case TokenType.Type:
+        #     return Value(type_mapper(s), BasicType.Type)
         case TokenType.Name:
             return Context.env.deref(s)
         case TokenType.PatternName:
-            return Value(s, BasicType.Name)
-        case TokenType.PatternName:
-            return Value(ListPatt(Parameter(s)), BasicType.Pattern)
+            return Value(s)
         case _:
             raise Exception("Could not evaluate token", tok)
 
@@ -322,7 +322,7 @@ def make_param(param_nodes: list[Node]) -> Parameter:
     if not param_nodes:
         return Parameter(name)
     expr_val = expressionize(param_nodes).evaluate()
-    pattern = make_patt(expr_val)
+    pattern = patternize(expr_val)
     return Parameter(pattern, name)
 
 def split(nodes: list[Node], splitter: TokenType) -> list[list[Node]]:
@@ -353,7 +353,7 @@ def read_option(nodes: list[Node]) -> Option:
     if fn_nodes:
         try:
             fn_val = expressionize(fn_nodes).evaluate()
-            if fn_val.type == BasicType.Name:
+            if fn_val.type == BuiltIns['str']:
                 fn_val = Context.env.deref(fn_val.value)
         except NoMatchingOptionError:
             if dot_option:
@@ -361,16 +361,16 @@ def read_option(nodes: list[Node]) -> Option:
                                             f"dot option {' '.join((map(str, fn_nodes)))} not found.")
             opt = read_option(fn_nodes)
             if opt.is_null():
-                fn_val = Value(Function())
+                fn_val = Function()
                 opt.value = fn_val
             else:
                 fn_val = opt.value
             # how many levels deep should this go?
             # This will recurse infinitely, potentially creating many function
-        if fn_val.type != BasicType.Function:
-            raise RuntimeErr(f"Line {Context.line}: "
-                             f"Cannot add option to {fn_val.type.value} {' '.join((map(str, fn_nodes)))}")
-        fn = fn_val.value
+        # if fn_val.type != BasicType.Function:
+        #     raise RuntimeErr(f"Line {Context.line}: "
+        #                      f"Cannot add option to {fn_val.type.value} {' '.join((map(str, fn_nodes)))}")
+        fn = fn_val
         definite_env = True
     else:
         fn = Context.env
