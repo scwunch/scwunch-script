@@ -10,7 +10,7 @@ def static_fn(lhs: list[Node], rhs: list[Node]) -> Value:
 
 def assign_val(lhs: list[Node], rhs: list[Node]) -> Value:
     value = expressionize(rhs).evaluate()   # .clone()
-    option = read_option(lhs)
+    option = read_option(lhs, True)
     option.value = value
     if not value.name:
         value.name = option.pattern.name

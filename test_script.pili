@@ -35,7 +35,7 @@ test[7d] = not 345 ~ type["345"] and 345 ~ type[3333]
 print 'test 11 passed' if test[7d] else 'test 11 failed'
 
 Dog[str name, str breed]:
-	bark: "hello my name is " + name
+	.bark: "hello my name is " + name
 spot = Dog['Spot', 'terrier']
 test[8d] = spot.bark == "hello my name is Spot"
 print 'test 12 passed' if test[8d] else 'test 12 failed'
@@ -52,7 +52,7 @@ print 'test 15 passed' if test[15] else 'test 15 failed'
 
 Range[int start, int end, int step]:
 	index = start
-	next:
+	.next:
 		return 'done' if index >= end else (index = index + step)
 r = Range[0, 3, 1]
 # print r.index
@@ -84,7 +84,7 @@ print 'test 25 ' + ('passed' if test[25] else 'failed')
 Cat =
 	debug [str name]:
 		name = "😸 " + name
-	meow: "hello my name is " + name
+	.meow: "hello my name is " + name
 	.string: "Cat " + name
 
 my_cat = Cat["Ruby"]

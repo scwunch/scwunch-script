@@ -203,7 +203,8 @@ class AST(Builder):
                 if self.peek() and self.peek().source_text.startswith(':') \
                         and (self.peek(-1) is None or self.peek(-1).type != TokenType.Operator):
                     # nodes.append(Token('&name'))
-                    self.tok.type = TokenType.PatternName
+                    # self.tok.type = TokenType.PatternName
+                    pass
                 elif self.peek(-1) and self.peek(-1).source_text == '.':
                     self.tok.type = TokenType.PatternName
                 nodes.append(self.tok)

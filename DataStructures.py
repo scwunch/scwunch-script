@@ -21,7 +21,7 @@ class Pattern:
             case ValuePattern(value=value):
                 return int(arg == value)
             case Prototype(prototype=prototype):
-                score = (arg.instanceof(prototype)) * 2/3
+                score = int(arg == prototype) or (arg.instanceof(prototype)) * 2/3
             case Union(patterns=patterns):
                 count = len(self)
                 # if BasicType.Any in (getattr(p, "basic_type", None) for p in patterns):
@@ -550,10 +550,11 @@ class Value(Function):
     #     return Value(val, self.type)
 
     def __eq__(self, other):
+        return hasattr(other, 'value') and self.value == other.value
         try:
             # assume List
             return tuple(self.value) == tuple(other.value)
-        except TypeError:
+        except (TypeError, AttributeError):
             return isinstance(other, Value) and self.value == other.value
     def __hash__(self):
         if self.type == BuiltIns['list']:
