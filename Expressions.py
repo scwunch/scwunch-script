@@ -382,14 +382,16 @@ def read_option(nodes: list[Node]) -> Option:
         patt = ListPatt(*params)
     try:
         option = fn.select(patt, walk_prototype_chain=False, ascend_env=not definite_env)
+        """critical design decision here: I want to have walk_prototype_chain=False so I don't assign variables from the prototype..."""
     except NoMatchingOptionError:
         option = fn.add_option(patt)
     option.dot_option = dot_option
     return option
 
-""" takes a number in the form of a string of digits, or digits separated by a / or .
-    if the number ends with a d, it will be read as a decimal"""
+
 def read_number(text: str, base=6) -> int | float | Fraction:
+    """ take a number in the form of a string of digits, or digits separated by a / or .
+        if the number ends with a d, it will be read as a decimal"""
     if isinstance(text, int) or isinstance(text, float) or isinstance(text, Fraction):
         return text
     if text.endswith('d'):
@@ -416,10 +418,10 @@ def read_number(text: str, base=6) -> int | float | Fraction:
             pow *= base
         return val
 
-
-def num2str(num: int|float|Fraction, base=6, precision=12):
+def write_number(num: int|float|Fraction, base=6, precision=12) -> str:
+    """ take a number and convert to a string of digits, possibly separated by / or . """
     if isinstance(num, Fraction):
-        return num2str(num.numerator)+"/"+num2str(num.denominator)
+        return write_number(num.numerator) + "/" + write_number(num.denominator)
     sign = "-" * (num < 0)
     num = abs(num)
     whole = int(num)
@@ -436,14 +438,6 @@ def nat2str(num: int, base=6):
         return str(num)
     else:
         return nat2str(num // base, base) + str(num % base)
-
-def frac2str(num: float, base=6):
-    digits = []
-    for i in range(10):
-        dig = int(num*base)
-        num = num*base-dig
-        digits += [dig]
-    return digits
 
 def frac_from_base(num: float, base=6, precision=12):
     digits = []
@@ -466,6 +460,6 @@ if __name__ == "__main__":
         n = read_number(strinput)
         # n = 999999999/100000000
         print("decimal: " + str(n))
-        print("senary: "+num2str(n, 6, 25))
+        print("senary: " + write_number(n, 6, 25))
         print("via bc:", base(str(n), 10, 6, 15, True, True))
 

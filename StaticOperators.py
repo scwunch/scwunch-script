@@ -9,9 +9,11 @@ def static_fn(lhs: list[Node], rhs: list[Node]) -> Value:
 
 
 def assign_val(lhs: list[Node], rhs: list[Node]) -> Value:
-    value = expressionize(rhs).evaluate().clone()
+    value = expressionize(rhs).evaluate()   # .clone()
     option = read_option(lhs)
     option.value = value
+    if not value.name:
+        value.name = option.pattern.name
     return value
 
 def assign_alias(lhs: list[Node], rhs: list[Node]) -> Value:

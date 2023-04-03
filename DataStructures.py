@@ -155,6 +155,10 @@ class ListPatt(Pattern):
     def __init__(self, *parameters: Parameter, name=None, guard=None):
         super().__init__(name, guard)
         self.parameters = tuple(parameters)
+        if self.name:
+            pass
+        if len(parameters) == 1:
+            self.name = parameters[0].name
     def zip(self, args: list):
         d = {}
         if args is None:
@@ -249,8 +253,8 @@ class FuncBlock:
         else:
             self.native = block
         self.env = env or Context.env
-    def make_function(self, options, prototype):
-        return Function(options=options, type=prototype, env=self.env)
+    def make_function(self, options, env=None):
+        return Function(options=options, type=env, env=env or self.env)
     def execute(self, args=None, scope=None):
         if scope:
             def break_():
@@ -274,6 +278,13 @@ class FuncBlock:
                 Context.break_ -= 1
                 break
         return break_()
+
+    def __repr__(self):
+        if self.native:
+            return 'FuncBlock(native)'
+        if len(self.exprs) == 1:
+            return f"FuncBlock({self.exprs[0]})"
+        return f"FuncBlock({len(self.exprs)} exprs)"
 
 
 class Option:
@@ -314,7 +325,7 @@ class Option:
             case types.FunctionType(): self.fn = resolution
             case _:
                 raise ValueError("Could not assign resolution: ", resolution)
-    def resolve(self, args=None, proto=None):
+    def resolve(self, args=None, env=None):
         if self.value:
             return self.value
         if self.fn:
@@ -322,8 +333,11 @@ class Option:
         if self.block is None:
             raise NoMatchingOptionError("Could not resolve null option")
         if self.dot_option:
-            proto = args[0]
-        fn = self.block.make_function(self.pattern.zip(args), proto)
+            env = args[0]
+            # btw: this is possibly the third time the env is getting overriden: it's first set when the FuncBlock is
+            # defined, then overriden by the env argument passed to self.resolve, and finally here if it is a dot-option
+            # ... I should consider making a multi-layer env, or using the prototype, or multiple-inheritance type-thing
+        fn = self.block.make_function(self.pattern.zip(args), env)
         Context.push(Context.line, fn, self)
         return self.block.execute(args, fn)
 
@@ -464,8 +478,13 @@ class Function:
                              opt.value.clone() if opt.value else opt.block or opt.fn)
         return fn
 
+    def to_string(self):
+        if hasattr(self, 'value'):
+            return Value(str(self.value))
+        return Value(str(self))
+
     def __eq__(self, other):
-        if id(self) == id(other):
+        if self is other:
             return True
         if not isinstance(other, Function):
             return False
@@ -473,7 +492,7 @@ class Function:
             return False
         if getattr(self, "value", object()) == getattr(other, "value", object()):
             return True
-        if self.env != other.env:
+        if self.env != other.env or self.name != other.name:
             return False
         try:
             for opt in self.options:
@@ -483,9 +502,9 @@ class Function:
         return True
 
     def __repr__(self):
-        if self == Context.root:
+        if self is Context.root:
             return 'root'
-        if self.type == Context.root:
+        if self.type is Context.root:
             return 'root.main'
         try:
             return repr(self.value)  # noqa
@@ -499,11 +518,11 @@ class Function:
 
 class Value(Function):
     def __init__(self, value, type_=None):
-        super().__init__(type=type_ or TypeMap[type(value)])
         if isinstance(value, Fraction) and value.numerator % value.denominator == 0:
             self.value = int(value)
         else:
             self.value = value
+        super().__init__(type=type_ or TypeMap[type(value)])
 
     def set_value(self, new_value):
         if isinstance(new_value, Value):
