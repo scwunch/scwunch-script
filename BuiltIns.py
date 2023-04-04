@@ -218,9 +218,9 @@ Operator('.',
                   #                   ): dot_call}),
          binop=15, prefix=15, ternary='.[')
 
-def type_guard(t: Value, args: Value) -> Value:
+def type_guard(t: Function, args: Value) -> Value:
     fn = None
-    match t.value, *args.value:
+    match t, *args.value:
         case Function(name='int') | Function(name='float') | Function(name='ratio'), \
              Value(value=int() | float() | Fraction() as min), Value(value=int() | float() | Fraction() as max):
             fn = lambda x: Value(min <= x.value < max)
