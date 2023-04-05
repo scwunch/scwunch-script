@@ -1,3 +1,22 @@
+print 10 / 30
+nums[1] = 1.781d
+print nums[1]/100d * 10000
+nums[2] = debug 87.6d / 10000d * 10000
+print nums[2]
+print 67.6d / 10000d * 10000
+print 51.8d / 10000d * 10000
+print 47.5d / 10000d * 10000
+print 36.3d / 10000d * 10000
+print 35.65d / 10000d * 10000
+print 29.5d / 10000d * 10000
+print 28.4d / 10000d * 10000
+print 23.3d / 10000d * 10000
+print 23.0d / 10000d * 10000
+print 22.3d / 10000d * 10000
+print 20.2d / 10000d * 10000
+print 17.7d / 10000d * 10000
+exit
+
 test =
 	0: 'test init success'
 print test[0]

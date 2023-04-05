@@ -1,6 +1,8 @@
 import math
 import types
 from fractions import Fraction
+
+import Env
 from Syntax import Block
 from Env import *
 
@@ -480,6 +482,8 @@ class Function:
 
     def to_string(self):
         if hasattr(self, 'value'):
+            if self.instanceof(BuiltIns['numeric']):
+                return Value(write_number(self.value))
             return Value(str(self.value))
         return Value(str(self))
 

@@ -1,4 +1,5 @@
 from DataStructures import *
+from fractions import Fraction
 
 class Context:
     line: int
@@ -34,3 +35,6 @@ class OperatorError(SyntaxErr): ...
 Op: dict[str, Operator]
 BuiltIns: dict[str, Function | Pattern]
 TypeMap: dict[type, Function]
+
+def read_number(text: str, base=6) -> int | float | Fraction: ...
+def write_number(num: int|float|Fraction, base=6, precision=12) -> str: ...

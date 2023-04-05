@@ -211,7 +211,7 @@ def dot_fn(a: Function, b: Value):
 
 Operator('.',
          Function(ListPatt(AnyParam, StringParam), dot_fn,
-                  options={ListPatt(StringParam): lambda a: dot_fn(Value(Context.env), a)}),
+                  options={ListPatt(StringParam): lambda a: dot_fn(Context.env, a)}),
                   # options={ListPatt(AnyParam,
                   #                   Parameter(Prototype(BuiltIns["Name"])),
                   #                   Parameter(Prototype(BuiltIns["List"]), quantifier="?")
@@ -262,6 +262,12 @@ def eval_call_args(lhs: list[Node], rhs: list[Node]) -> list[Value]:
     return [fn, args]
 
 Op['.['].eval_args = eval_call_args
+
+# map-dot / swizzle operator
+Operator('..',
+         Function(ListPatt(ListParam, StringParam), lambda l, n: Value([dot_fn(el, n) for el in l.value]),
+                  options={ListPatt(StringParam): lambda a: dot_fn(Context.env, a)}),
+         binop=15, prefix=15)
 
 # Add shortcut syntax for adding function guards to type checks.  Eg `int > 0` or `float < 1.0`
 def number_guard(a: Value, b: Value, op_sym: str):
