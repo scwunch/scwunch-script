@@ -1,13 +1,13 @@
-print 10 / 30
+print 1_0 / 3_0
 nums[1] = 1.781d
 print nums[1]/100d * 10000
 nums[2] = debug 87.6d / 10000d * 10000
 print nums[2]
-print 67.6d / 10000d * 10000
-print 51.8d / 10000d * 10000
-print 47.5d / 10000d * 10000
-print 36.3d / 10000d * 10000
-print 35.65d / 10000d * 10000
+print 676d / 100000d * 10000
+print 518d / 100000d * 10000
+print 4705d / 100000d * 10000
+print 363d / 100000d * 10000
+print 3565d / 100000d * 10000
 print 29.5d / 10000d * 10000
 print 28.4d / 10000d * 10000
 print 23.3d / 10000d * 10000

@@ -81,7 +81,7 @@ def read_number(text: str, base=6) -> int | float | Fraction:
             pow *= base
         return val
 
-def write_number(num: int|float|Fraction, base=6, precision=12) -> str:
+def write_number(num: int|float|Fraction, base=6, precision=12, sep="_") -> str:
     """ take a number and convert to a string of digits, possibly separated by / or . """
     if isinstance(num, Fraction):
         return write_number(num.numerator) + "/" + write_number(num.denominator)
@@ -90,17 +90,27 @@ def write_number(num: int|float|Fraction, base=6, precision=12) -> str:
     whole = int(num)
     frac = num - whole
 
-    ls = sign + nat2str(whole, base)
+    digits = get_digits(whole, base)
+    if sep:
+        for i in range(len(digits)-4, 0, -4):
+            digits.insert(i, sep)
+    ls = sign + ''.join(digits)
     if frac == 0:
         return ls
     rs = frac_from_base(frac, base, precision)
     return f"{ls}.{''.join(str(d) for d in rs)}"
 
-def nat2str(num: int, base=6):
+def get_digits(num: int, base=6) -> list[str]:
     if num < base:
-        return str(num)
+        return [str(num)]
     else:
-        return nat2str(num // base, base) + str(num % base)
+        result = get_digits(num // base, base)
+        result.append(str(num % base))
+        return result
+        ls = get_digits(num // base, base)
+        if len(ls) > 3:
+            return f"{ls[:-3]}_{ls[-3:]}{str(num % base)}"
+        return ls + str(num % base)
 
 def frac_from_base(num: float, base=6, precision=12):
     digits = []

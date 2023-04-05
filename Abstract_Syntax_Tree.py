@@ -91,8 +91,13 @@ class Tokenizer(Builder):
 
     def read_number(self):
         num_text = self.char
-        while self.next_char() and re.match(r'[\d.]', self.char):
-            num_text += self.char
+        while self.next_char():
+            if self.char == '_':
+                continue
+            elif re.match(r'[\d.]', self.char):
+                num_text += self.char
+            else:
+                break
         if self.char == 'd':
             num_text += 'd'
             self.next_char()
