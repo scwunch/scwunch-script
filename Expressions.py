@@ -348,6 +348,8 @@ def make_param(param_nodes: list[Node]) -> Parameter:
         case [*_, Token(type=TokenType.Operator, source_text=op)] if op in ('?', '+', '*'):
                 quantifier = op
                 param_nodes = param_nodes[:-1]
+        case [Token(type=TokenType.PatternName, source_text=dot_name)]:
+            return Parameter(dot_name)
     name = None
     match param_nodes:
         case []:

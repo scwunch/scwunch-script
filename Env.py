@@ -107,10 +107,6 @@ def get_digits(num: int, base=6) -> list[str]:
         result = get_digits(num // base, base)
         result.append(str(num % base))
         return result
-        ls = get_digits(num // base, base)
-        if len(ls) > 3:
-            return f"{ls[:-3]}_{ls[-3:]}{str(num % base)}"
-        return ls + str(num % base)
 
 def frac_from_base(num: float, base=6, precision=12):
     digits = []

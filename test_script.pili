@@ -1,22 +1,3 @@
-print 1_0 / 3_0
-nums[1] = 1.781d
-print nums[1]/100d * 10000
-nums[2] = debug 87.6d / 10000d * 10000
-print nums[2]
-print 676d / 100000d * 10000
-print 518d / 100000d * 10000
-print 4705d / 100000d * 10000
-print 363d / 100000d * 10000
-print 3565d / 100000d * 10000
-print 29.5d / 10000d * 10000
-print 28.4d / 10000d * 10000
-print 23.3d / 10000d * 10000
-print 23.0d / 10000d * 10000
-print 22.3d / 10000d * 10000
-print 20.2d / 10000d * 10000
-print 17.7d / 10000d * 10000
-exit
-
 test =
 	0: 'test init success'
 print test[0]
@@ -82,7 +63,7 @@ print 'test 20 passed' if test[20] else 'test 20 failed'
 
 # test prototype modification
 Dog.bark_breed: "Hi, I'm a " + breed
-test[21] = spot.bark_breed == "Hi, I'm a terrier"
+test[21] = (spot.bark_breed) == "Hi, I'm a terrier"
 print 'test 21 passed' if test[21] else 'test 21 failed'
 
 test[22] = Dog.asdfknasdf? == false and Dog.bark_breed? == true and asdfasdf? == false and Dog? == true
