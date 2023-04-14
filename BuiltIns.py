@@ -77,7 +77,7 @@ BuiltIns['string'] = Function(ListPatt(AnyParam), lambda x: x.to_string(), name=
 BuiltIns['type'] = Function(ListPatt(AnyParam), lambda v: v.type)
 
 BuiltIns['len'] = Function(ListPatt(StringParam), lambda s: Value(len(s.value)))
-BuiltIns['len'].add_option(ListPatt(FunctionParam), lambda f: Value(len(f.value.options)))
+BuiltIns['len'].add_option(ListPatt(FunctionParam), lambda f: Value(len(f.options)))
 BuiltIns['len'].add_option(ListPatt(ListParam), lambda l: Value(len(l.value)))
 BuiltIns['len'].add_option(ListPatt(Parameter(Prototype(BuiltIns["pattern"]))), lambda p: Value(len(p.value)))
 
@@ -91,7 +91,7 @@ BuiltIns['len'].add_option(ListPatt(Parameter(Prototype(BuiltIns['list']))), lam
 def neg_index(scope: Function, *args: Value):
     fn = scope.type
     if len(args) == 1:
-        length = BuiltIns['len'].call([Value(fn)]).value
+        length = BuiltIns['len'].call([fn]).value
         index = Value(length + 1 + args[0].value)
         return fn.call([index])
     else:
@@ -241,7 +241,7 @@ def type_guard(t: Function, args: Value) -> Value:
     return Value(Prototype(t.value, guard=fn))
 
 Operator('.[',
-         Function(ListPatt(FunctionParam, ListParam), lambda a, b: a.call(b.value),
+         Function(ListPatt(AnyParam, ListParam), lambda a, b: a.call(b.value),
                   options={ListPatt(PatternParam, ListParam): type_guard,
                            ListPatt(ListParam): lambda a: Context.env.call(a.value)}),
          binop=15, prefix=15)
@@ -272,22 +272,40 @@ Operator('..',
                   options={ListPatt(StringParam): lambda a: dot_fn(Context.env, a)}),
          binop=15, prefix=15)
 
+
+# pattern generator options for int, str, float, etc
+def make_lambda_guard(type_name: str):
+    if type_name == 'str':
+        return lambda a, b: Value(Prototype(BuiltIns[type_name], guard=lambda x: Value(a.value <= len(x.value) <= b.value)))
+    else:
+        return lambda a, b: Value(Prototype(BuiltIns[type_name], guard=lambda x: Value(a.value <= x.value <= b.value)))
+
+for type_name in ('numeric', 'ratio', 'float', 'int', 'str'):
+    BuiltIns[type_name].add_option(ListPatt(NumericParam, NumericParam), make_lambda_guard(type_name))
+
+
+BuiltIns['str'].add_option(ListPatt(StringParam),
+                           lambda regex: Value(Prototype(BuiltIns['str'],
+                                                         guard=lambda s: Value(bool(re.fullmatch(regex.value, s.value))))))
+# BuiltIns['numeric'].add_option(ListPatt(NumericParam, NumericParam), lambda a, b: Value(Prototype(BuiltIns['numeric'], guard=lambda x: Value(a.value <= x.value <= b.value))))
+
 # Add shortcut syntax for adding function guards to type checks.  Eg `int > 0` or `float < 1.0`
-def number_guard(a: Value, b: Value, op_sym: str):
+def number_guard(op_sym: str):
     # assert a.value == b.type
-    return Value(Prototype(a.value, guard=lambda n: Op[op_sym].fn.call([n, b])))
+    return lambda t, n: Value(Prototype(t, guard=lambda x: Op[op_sym].fn.call([x, n])))
 
 # generating functions with syntax like `str > 5` => `[str x]: len(x) > 5`
-def string_guard(a: Value, b: Value, op_sym: str):
-    assert a.value == BuiltIns['str'] and b.type in (BuiltIns['int'], BuiltIns['float'])
+def string_guard(op_sym: str):
+    # assert a.value == BuiltIns['str'] and b.type in (BuiltIns['int'], BuiltIns['float'])
+    return lambda t, n: Value(Prototype(t, guard=lambda s: Op[op_sym].fn.call([Value(len(s.value)), n])))
     def guard(x, y):
         return Value(Prototype(BuiltIns['str'], guard=lambda s: Op[op_sym].fn.call([Value(len(s.value)), b])))
     # return guard
     return Value(Prototype(BuiltIns['str'], guard=lambda s: Op[op_sym].fn.call([Value(len(s.value)), b])))
 
 def add_guards(op_sym: str):
-    Op[op_sym].fn.assign_option(ListPatt(Parameter(ValuePattern(BuiltIns['int'])), NumericParam),
-                                lambda a, b: number_guard(a, b, op_sym))
+    Op[op_sym].fn.add_option(ListPatt(Parameter(ValuePattern(BuiltIns['int'])), NumericParam),
+                                number_guard(op_sym))
     Op[op_sym].fn.assign_option(ListPatt(Parameter(ValuePattern(BuiltIns['float'])), NumericParam),
                                 lambda a, b: number_guard(a, b, op_sym))
     Op[op_sym].fn.assign_option(ListPatt(Parameter(ValuePattern(BuiltIns['ratio'])), NumericParam),
@@ -296,5 +314,10 @@ def add_guards(op_sym: str):
                                 lambda a, b: string_guard(a, b, op_sym))
 
 
-for op in ('>', '<', '>=', '<='):
-    add_guards(op)
+for op_sym in ('>', '<', '>=', '<='):
+    for type_name in ('int', 'ratio', 'float', 'numeric'):
+        Op[op_sym].fn.add_option(ListPatt(Parameter(ValuePattern(BuiltIns[type_name])), NumericParam),
+                                 number_guard(op_sym))
+    Op[op_sym].fn.add_option(ListPatt(Parameter(ValuePattern(BuiltIns['str'])), NumericParam),
+                             string_guard(op_sym))
+    # add_guards(op)

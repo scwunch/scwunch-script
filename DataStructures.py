@@ -106,7 +106,7 @@ class ValuePattern(Pattern):
     def __hash__(self):
         return hash((self.value, self.name))
     def __repr__(self):
-        return "ValuePattern("+repr(self.value)+")"
+        return "ValuePattern("+str(self.value)+")"
 
 # class Type(Pattern):
 #     basic_type: BasicType
@@ -519,10 +519,14 @@ class Function:
         except AttributeError:
             pass
         prefix = self.name or ""
-        if len(self.options) == 1:
-            return f"{prefix}{{{self.options[0]}}}"
-        else:
-            return f"{prefix}{self.named_options}"
+        return prefix + "{}"
+        try:
+            if len(self.options) == 1:
+                return f"{prefix}{{{self.options[0]}}}"
+            else:
+                return f"{prefix}{self.named_options}"
+        except RecursionError:
+            return prefix
 
 class Value(Function):
     def __init__(self, value, type_=None):
@@ -596,6 +600,8 @@ class Operator:
         Op[text] = self
         self.text = text
         # self.precedence = precedence
+        if fn and not fn.name:
+            fn.name = text
         self.fn = fn
         self.associativity = associativity  # 'right' if 'right' in flags else 'left'
         self.prefix = prefix  # 'prefix' in flags
