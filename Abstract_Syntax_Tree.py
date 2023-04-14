@@ -249,6 +249,8 @@ class AST(Builder):
         return executable
 
     def read_list(self):
+        if self.tok.type == TokenType.ListEnd:
+            return List([])
         items: list[Statement] = []
         while self.tok:
             items.append(self.read_statement(TokenType.ListEnd, TokenType.Comma))

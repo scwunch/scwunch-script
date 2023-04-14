@@ -198,6 +198,8 @@ class SingleNode(Expression):
         super().__init__(line, source)
         self.node = node
     def evaluate(self):
+        if self.source == '[]':
+            return Value([])
         return eval_node(self.node)
 
 def eval_node(node: Node) -> Function:

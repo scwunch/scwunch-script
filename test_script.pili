@@ -1,7 +1,7 @@
 test =
 	0: 'test init success'
 print test[0]
-
+[]
 greet = "hello world"
 test[1] = greet == 'hello world'
 print 'test 1 passed' if test[1] == true else 'test 1 failed'
@@ -127,7 +127,7 @@ else
 print 'test 35 ' + ('passed' if test[35] == 10 else 'failed')
 
 
-my_list = List[]
+my_list = debug List[]
 my_list[1] = 'one'
 my_list[2] = 'two'
 my_list['not a number'] = 7d
