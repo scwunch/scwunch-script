@@ -485,6 +485,10 @@ class Function:
             if self.instanceof(BuiltIns['numeric']):
                 return Value(write_number(self.value))
             return Value(str(self.value))
+        if self.name:
+            return Value(self.name)
+        # if self.instanceof(BuiltIns['BasicType']):
+        #     return Value(self.name)
         return Value(str(self))
 
     def __eq__(self, other):
@@ -522,11 +526,11 @@ class Function:
 
 class Value(Function):
     def __init__(self, value, type_=None):
-        if isinstance(value, Fraction) and value.numerator % value.denominator == 0:
+        if isinstance(value, Fraction) and value.denominator == 1:
             self.value = int(value)
         else:
             self.value = value
-        super().__init__(type=type_ or TypeMap[type(value)])
+        super().__init__(type=type_ or TypeMap[type(self.value)])
 
     def set_value(self, new_value):
         if isinstance(new_value, Value):

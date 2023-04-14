@@ -72,8 +72,7 @@ print 'test 22 passed' if test[22] else 'test 22 failed'
 test[23] = (Dog[23] ?? "23") == "23" and (spot.name ?? "no name") == 'Rover'
 print 'test 23 passed' if test[23] else 'test 23 failed'
 
-# quirk: a variable name is needed in foo[str|int] otherwise "int" will be read as the variable name
-foo[str|int _]: 'it worked'
+foo[str|int]: 'it worked'
 test[24] = foo[4] + foo["4"] == 'it worked' * 2
 print 'test 24 ' + ('passed' if test[24] else 'failed')
 
@@ -82,13 +81,13 @@ test[25] = foo2[1] == "1 worked"
 print 'test 25 ' + ('passed' if test[25] else 'failed')
 
 Cat =
-	debug [str name]:
+	[str name]:
 		name = "😸 " + name
 	.meow: "hello my name is " + name
 	.string: "Cat " + name
 
 my_cat = Cat["Ruby"]
-print "string[my_cat] => " + string[my_cat]
+print "string[my_cat] => " + debug string[my_cat]
 print "my_cat.string => " + my_cat.string
 test[30] = string[my_cat] == my_cat.string and my_cat.string == "Cat 😸 Ruby"
 print 'test 30 ' + ('passed' if test[30] else 'failed')
@@ -99,9 +98,10 @@ fav_num = 5
 test[31] = add[fav_num, 5]  == fav_num.add[5]
 print 'test 31 ' + ('passed' if test[31] else 'failed')
 
-test[32] = type[-10 / 20].string == "Rational" \
-	and type[4 * (1 + (-15 / 4))].string == "Integer" \
-		and type[1.0 / 1 + 1].string == "Float"
+
+test[32] = type[-10 / 20].string == "ratio" \
+	and type[4 * (1 + (-15 / 4))].string == "int" \
+		and type[1.0 / 1 + 1].string == "float"
 print 'test 32 ' + ('passed' if test[32] else 'failed')
 
 int_patt = int[-3, 5]
