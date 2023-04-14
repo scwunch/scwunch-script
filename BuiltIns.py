@@ -61,11 +61,14 @@ NegativeRationalParam = Parameter(Prototype(BuiltIns["ratio"], guard=lambda x: V
 BuiltIns['bool'].add_option(ListPatt(AnyParam), lambda x: Value(bool(x.value)))
 BuiltIns['number'] = Function(ListPatt(BoolParam), lambda x: Value(int(x.value)),
                               options={ListPatt(NumericParam): Value.clone,
-                                       ListPatt(StringParam): lambda x: Value(read_number(x.value))})
-BuiltIns['integer'] = Function(ListPatt(NormalParam), lambda x: Value(int(BuiltIns['number'].call([x]).value)))
-BuiltIns['rational'] = Function(ListPatt(NormalParam), lambda x: Value(Fraction(BuiltIns['number'].call([x]).value)))
+                                       ListPatt(StringParam): lambda x: Value(read_number(x.value))},
+                              name='number')
+BuiltIns['integer'] = Function(ListPatt(NormalParam), lambda x: Value(int(BuiltIns['number'].call([x]).value)),
+                               name='integer')
+BuiltIns['rational'] = Function(ListPatt(NormalParam), lambda x: Value(Fraction(BuiltIns['number'].call([x]).value)),
+                                name='rational')
 # BuiltIns['float'] = Function(ListPatt(NormalParam), lambda x: Value(float(BuiltIns['number'].call([x]).value)))
-BuiltIns['string'] = Function(ListPatt(AnyParam), lambda x: x.to_string())
+BuiltIns['string'] = Function(ListPatt(AnyParam), lambda x: x.to_string(), name='string')
 # BuiltIns['string'].add_option(ListPatt(NumberParam),
 #                               lambda n: Value('-' * (n.value < 0) +
 #                                               base(abs(n.value), 10, 6, string=True, recurring=False)))

@@ -23,7 +23,7 @@ class Pattern:
             case ValuePattern(value=value):
                 return int(arg == value)
             case Prototype(prototype=prototype):
-                score = int(arg == prototype) or (arg.instanceof(prototype)) * 2/3
+                score = int(arg == prototype) or (arg.instanceof(prototype)) * 35/36
             case Union(patterns=patterns):
                 count = len(self)
                 # if BasicType.Any in (getattr(p, "basic_type", None) for p in patterns):
@@ -57,7 +57,7 @@ class AnyPattern(Pattern):
     def __init__(self, name=None):
         super().__init__(name, None)
     def match_score(self, arg):
-        return 1
+        return 1/36
     def __repr__(self):
         return "Any"
 

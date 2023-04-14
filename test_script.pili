@@ -87,8 +87,6 @@ Cat =
 	.string: "Cat " + name
 
 my_cat = Cat["Ruby"]
-print "string[my_cat] => " + debug string[my_cat]
-print "my_cat.string => " + my_cat.string
 test[30] = string[my_cat] == my_cat.string and my_cat.string == "Cat 😸 Ruby"
 print 'test 30 ' + ('passed' if test[30] else 'failed')
 
