@@ -83,7 +83,7 @@ test[25] = foo2[1] == "1 worked"
 print 'test 25 ' + ('passed' if test[25] else 'failed')
 
 Cat =
-	debug [str name]:
+	str name:
 		name = "😸 " + name
 	.meow: "hello my name is " + name
 	.string: "Cat " + name
