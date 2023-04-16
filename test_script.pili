@@ -23,7 +23,7 @@ test[4] = my_var[2] == 11
 print 'test 4 passed' if test[4] else 'test 4 failed'
 
 next_var =
-	str text: text + '?!?!'
+	debug str text: text + '?!?!'
 test[5] = next_var['hahahahaha'] == 'hahahahaha?!?!'
 print 'test 5 passed' if test[5] else 'test 5 failed'
 

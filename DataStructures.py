@@ -250,7 +250,7 @@ class ReusableMap:
 class FuncBlock:
     native = None
     def __init__(self, block, env=None):
-        if isinstance(block, Block):
+        if hasattr(block, 'statements'):
             self.exprs = list(map(Context.make_expr, block.statements))
         else:
             self.native = block
@@ -420,33 +420,35 @@ class Function:
     def select(self, key, walk_prototype_chain=True, ascend_env=False):
         try:
             match key:
-                case Pattern():
-                    opt = [opt for opt in self.options if opt.pattern == key]
+                case ListPatt():
+                    return [opt for opt in self.options if opt.pattern == key][0]
                     if opt:
                         return opt[0]
                 case str() as key:
-                    return self.named_options[key]
-                # case int() as key if key > 0:
-                #     return self.array[key]
+                    opt = self.named_options[key]
+                    # I may want to remove this case
+                    # BECAUSE foo.string should NOT match a possible [any] pattern on foo.
+                    # It should ONLY match "string" named option on foo first, then string function globally second
                 case [arg] if arg.instanceof(BuiltIns['str']):
-                    return self.named_options[arg.value]
-                # case [arg] if arg.instanceof(BuiltIns['int']) and arg.value > 0:
-                #     return self.array[arg.value]
-        except (IndexError, KeyError):
+                    opt = self.named_options.get(arg.value, None)
+                case _:
+                    assert isinstance(key, list)
+                    opt = None
+            if opt:
+                return opt
+            return self.options[self.index_of(key)]
+            i = self.index_of(key)
+            if i is not None:
+                return self.options[i]
+        except (KeyError, IndexError):
             pass
-        i = self.index_of(key)
-        if i is not None:
-            return self.options[i]
-        if walk_prototype_chain and self.type:
-            try:
-                return self.type.select(key, ascend_env=ascend_env)
-            except NoMatchingOptionError:
-                pass
-        if ascend_env and self.env:
-            try:
-                return self.env.select(key, walk_prototype_chain)
-            except NoMatchingOptionError:
-                pass
+        try:
+            if walk_prototype_chain and self.type:
+                return self.type.select(key, True, ascend_env)
+            if ascend_env and self.env:
+                return self.env.select(key, walk_prototype_chain, True)
+        except NoMatchingOptionError:
+            pass
         raise NoMatchingOptionError(f"Line {Context.line}: key {key} not found in function {self}")
 
     def call(self, key, ascend=False):

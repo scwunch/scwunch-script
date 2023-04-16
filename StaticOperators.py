@@ -79,7 +79,7 @@ def option_exists(lhs: list[Node], rhs: list[Node]) -> Value:
         last = lhs[-1]
         if isinstance(last, List):
             key = eval_node(last)
-        elif last.type in (TokenType.Name, TokenType.PatternName):
+        elif last.type == TokenType.Name:
             key = [Value(last.source_text)]
         else:
             raise OperatorError(f"Line {Context.line}: right-most arg of ? operator must be a name or arg-list.")
@@ -101,15 +101,5 @@ def nullish_or(lhs: list[Node], rhs: list[Node]) -> Value:
     except NoMatchingOptionError:
         return expressionize(rhs).evaluate()
 Op['??'].static = nullish_or
-
-def dot_op(lhs: list[Node], rhs: list[Node]) -> Value:
-    assert len(mid) == 1
-    fn = expressionize(lhs).evaluate()
-    name = mid[0].source_text
-    if isinstance(fn, Function):
-        try:
-            option = fn.deref(name)
-        except NoMatchingOptionError:
-            option = Context.env.deref()
 
 

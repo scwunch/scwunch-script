@@ -194,24 +194,28 @@ class AST(Builder):
             if self.tok.type in end_of_statement:
                 # self.seek()
                 return Statement(nodes)
-            elif self.tok.type in (TokenType.GroupEnd, TokenType.ListEnd):
+            elif self.tok.type in (TokenType.GroupEnd, TokenType.ListEnd, TokenType.FnEnd):
                 raise Exception(f'Unexpected {repr(self.tok)} found at {self.tok.pos}!')
             elif self.tok.type == TokenType.GroupStart:
                 self.seek()
                 nodes.append(self.read_statement(TokenType.GroupEnd))
             elif self.tok.type == TokenType.ListStart:
-                nodes.append(Token('.[', self.tok.pos))
+                if self.col and self.peek(-1).type == TokenType.Name:
+                    nodes.append(Token('.', self.tok.pos))
                 self.seek()
-                nodes.append(self.read_list())
+                nodes.append(List(self.read_list(TokenType.ListEnd)))
+            elif self.tok.type == TokenType.FnStart:
+                self.seek()
+                nodes.append(FunctionLiteral(self.read_list(TokenType.FnEnd)))
             elif self.tok.type == TokenType.Name:
                 # or `,` or `]` too?
-                if self.peek() and self.peek().source_text.startswith(':') \
-                        and (self.peek(-1) is None or self.peek(-1).type != TokenType.Operator):
-                    # nodes.append(Token('&name'))
-                    # self.tok.type = TokenType.PatternName
-                    pass
-                elif self.peek(-1) and self.peek(-1).source_text == '.':
-                    self.tok.type = TokenType.PatternName
+                # if self.peek() and self.peek().source_text.startswith(':') \
+                #         and (self.peek(-1) is None or self.peek(-1).type != TokenType.Operator):
+                #     # nodes.append(Token('&name'))
+                #     # self.tok.type = TokenType.PatternName
+                #     pass
+                # elif self.peek(-1) and self.peek(-1).source_text == '.':
+                #     self.tok.type = TokenType.PatternName
                 nodes.append(self.tok)
             elif self.tok.source_text == '-' and (not self.peek(-1) or self.peek(-1).type == TokenType.Operator):
                 nodes.append(self.tok)
@@ -248,20 +252,20 @@ class AST(Builder):
         executable = Statement(nodes)
         return executable
 
-    def read_list(self):
-        if self.tok.type == TokenType.ListEnd:
-            return List([])
+    def read_list(self, end: TokenType) -> list[Statement]:
+        if self.tok.type == end:
+            return []
         items: list[Statement] = []
         while self.tok:
-            items.append(self.read_statement(TokenType.ListEnd, TokenType.Comma))
+            items.append(self.read_statement(end, TokenType.Comma))
             if self.tok.type == TokenType.Comma:
                 self.seek()
-            elif self.tok.type == TokenType.ListEnd:
+            elif self.tok.type == end:
                 break
             else:
-                raise Exception(f"Unexpected token {repr(self.tok)}; expected {TokenType.ListEnd}")
+                raise Exception(f"Unexpected token {repr(self.tok)}; expected {end}")
 
-        return List(items)
+        return items
 
     def __repr__(self):
         return '\n'.join((repr(expr) if expr else '') for expr in self.block.statements)

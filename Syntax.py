@@ -25,11 +25,13 @@ class TokenType(Enum):
     Keyword = 'keyword'  # in, with, ...
     # Type = "type"
     Name = 'name'
-    PatternName = 'pattern name'
+    # PatternName = 'pattern name'
     GroupStart = '('
     GroupEnd = ')'
     ListStart = '['
     ListEnd = ']'
+    FnStart = "{"
+    FnEnd = "}"
     Comma = ','
     Backslash = '\\'
 
@@ -295,6 +297,16 @@ class List(NonTerminal):
 
     def __repr__(self):
         return repr(self.nodes)  # f"[{', '.join(repr(node) for node in self.nodes)}]"
+
+
+class FunctionLiteral(NonTerminal):
+    options: list[Statement]
+    def __init__(self, items: list[Statement]):
+        super().__init__(items)
+        self.options = items
+
+    def __repr__(self):
+        return f"{{{' '.join(map(repr, self.options))}}}"
 
 
 if __name__ == "__main__":

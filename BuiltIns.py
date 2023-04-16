@@ -116,7 +116,7 @@ def eval_set_args(lhs: list[Node], rhs: list[Node]) -> list[Function]:
     match lhs:
         case [Token(type=TokenType.Name, source_text=name)]:
             key = Value(name)
-        case [*fn_nodes, Token(source_text='.'), Token(type=TokenType.PatternName, source_text=name)]:
+        case [*fn_nodes, Token(source_text='.'), Token(type=TokenType.Name, source_text=name)]:
             key = Value(name)
             fn = expressionize(fn_nodes).evaluate()
         case [*fn_nodes, Token(source_text='.'|'.['), List() as list_node]:
@@ -255,7 +255,7 @@ Operator('?',
 #     else:
 #         return val
 
-def dot_fn(a: Function, b: Value):
+def dot_fn_OLD(a: Function, b: Value):
     name = b.value
     try:
         # assert a.type == BuiltIns['fn'] and isinstance(a.value, Function)
@@ -267,14 +267,46 @@ def dot_fn(a: Function, b: Value):
         # assert isinstance(fn.value, Function)
         return fn.call([a])
 
+def eval_call_args(lhs: list[Node], rhs: list[Node]) -> list[Function]:
+    assert len(rhs) == 1
+    if rhs[0].type == TokenType.Name:
+        right_arg = Value(rhs[0].source_text)
+    else:
+        right_arg = expressionize(rhs).evaluate()
+    if not right_arg.instanceof(BuiltIns['list']):
+        return [expressionize(lhs).evaluate(), right_arg]
+    args = right_arg
+    if len(lhs) > 2 and lhs[-1].type == TokenType.Name and lhs[-2].source_text == '.':
+        name = lhs[-1].source_text
+        a = expressionize(lhs[:-2]).evaluate()
+        try:
+            fn = a.deref(name, ascend_env=False)
+        except NoMatchingOptionError:
+            fn = Context.env.deref(name)
+            # if fn.type != BuiltIns['fn']:
+            #     raise OperatorError(f"Line {Context.line}: '{name}' is not an option or function.")
+            args = Value([a] + args.value)
+    else:
+        fn = expressionize(lhs).evaluate()
+    return [fn, args]
+def dot_fn(a: Function, b: Value):
+    name = b.value
+    try:
+        return a.deref(name, ascend_env=False)
+    except NoMatchingOptionError:
+        fn = Context.env.deref(name)
+        if not fn.instanceof(BuiltIns['fn']):
+            raise OperatorError(f"Line {Context.line}: '{name}' is not an option or function.")
+        # assert isinstance(fn.value, Function)
+        return fn.call([a])
+
 Operator('.',
-         Function(ListPatt(AnyParam, StringParam), dot_fn,
-                  options={ListPatt(StringParam): lambda a: dot_fn(Context.env, a)}),
-                  # options={ListPatt(AnyParam,
-                  #                   Parameter(Prototype(BuiltIns["Name"])),
-                  #                   Parameter(Prototype(BuiltIns["List"]), quantifier="?")
-                  #                   ): dot_call}),
-         binop=15, prefix=15, ternary='.[')
+         Function(ListPatt(AnyParam, ListParam), lambda a, b: a.call(b.value),
+                  {AnyBinopPattern: dot_fn,
+                   ListPatt(StringParam): lambda a: dot_fn(Context.env, a)}),
+         binop=15, prefix=15)
+Op['.'].eval_args = eval_call_args
+
 
 def type_guard(t: Function, args: Value) -> Value:
     fn = None
@@ -301,7 +333,7 @@ Operator('.[',
                            ListPatt(ListParam): lambda a: Context.env.call(a.value)}),
          binop=15, prefix=15)
 
-def eval_call_args(lhs: list[Node], rhs: list[Node]) -> list[Value]:
+def eval_call_args_OLD(lhs: list[Node], rhs: list[Node]) -> list[Value]:
     args = expressionize(rhs).evaluate()
     if len(lhs) > 2 and lhs[-1].type == TokenType.PatternName and lhs[-2].source_text == '.':
         name = lhs[-1].source_text
@@ -319,7 +351,7 @@ def eval_call_args(lhs: list[Node], rhs: list[Node]) -> list[Value]:
         fn = expressionize(lhs).evaluate()
     return [fn, args]
 
-Op['.['].eval_args = eval_call_args
+Op['.['].eval_args = eval_call_args_OLD
 
 # map-dot / swizzle operator
 Operator('..',

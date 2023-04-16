@@ -1,7 +1,7 @@
 import math
 from fractions import Fraction
 
-from Syntax import Block
+from Syntax import Block, FunctionLiteral
 from Env import *
 from Expressions import Expression
 
@@ -116,7 +116,7 @@ class FuncBlock:
     exprs: list[Expression]
     env: Function
     native: callable
-    def __init__(self, block: Block | callable, env: Function = None): ...
+    def __init__(self, block: Block | FunctionLiteral | callable, env: Function = None): ...
     def make_function(self, options: dict[Pattern, opt_type], env: Function = None) -> Function: ...
     def execute(self, args: list[Function] = None, scope: Function = None) -> Function: ...
 

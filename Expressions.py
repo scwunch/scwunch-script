@@ -208,12 +208,13 @@ def eval_node(node: Node) -> Function:
             return expressionize(statement).evaluate()
         case Token() as tok:
             return eval_token(tok)
-        case Block() as block:
+        case Block() | FunctionLiteral() as block:
             opt = Option(ListPatt(), FuncBlock(block))
             return opt.resolve(None)
         case List() as node:
             # return Value([eval_node(n) for n in node.nodes])
             return Value(list(map(eval_node, node.nodes)))
+
     raise ValueError(f'Could not evaluate node {node} at line: {node.pos}')
 
 
@@ -231,48 +232,6 @@ def precook_args(op: Operator, lhs, rhs) -> list[Value]:
 
 Operator.eval_args = precook_args
 
-
-def expr_tree_old(nodes: list[Node]):
-    pre_op = Op[nodes[0].source_text] if nodes[0].type in (TokenType.Operator, TokenType.Keyword) else None
-    post_op = Op[nodes[-1].source_text] if nodes[-1].type in (TokenType.Operator, TokenType.Keyword) else None
-    op_idx = right_idx = None
-    min_precedence = math.inf
-    if pre_op and pre_op.prefix is not None:
-        op_idx = right_idx = 0
-        min_precedence = pre_op.prefix
-    if post_op and post_op.postfix is not None and post_op.postfix < min_precedence:
-        op_idx = right_idx = len(nodes) - 1
-        min_precedence = post_op.postfix
-    # min_precedence = min(getattr(prefix, 'precedence', math.inf), getattr(postfix, 'precedence', math.inf))
-    i_tern = min_tern_prec = ternary_second = ternary_op = None
-    for i in range(1, len(nodes)-1):
-        if ternary_op and nodes[i].source_text == ternary_op.ternary:
-            right_idx, min_precedence = i, ternary_op.binop
-            op_idx = i_tern
-        elif nodes[i].type in (TokenType.Operator, TokenType.Keyword, TokenType.ListStart):
-            # if the previous node represents a binary operator, then this one cannot be binary
-            op = Op[nodes[i].source_text]
-            if op.binop and op.binop < min_precedence or \
-                    op.binop == min_precedence and op.associativity == 'left':
-                op_idx, right_idx = i, i
-                min_precedence = op.binop
-                if min_tern_prec and min_precedence < min_tern_prec:
-                    i_tern = min_tern_prec = ternary_op = None
-                if op.ternary:
-                    i_tern, min_tern_prec = op_idx, op.binop
-                    ternary_second = op.ternary
-                    ternary_op = op
-
-    if op_idx is None:
-        raise OperatorError('No operator found on line '+str(Context.line))
-
-    lhs = nodes[:op_idx]
-    operator = Op[nodes[op_idx].source_text]
-    mid = nodes[op_idx+1:right_idx]
-    rhs = nodes[right_idx+1:]
-    # lhs = Expression(lhs) if lhs else None
-    # rhs = Expression(rhs) if rhs else None
-    return lhs, operator, mid, rhs
 
 class OpSplitter:
     op: Operator
@@ -317,7 +276,7 @@ def string(text: str):
 
 def make_param_old(param_nodes: list[Node]) -> Parameter:
     last = param_nodes[-1]
-    if isinstance(last, Token) and last.type in (TokenType.Name, TokenType.PatternName):
+    if isinstance(last, Token) and last.type == TokenType.Name:
         name = last.source_text
         param_nodes = param_nodes[:-1]
     else:
@@ -335,7 +294,7 @@ def make_value_param(param_nodes: list[Node]) -> Parameter:
             raise SyntaxErr(f"Expected function parameter on line {Context.line}.")
         case [Token(type=TokenType.Name, source_text=name)]:
             value = Value(name)
-        case [Token(type=TokenType.PatternName, source_text=name)]:
+        case [Token(type=TokenType.Name, source_text=name)]:
             value = Value(name)
         case _:
             value = expressionize(param_nodes).evaluate()
@@ -350,7 +309,7 @@ def make_param(param_nodes: list[Node]) -> Parameter:
         case [*_, Token(type=TokenType.Operator, source_text=op)] if op in ('?', '+', '*'):
                 quantifier = op
                 param_nodes = param_nodes[:-1]
-        case [Token(type=TokenType.PatternName, source_text=dot_name)]:
+        case [Token(type=TokenType.Name, source_text=dot_name)]:
             return Parameter(dot_name)
     name = None
     match param_nodes:
@@ -407,7 +366,7 @@ def make_param(param_nodes: list[Node]) -> Parameter:
     pattern = patternize(expressionize(pattern_nodes).evaluate())
     return Parameter(pattern, name, quantifier)
     last = param_nodes[-1]
-    if isinstance(last, Token) and last.type in (TokenType.Name, TokenType.PatternName):
+    if isinstance(last, Token) and last.type == TokenType.Name:
         name = last.source_text
         param_nodes = param_nodes[:-1]
     else:
@@ -434,7 +393,7 @@ def read_value_option(nodes: list[Node]) -> Option:
     match nodes:
         case [*fn_nodes, _, List() as param_list]:
             param_list = [item.nodes for item in param_list.nodes]
-        case [*fn_nodes, Token(source_text='.'), Token(type=TokenType.PatternName) as name_tok]:
+        case [*fn_nodes, Token(source_text='.'), Token(type=TokenType.Name) as name_tok]:
             param_list = [[name_tok]]
         case _:
             param_list = split(nodes, TokenType.Comma)
@@ -482,7 +441,7 @@ def read_option(nodes: list[Node], is_value=False) -> Option:
             param_list = []
         case [*fn_nodes, _, List() as param_list]:
             param_list = [item.nodes for item in param_list.nodes]
-        case [*fn_nodes, Token(source_text='.'), Token(type=TokenType.PatternName) as name_tok]:
+        case [*fn_nodes, Token(source_text='.'), Token(type=TokenType.Name) as name_tok]:
             param_list = [[name_tok]]
         case _:
             param_list = split(nodes, TokenType.Comma)
