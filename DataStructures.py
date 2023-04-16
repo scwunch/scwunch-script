@@ -422,8 +422,6 @@ class Function:
             match key:
                 case ListPatt():
                     return [opt for opt in self.options if opt.pattern == key][0]
-                    if opt:
-                        return opt[0]
                 case str() as key:
                     opt = self.named_options[key]
                     # I may want to remove this case
@@ -437,9 +435,6 @@ class Function:
             if opt:
                 return opt
             return self.options[self.index_of(key)]
-            i = self.index_of(key)
-            if i is not None:
-                return self.options[i]
         except (KeyError, IndexError):
             pass
         if walk_prototype_chain and self.type:

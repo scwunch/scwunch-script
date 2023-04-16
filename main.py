@@ -9,11 +9,11 @@ with open(script_path) as f:
 tokenizer = Tokenizer(script_string)
 ast = AST(tokenizer)
 root = Function(ListPatt(Parameter('main')), FuncBlock(ast.block))
+BuiltIns['pili'] = root
 for key, builtin in BuiltIns.items():
     if not builtin.name:
         builtin.name = key
     root.add_option(ListPatt(Parameter(key)), builtin)
 Context.root = root
-Context.env = root
 output = root.deref('main')
 print(output)

@@ -231,6 +231,19 @@ Operator('**',
          binop=13, chainable=False, associativity='right')
 Operator('?',
          postfix=14, static=True)
+def has_option(fn: Function, arg: Function) -> Value:
+    try:
+        if arg.instanceof(BuiltIns['str']) or arg.instanceof(BuiltIns['list']):
+            fn.select(arg.value)
+        else:
+            fn.select([arg])
+        return Value(True)
+    except NoMatchingOptionError:
+        return Value(False)
+Operator('has',
+         Function(ListPatt(AnyParam, ListParam), has_option,
+                  {AnyBinopPattern: has_option}),
+         binop=14)
 # def dot_call(a: Value, b: Value, c: Value = None):
 #     name = b.value
 #     args: list[Value] = []

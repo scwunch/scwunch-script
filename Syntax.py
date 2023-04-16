@@ -86,6 +86,7 @@ class OperatorWord(Enum):
     Not = 'not'
     Of = 'of'
     If = 'if'
+    Has = 'has'
     # Else = 'else'
 
 

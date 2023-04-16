@@ -43,7 +43,7 @@ print 'test 12 passed' if test[8d] else 'test 12 failed'
 test[9d] = (spot.breed == "terrier" or spot.name == "Spot") and (spot.breed != "terrier" or spot.name == "Spot") and not (spot.breed == "terrier" and spot.name != "Spot") and not (spot.breed != "terrier" and spot.name == "Spot")
 print 'test 13 passed' if test[9d] else 'test 13 failed'
 
-debug spot.name = 'Rover'
+spot.name = 'Rover'
 test[14] = spot.name == 'Rover'
 print 'test 14 passed' if test[14] else 'test 14 failed'
 
@@ -66,7 +66,9 @@ Dog.bark_breed: "Hi, I'm a " + breed
 test[21] = (spot.bark_breed) == "Hi, I'm a terrier"
 print 'test 21 passed' if test[21] else 'test 21 failed'
 
-test[22] = Dog.asdfknasdf? == false and Dog.bark_breed? == true and asdfasdf? == false and Dog? == true
+test[22] = Dog has "asdfknasdf" == false and Dog has "bark_breed" == true
+test[22] = test[22] and not root has 'asdfasdf' and root has "Dog" == true
+test[22] = test[22] and pili has 'string'
 print 'test 22 passed' if test[22] else 'test 22 failed'
 
 test[23] = (Dog[23] ?? "23") == "23" and (spot.name ?? "no name") == 'Rover'
