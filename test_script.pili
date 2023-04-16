@@ -23,7 +23,7 @@ test[4] = my_var[2] == 11
 print 'test 4 passed' if test[4] else 'test 4 failed'
 
 next_var =
-	debug str text: text + '?!?!'
+	str text: text + '?!?!'
 test[5] = next_var['hahahahaha'] == 'hahahahaha?!?!'
 print 'test 5 passed' if test[5] else 'test 5 failed'
 
@@ -43,7 +43,7 @@ print 'test 12 passed' if test[8d] else 'test 12 failed'
 test[9d] = (spot.breed == "terrier" or spot.name == "Spot") and (spot.breed != "terrier" or spot.name == "Spot") and not (spot.breed == "terrier" and spot.name != "Spot") and not (spot.breed != "terrier" and spot.name == "Spot")
 print 'test 13 passed' if test[9d] else 'test 13 failed'
 
-spot.name = 'Rover'
+debug spot.name = 'Rover'
 test[14] = spot.name == 'Rover'
 print 'test 14 passed' if test[14] else 'test 14 failed'
 

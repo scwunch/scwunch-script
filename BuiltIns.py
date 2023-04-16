@@ -146,7 +146,7 @@ def key_to_param_set(key: Value) -> ListPatt:
         vals = key.value
     else:
         vals = [key]
-    params = (Parameter(ValuePattern(pval)) for pval in vals)
+    params = (Parameter(ValuePattern(pval, pval.value if isinstance(pval.value, str) else None)) for pval in vals)
     return ListPatt(*params)
 
 

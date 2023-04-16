@@ -405,7 +405,7 @@ class Function:
             return Value(None)
 
     def index_of(self, key) -> int | None:
-        idx = None
+        idx = -1
         high_score = 0
         arg_list = Value(key)
         for i, opt in enumerate(self.options):
@@ -442,13 +442,16 @@ class Function:
                 return self.options[i]
         except (KeyError, IndexError):
             pass
-        try:
-            if walk_prototype_chain and self.type:
+        if walk_prototype_chain and self.type:
+            try:
                 return self.type.select(key, True, ascend_env)
-            if ascend_env and self.env:
+            except NoMatchingOptionError:
+                pass
+        if ascend_env and self.env:
+            try:
                 return self.env.select(key, walk_prototype_chain, True)
-        except NoMatchingOptionError:
-            pass
+            except NoMatchingOptionError:
+                pass
         raise NoMatchingOptionError(f"Line {Context.line}: key {key} not found in function {self}")
 
     def call(self, key, ascend=False):

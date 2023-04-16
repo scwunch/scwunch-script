@@ -322,7 +322,7 @@ def make_param(param_nodes: list[Node]) -> Parameter:
             last_op = Op.get(param_nodes[-2].source_text, None)
             if last_op is None or last_op.postfix:
                 if last_op and last_op.binop:
-                    pass  # WARNING: ambiguous pattern
+                    print("WARNING: ambiguous pattern")
             else:
                 pattern_nodes = param_nodes
         case [*pattern_nodes]:
