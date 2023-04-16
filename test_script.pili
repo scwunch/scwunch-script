@@ -71,7 +71,7 @@ test[22] = test[22] and not root has 'asdfasdf' and root has "Dog" == true
 test[22] = test[22] and pili has 'string'
 print 'test 22 passed' if test[22] else 'test 22 failed'
 
-test[23] = (Dog[23] ?? "23") == "23" and (spot.name ?? "no name") == 'Rover'
+test[23] = (Dog[23] ?? "fall back") == "fall back" and (spot.name ?? "no name") == 'Rover'
 print 'test 23 passed' if test[23] else 'test 23 failed'
 
 foo[str|int]: 'it worked'
@@ -83,7 +83,7 @@ test[25] = foo2[1] == "1 worked"
 print 'test 25 ' + ('passed' if test[25] else 'failed')
 
 Cat =
-	[str name]:
+	debug [str name]:
 		name = "😸 " + name
 	.meow: "hello my name is " + name
 	.string: "Cat " + name

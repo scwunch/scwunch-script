@@ -165,7 +165,8 @@ class ListPatt(Pattern):
         d = {}
         if args is None:
             return d
-        assert self.min_len() <= len(args) <= self.max_len()
+        if not self.min_len() <= len(args) <= self.max_len():
+            pass
         if len(args) == 0:
             return d
         params = (p for p in self.parameters)
@@ -404,8 +405,8 @@ class Function:
         else:
             return Value(None)
 
-    def index_of(self, key) -> int | None:
-        idx = -1
+    def index_of(self, key) -> int:
+        idx = None
         high_score = 0
         arg_list = Value(key)
         for i, opt in enumerate(self.options):
@@ -415,6 +416,8 @@ class Function:
             if score > high_score:
                 high_score = score
                 idx = i
+        if idx is None:
+            raise IndexError
         return idx
 
     def select(self, key, walk_prototype_chain=True, ascend_env=False):
