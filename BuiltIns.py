@@ -1,6 +1,6 @@
 import re
 from fractions import Fraction
-from Syntax import Node, TokenType
+from Syntax import Node, Token, List, TokenType
 from Env import *
 from DataStructures import *
 from Expressions import expressionize, read_number
@@ -56,7 +56,8 @@ AnyParam = Parameter(Any)
 NormalBinopPattern = ListPatt(NormalParam, NormalParam)
 AnyBinopPattern = ListPatt(AnyParam, AnyParam)
 
-NegativeRationalParam = Parameter(Prototype(BuiltIns["ratio"], guard=lambda x: Value(x.value < 0)))
+PositiveIntParam = Parameter(Prototype(BuiltIns["int"], guard=lambda x: Value(x.value > 0)))
+NegativeIntParam = Parameter(Prototype(BuiltIns["int"], guard=lambda x: Value(x.value < 0)))
 # BuiltIns['numeric'] = Union(Prototype(BuiltIns["bool"]), Prototype(BuiltIns["int"]), Prototype(BuiltIns["ratio"]), Prototype(BuiltIns["float"]))
 BuiltIns['bool'].add_option(ListPatt(AnyParam), lambda x: Value(bool(x.value)))
 BuiltIns['number'] = Function(ListPatt(BoolParam), lambda x: Value(int(x.value)),
@@ -69,6 +70,7 @@ BuiltIns['rational'] = Function(ListPatt(NormalParam), lambda x: Value(Fraction(
                                 name='rational')
 # BuiltIns['float'] = Function(ListPatt(NormalParam), lambda x: Value(float(BuiltIns['number'].call([x]).value)))
 BuiltIns['string'] = Function(ListPatt(AnyParam), lambda x: x.to_string(), name='string')
+# BuiltIns['string'].add_option(ListPatt(ListParam), lambda l: Value(str(l.value[1:])))
 # BuiltIns['string'].add_option(ListPatt(NumberParam),
 #                               lambda n: Value('-' * (n.value < 0) +
 #                                               base(abs(n.value), 10, 6, string=True, recurring=False)))
@@ -87,24 +89,77 @@ BuiltIns['contains'] = Function(ListPatt(FunctionParam, AnyParam),
                                 lambda a, b: Value(b in (opt.value for opt in a.options)))
 BuiltIns['List'] = Function(ListPatt(Parameter(Any, quantifier='*')),
                             lambda *vals: Value(list(*vals)))
-BuiltIns['len'].add_option(ListPatt(Parameter(Prototype(BuiltIns['list']))), lambda l: Value(len(l.value)-1))
-def neg_index(scope: Function, *args: Value):
+BuiltIns['len'].add_option(ListPatt(Parameter(Prototype(BuiltIns['list']))), lambda l: Value(len(l.value)))
+
+def list_get(scope: Function, *args: Value):
     fn = scope.type
     if len(args) == 1:
         length = BuiltIns['len'].call([fn]).value
-        index = Value(length + 1 + args[0].value)
-        return fn.call([index])
+        if abs(args[0]) > length:
+            raise IndexError(f'Line {Context.line}: Index {args[0]} out of range')
+        if args[0].value > 0:
+            index = args[0].value
+        else:
+            index = length + 1 + args[0].value
+        return scope.value[index]
     else:
         raise NotImplemented
-BuiltIns['List'].add_option(ListPatt(NegativeRationalParam), FuncBlock(neg_index))
-BuiltIns['push'] = Function(ListPatt(Parameter(Prototype(BuiltIns['List'])), AnyParam),
-                            lambda fn, val: fn.value.add_option(ValuePattern(Value(len(fn.value.array))), val) and fn)
+BuiltIns['list'].add_option(ListPatt(PositiveIntParam), FuncBlock(list_get))
+BuiltIns['list'].add_option(ListPatt(NegativeIntParam), FuncBlock(list_get))
+BuiltIns['push'] = Function(ListPatt(Parameter(Prototype(BuiltIns['list'])), AnyParam),
+                            lambda fn, val: fn.add_option(ValuePattern(Value(len(fn.value))), val) and fn)
 
 #############################################################################################
+def eval_set_args(lhs: list[Node], rhs: list[Node]) -> list[Function]:
+    value = expressionize(rhs).evaluate()  # .clone()
+    fn = None
+    match lhs:
+        case [Token(type=TokenType.Name, source_text=name)]:
+            key = Value(name)
+        case [*fn_nodes, Token(source_text='.'), Token(type=TokenType.PatternName, source_text=name)]:
+            key = Value(name)
+            fn = expressionize(fn_nodes).evaluate()
+        case [*fn_nodes, Token(source_text='.'|'.['), List() as list_node]:
+            key = expressionize([list_node]).evaluate()
+            fn = expressionize(fn_nodes).evaluate()
+        case _:
+            raise SyntaxErr(f'Line {Context.line}: Invalid left-hand-side for = assignment: {" ".join(n.source_text for n in lhs)}')
+    if not value.name and hasattr(key, 'value') and isinstance(key.value, str):
+        value.name = key.value
+    if fn is None:
+        return [key, value]
+    return [fn, key, value]
 
-Operator('=', binop=1, static=True, associativity='right')
+def assign_var(key: Value, val: Function):
+    name = key.value
+    assert isinstance(name, str)
+    try:
+        option = Context.env.select(name, ascend_env=True)
+        option.nullify()
+        option.assign(val)
+    except NoMatchingOptionError:
+        option = Context.env.add_option(name, val)
+    return option.value
+
+def key_to_param_set(key: Value) -> ListPatt:
+    if hasattr(key, 'value') and isinstance(key.value, list):
+        vals = key.value
+    else:
+        vals = [key]
+    params = (Parameter(ValuePattern(pval)) for pval in vals)
+    return ListPatt(*params)
+
+
+# Operator('=', binop=1, static=True, associativity='right')
 Operator(':', binop=1, static=True, associativity='right')
 Operator(':=', binop=1, static=True, associativity='right')
+BuiltIns['set'] = Function(ListPatt(AnyParam, AnyParam, AnyParam),
+                           lambda fn, key, val: fn.assign_option(key_to_param_set(key), val))
+Operator('=',
+         Function(AnyBinopPattern, assign_var,
+                  {ListPatt(AnyParam, AnyParam, AnyParam): lambda *args: BuiltIns['set'].call(list(args))}),
+         binop=1, associativity='right')
+Op['='].eval_args = eval_set_args
 Operator('if',
          Function(ListPatt(AnyParam), lambda x: x),
          binop=2, static=True, ternary='else')

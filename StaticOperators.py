@@ -34,7 +34,7 @@ def assign_fn(lhs: list[Node], rhs: list[Node]) -> Value:
     return Value(None)
 
 
-Op['='].static = assign_val
+# Op['='].static = assign_val
 Op[':='].static = assign_alias
 Op[':'].static = assign_fn
 
