@@ -603,8 +603,10 @@ class Operator:
         Op[text] = self
         self.text = text
         # self.precedence = precedence
-        if fn and not fn.name:
-            fn.name = text
+        if fn:
+            if not fn.name:
+                fn.name = text
+            BuiltIns[text] = fn
         self.fn = fn
         self.associativity = associativity  # 'right' if 'right' in flags else 'left'
         self.prefix = prefix  # 'prefix' in flags

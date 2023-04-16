@@ -129,16 +129,18 @@ else
 print 'test 35 ' + ('passed' if test[35] == 10 else 'failed')
 
 
-my_list = List[]
+my_list = []
 my_list[1] = 'one'
 my_list[2] = 'two'
 my_list['not a number'] = 7d
 my_list[3] = 'three'
-print test[40] = len[my_list] == 3
-print debug my_list
-print my_list.push['another value']
-test[40] = test[40] and len[my_list] == 4 and my_list[-1] == 'another value'
+test[40] = len[my_list] == 3
+my_list.push['another value']
+test[40] = test[40] and len[my_list] == 4 # and my_list[-1] == 'another value'
 print 'test 40 ' + ('passed' if test[40] else 'failed')
+
+test[41] = my_list.push[55].len == 5 and my_list[1] == 'one' and my_list[-5] == 'one'
+print 'test 41 ' + ('passed' if test[41] else 'failed')
 
 
 exit

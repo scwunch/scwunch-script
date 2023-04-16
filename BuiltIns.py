@@ -58,7 +58,20 @@ AnyBinopPattern = ListPatt(AnyParam, AnyParam)
 
 PositiveIntParam = Parameter(Prototype(BuiltIns["int"], guard=lambda x: Value(x.value > 0)))
 NegativeIntParam = Parameter(Prototype(BuiltIns["int"], guard=lambda x: Value(x.value < 0)))
-# BuiltIns['numeric'] = Union(Prototype(BuiltIns["bool"]), Prototype(BuiltIns["int"]), Prototype(BuiltIns["ratio"]), Prototype(BuiltIns["float"]))
+NonZeroIntParam = Parameter(Prototype(BuiltIns["int"], guard=lambda x: Value(x.value != 0)))
+OneIndexList = Parameter(Prototype(BuiltIns['list'], guard=lambda x: Value(len(x.value) == 1 and
+                                                                           NonZeroIntParam.match_score(x.value[0]))))
+
+def key_to_param_set(key: Value) -> ListPatt:
+    if hasattr(key, 'value') and isinstance(key.value, list):
+        vals = key.value
+    else:
+        vals = [key]
+    params = (Parameter(ValuePattern(pval, pval.value if isinstance(pval.value, str) else None)) for pval in vals)
+    return ListPatt(*params)
+BuiltIns['set'] = Function(ListPatt(AnyParam, AnyParam, AnyParam),
+                           lambda fn, key, val: fn.assign_option(key_to_param_set(key), val))
+
 BuiltIns['bool'].add_option(ListPatt(AnyParam), lambda x: Value(bool(x.value)))
 BuiltIns['number'] = Function(ListPatt(BoolParam), lambda x: Value(int(x.value)),
                               options={ListPatt(NumericParam): Value.clone,
@@ -94,20 +107,29 @@ BuiltIns['len'].add_option(ListPatt(Parameter(Prototype(BuiltIns['list']))), lam
 def list_get(scope: Function, *args: Value):
     fn = scope.type
     if len(args) == 1:
-        length = BuiltIns['len'].call([fn]).value
-        if abs(args[0]) > length:
+        if abs(args[0].value) > BuiltIns['len'].call([fn]).value:
             raise IndexError(f'Line {Context.line}: Index {args[0]} out of range')
-        if args[0].value > 0:
-            index = args[0].value
-        else:
-            index = length + 1 + args[0].value
-        return scope.value[index]
+        length = BuiltIns['len'].call([fn])
+        index = args[0].value
+        if BuiltIns['>'].call([Value(abs(index)), length]).value:
+            raise IndexError(f'Line {Context.line}: Index {args[0]} out of range')
+        index -= index > 0
+        return fn.value[index]
     else:
         raise NotImplemented
+def list_set(ls: Value, index: Value, val: Function):
+    i = index.value[0].value
+    i -= i > 0
+    if i == len(ls.value):
+        ls.value.append(val)
+    else:
+        ls.value[i] = val
+    return val
 BuiltIns['list'].add_option(ListPatt(PositiveIntParam), FuncBlock(list_get))
 BuiltIns['list'].add_option(ListPatt(NegativeIntParam), FuncBlock(list_get))
+BuiltIns['set'].add_option(ListPatt(ListParam, OneIndexList, AnyParam), list_set)
 BuiltIns['push'] = Function(ListPatt(Parameter(Prototype(BuiltIns['list'])), AnyParam),
-                            lambda fn, val: fn.add_option(ValuePattern(Value(len(fn.value))), val) and fn)
+                            lambda fn, val: fn.value.append(val) or fn)
 
 #############################################################################################
 def eval_set_args(lhs: list[Node], rhs: list[Node]) -> list[Function]:
@@ -141,20 +163,10 @@ def assign_var(key: Value, val: Function):
         option = Context.env.add_option(name, val)
     return option.value
 
-def key_to_param_set(key: Value) -> ListPatt:
-    if hasattr(key, 'value') and isinstance(key.value, list):
-        vals = key.value
-    else:
-        vals = [key]
-    params = (Parameter(ValuePattern(pval, pval.value if isinstance(pval.value, str) else None)) for pval in vals)
-    return ListPatt(*params)
-
 
 # Operator('=', binop=1, static=True, associativity='right')
 Operator(':', binop=1, static=True, associativity='right')
 Operator(':=', binop=1, static=True, associativity='right')
-BuiltIns['set'] = Function(ListPatt(AnyParam, AnyParam, AnyParam),
-                           lambda fn, key, val: fn.assign_option(key_to_param_set(key), val))
 Operator('=',
          Function(AnyBinopPattern, assign_var,
                   {ListPatt(AnyParam, AnyParam, AnyParam): lambda *args: BuiltIns['set'].call(list(args))}),
@@ -244,41 +256,6 @@ Operator('has',
          Function(ListPatt(AnyParam, ListParam), has_option,
                   {AnyBinopPattern: has_option}),
          binop=14)
-# def dot_call(a: Value, b: Value, c: Value = None):
-#     name = b.value
-#     args: list[Value] = []
-#     if c:
-#         assert isinstance(c.value, list)
-#         args = c.value
-#     try:
-#         assert a.type == BuiltIns['fn'] and isinstance(a.value, Function)
-#         val = a.value.deref(name, ascend_env=False)
-#     except (AssertionError, NoMatchingOptionError):
-#         fn = Context.env.deref(name)
-#         if fn.type != BuiltIns['fn']:
-#             raise OperatorError(f"Line {Context.line}: '{name}' is not an option or function.")
-#         assert isinstance(fn.value, Function)
-#         args = [a] + args
-#         return fn.call(args)
-#     if c:
-#         fn = val.value
-#         if not isinstance(fn, Function):
-#             raise OperatorError(f"Line {Context.line}: {val.type.value} '{name}' is not function.")
-#         return fn.call(args)
-#     else:
-#         return val
-
-def dot_fn_OLD(a: Function, b: Value):
-    name = b.value
-    try:
-        # assert a.type == BuiltIns['fn'] and isinstance(a.value, Function)
-        return a.deref(name, ascend_env=False)
-    except (AssertionError, NoMatchingOptionError):
-        fn = Context.env.deref(name)
-        if not fn.instanceof(BuiltIns['fn']):
-            raise OperatorError(f"Line {Context.line}: '{name}' is not an option or function.")
-        # assert isinstance(fn.value, Function)
-        return fn.call([a])
 
 def eval_call_args(lhs: list[Node], rhs: list[Node]) -> list[Function]:
     assert len(rhs) == 1
@@ -296,8 +273,6 @@ def eval_call_args(lhs: list[Node], rhs: list[Node]) -> list[Function]:
             fn = a.deref(name, ascend_env=False)
         except NoMatchingOptionError:
             fn = Context.env.deref(name)
-            # if fn.type != BuiltIns['fn']:
-            #     raise OperatorError(f"Line {Context.line}: '{name}' is not an option or function.")
             args = Value([a] + args.value)
     else:
         fn = expressionize(lhs).evaluate()
@@ -320,57 +295,12 @@ Operator('.',
          binop=15, prefix=15)
 Op['.'].eval_args = eval_call_args
 
-
-def type_guard(t: Function, args: Value) -> Value:
-    fn = None
-    match t, *args.value:
-        case Function(name='int') | Function(name='float') | Function(name='ratio'), \
-             Value(value=int() | float() | Fraction() as min), Value(value=int() | float() | Fraction() as max):
-            fn = lambda x: Value(min <= x.value < max)
-        case Function(name='str'), \
-             Value(value=int() | float() | Fraction() as min), Value(value=int() | float() | Fraction() as max):
-            fn = lambda s: Value(min <= len(s.value) <= max)
-        case Function(name='str'), Value(value=str() as regex):
-            fn = lambda s: Value(bool(re.fullmatch(regex, s.value)))
-        case Function(name='str'), Value(value=str() as regex), Value(value=str() as flags):
-            f = 0
-            for c in flags.upper():
-                f |= getattr(re, c)
-            fn = lambda s: Value(re.fullmatch(regex, s.value, f))
-    # function = Function(ListPatt(AnyParam), fn)
-    return Value(Prototype(t.value, guard=fn))
-
-Operator('.[',
-         Function(ListPatt(AnyParam, ListParam), lambda a, b: a.call(b.value),
-                  options={ListPatt(PatternParam, ListParam): type_guard,
-                           ListPatt(ListParam): lambda a: Context.env.call(a.value)}),
-         binop=15, prefix=15)
-
-def eval_call_args_OLD(lhs: list[Node], rhs: list[Node]) -> list[Value]:
-    args = expressionize(rhs).evaluate()
-    if len(lhs) > 2 and lhs[-1].type == TokenType.PatternName and lhs[-2].source_text == '.':
-        name = lhs[-1].source_text
-        # ((foo.len).max)[2]
-        a = expressionize(lhs[:-2]).evaluate()
-        try:
-            assert a.instanceof(BuiltIns['fn'])
-            fn = a.value.deref(name, ascend_env=False)
-        except (AssertionError, NoMatchingOptionError):
-            fn = Context.env.deref(name)
-            if fn.type != BuiltIns['fn']:
-                raise OperatorError(f"Line {Context.line}: '{name}' is not an option or function.")
-            args = Value([a] + args.value)
-    else:
-        fn = expressionize(lhs).evaluate()
-    return [fn, args]
-
-Op['.['].eval_args = eval_call_args_OLD
-
 # map-dot / swizzle operator
 Operator('..',
          Function(ListPatt(ListParam, StringParam), lambda l, n: Value([dot_fn(el, n) for el in l.value]),
                   options={ListPatt(StringParam): lambda a: dot_fn(Context.env, a)}),
          binop=15, prefix=15)
+
 
 
 # pattern generator options for int, str, float, etc

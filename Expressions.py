@@ -336,47 +336,6 @@ def make_param(param_nodes: list[Node]) -> Parameter:
     return Parameter(pattern, name, quantifier)
 
 
-    if len(param_nodes) == 1:
-        return Parameter(patternize(eval_node(param_nodes[0])), quantifier=quantifier)
-    name_token = param_nodes[-1]
-    last_op = Op.get(param_nodes[-2].source_text, None)
-    if last_op is None or last_op.postfix:
-        if last_op and last_op.binop:
-            pass  # WARNING: ambiguous pattern
-        name = name_token.source_text
-        param_nodes.pop()
-    else:
-        name = None
-    expr_val = expressionize(param_nodes).evaluate()
-    pattern = patternize(expr_val)
-    return Parameter(pattern, name, quantifier)
-
-
-    pattern_nodes = []
-    name = None
-    match param_nodes:
-        case [node]:
-            return Parameter(patternize(eval_node(node)))
-        case [*pattern_nodes, Token(type=TokenType.Name) as name_token]:
-            name = name_token.source_text
-        case [*pattern_nodes]:
-            pass
-    # try:
-    #     assert pattern_nodes[-1].type
-    pattern = patternize(expressionize(pattern_nodes).evaluate())
-    return Parameter(pattern, name, quantifier)
-    last = param_nodes[-1]
-    if isinstance(last, Token) and last.type == TokenType.Name:
-        name = last.source_text
-        param_nodes = param_nodes[:-1]
-    else:
-        name = None
-    if not param_nodes:
-        return Parameter(name)
-    expr_val = expressionize(param_nodes).evaluate()
-    pattern = patternize(expr_val)
-    return Parameter(pattern, name)
-
 def split(nodes: list[Node], splitter: TokenType) -> list[list[Node]]:
     start = 0
     groups: list[list[Node]] = []
@@ -388,49 +347,6 @@ def split(nodes: list[Node], splitter: TokenType) -> list[list[Node]]:
         groups.append(nodes[start:])
     return groups
 
-
-def read_value_option(nodes: list[Node]) -> Option:
-    match nodes:
-        case [*fn_nodes, _, List() as param_list]:
-            param_list = [item.nodes for item in param_list.nodes]
-        case [*fn_nodes, Token(source_text='.'), Token(type=TokenType.Name) as name_tok]:
-            param_list = [[name_tok]]
-        case _:
-            param_list = split(nodes, TokenType.Comma)
-            fn_nodes = False
-    if fn_nodes:
-        try:
-            fn_val = expressionize(fn_nodes).evaluate()
-            if fn_val.type == BuiltIns['str']:
-                fn_val = Context.env.deref(fn_val.value)
-        except NoMatchingOptionError:
-            if dot_option:
-                raise NoMatchingOptionError(f"Line {Context.line}: "
-                                            f"dot option {' '.join((map(str, fn_nodes)))} not found.")
-            opt = read_option(fn_nodes)
-            if opt.is_null():
-                fn_val = Function()
-                opt.value = fn_val
-            else:
-                fn_val = opt.value
-            # how many levels deep should this go?
-            # This will recurse infinitely, potentially creating many function
-        # if fn_val.type != BasicType.Function:
-        #     raise RuntimeErr(f"Line {Context.line}: "
-        #                      f"Cannot add option to {fn_val.type.value} {' '.join((map(str, fn_nodes)))}")
-        fn = fn_val
-        definite_env = True
-    else:
-        fn = Context.env
-        definite_env = False
-    patt = ListPatt(*map(make_param, param_list))
-    try:
-        option = fn.select(patt, walk_prototype_chain=False, ascend_env=not definite_env)
-        """critical design decision here: I want to have walk_prototype_chain=False so I don't assign variables from the prototype..."""
-    except NoMatchingOptionError:
-        option = fn.add_option(patt)
-    option.dot_option = dot_option
-    return option
 
 def read_option(nodes: list[Node], is_value=False) -> Option:
     dot_option = nodes[0].source_text == '.'
