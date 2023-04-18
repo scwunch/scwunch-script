@@ -182,7 +182,7 @@ class ForLoop(ExprWithBlock):
         else:
             var_val = expressionize(self.var).evaluate()
         patt = ListPatt(Parameter(patternize(var_val)))
-        variable = Context.env.assign_option(ListPatt(Parameter(patternize(var_val))))
+        variable = Context.env.assign_option(patt)
         for val in iterator.value:
             variable.assign(val)
             self.block.execute()
@@ -194,6 +194,16 @@ class WhileLoop(ExprWithBlock):
         super().__init__(nodes, line, source)
         self.condition = expressionize(nodes[1:self.block_index])
         self.block = FuncBlock(nodes[self.block_index])
+
+    def evaluate(self):
+        result = Value(None)
+        for i in range(6 ** 6):
+            condition_value = self.condition.evaluate()
+            if BuiltIns['bool'].call([condition_value]).value:
+                result = self.block.execute()
+            else:
+                return result
+        raise RuntimeErr(f"Line {self.line or Context.line}: Loop exceeded limit of 46656 executions.")
 
 class Command(Expression):
     command: str
