@@ -5,7 +5,7 @@ from Env import *
 from DataStructures import *
 from Expressions import expressionize, read_number
 
-BuiltIns['_base_prototype'] = Function(name='any', type=True)  # noqa
+BuiltIns['_base_prototype'] = Function(name='base_prototype', type=True)  # noqa
 BuiltIns['_base_prototype'].type = None
 MetaType = Function(name="Type", type=BuiltIns['_base_prototype'])
 BuiltIns['BasicType'] = MetaType
@@ -73,7 +73,7 @@ def key_to_param_set(key: Value) -> ListPatt:
     params = (Parameter(ValuePattern(pval, pval.value if isinstance(pval.value, str) else None)) for pval in vals)
     return ListPatt(*params)
 BuiltIns['set'] = Function(ListPatt(AnyParam, AnyParam, AnyParam),
-                           lambda fn, key, val: fn.assign_option(key_to_param_set(key), val))
+                           lambda fn, key, val: fn.assign_option(key_to_param_set(key), val).resolution)
 
 BuiltIns['bool'].add_option(ListPatt(AnyParam), lambda x: Value(bool(x.value)))
 BuiltIns['number'] = Function(ListPatt(BoolParam), lambda x: Value(int(x.value)),

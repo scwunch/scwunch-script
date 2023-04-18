@@ -224,9 +224,13 @@ class ListPatt(Pattern):
 
 def patternize(val):
     if isinstance(val, Value):
-        if isinstance(val.value, Pattern):
-            return val.value
-        return ValuePattern(val)
+        match val.value:
+            case Pattern():
+                return val.value
+            case str() as name:
+                return ValuePattern(val, name)
+            case _:
+                return ValuePattern(val)
     return Prototype(val)
 
 def named_patt(name: str) -> ListPatt:
@@ -251,8 +255,6 @@ class ReusableMap:
 class FuncBlock:
     native = None
     def __init__(self, block, env=None):
-        if isinstance(block, FunctionLiteral):
-            pass
         if hasattr(block, 'statements'):
             self.exprs = list(map(Context.make_expr, block.statements))
         else:
@@ -356,6 +358,7 @@ class Option:
 
 class Function:
     return_value = None
+    value = NotImplemented
     def __init__(self, opt_pattern=None, resolution=None, options=None, type=None, env=None, name=None):
         self.name = name
         self.type = type or BuiltIns['fn']
@@ -395,13 +398,14 @@ class Function:
         opt = self.select(pattern)
         opt.nullify()
 
-    def assign_option(self, pattern, resolution):
+    def assign_option(self, pattern, resolution=None):
         try:
             opt = self.select(pattern)
             opt.nullify()
             opt.assign(resolution)
         except NoMatchingOptionError:
-            self.add_option(pattern, resolution)
+            return self.add_option(pattern, resolution)
+        return opt
         if isinstance(resolution, Value):
             return resolution
         else:
@@ -486,7 +490,7 @@ class Function:
         return fn
 
     def to_string(self):
-        if hasattr(self, 'value'):
+        if hasattr(self, 'value') and self.value is not NotImplemented:
             if self.instanceof(BuiltIns['numeric']) and not self.type == BuiltIns['bool']:
                 return Value(write_number(self.value))
             return Value(str(self.value))
@@ -503,7 +507,7 @@ class Function:
             return False
         if self.type != other.type:
             return False
-        if getattr(self, "value", object()) == getattr(other, "value", object()):
+        if getattr(self, "value", object()) == getattr(other, "value", object()) and self.value is not NotImplemented:
             return True
         if self.env != other.env or self.name != other.name:
             return False
@@ -519,10 +523,11 @@ class Function:
             return 'root'
         if self.type is Context.root:
             return 'root.main'
-        try:
-            return repr(self.value)  # noqa
-        except AttributeError:
-            pass
+        if self.value is not NotImplemented:
+            try:
+                return repr(self.value)  # noqa
+            except AttributeError:
+                pass
         prefix = self.name or ""
         return prefix + "{}"
         try:

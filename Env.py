@@ -54,6 +54,8 @@ class NoMatchingOptionError(RuntimeErr):
     pass
 class OperatorError(SyntaxErr):
     pass
+class TypeErr(RuntimeErr):
+    pass
 
 
 Op = {}

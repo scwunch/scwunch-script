@@ -104,16 +104,18 @@ class Mathological(Expression):
         return op.fn.call(args)
 
 
-class Conditional(Expression):
-    condition: Expression
-    consequent: FuncBlock
+class ExprWithBlock(Expression):
+    block_index: int
+    header: list[Node]
+    block: FuncBlock
     alt: list[Node] | FuncBlock
     def __init__(self, nodes: list[Node], line: int | None, source: str):
         super().__init__(line, source)
         for i, node in enumerate(nodes):
             if isinstance(node, Block):
-                self.condition = expressionize(nodes[1:i])
-                self.consequent = FuncBlock(node)
+                self.block_index = i
+                self.header = nodes[:i]
+                self.block = FuncBlock(node)
                 if i+1 == len(nodes):
                     self.alt = []
                     break
@@ -132,6 +134,15 @@ class Conditional(Expression):
                     raise SyntaxErr("Expected 'else' block or 'else if' after if block.  Got ", nodes[i+1:])
                 break
 
+class Conditional(ExprWithBlock):
+    condition: Expression
+    consequent: FuncBlock
+    alt: list[Node] | FuncBlock
+    def __init__(self, nodes: list[Node], line: int | None, source: str):
+        super().__init__(nodes, line, source)
+        self.condition = expressionize(nodes[1:self.block_index])
+        self.consequent = FuncBlock(nodes[self.block_index])
+
     def evaluate(self):
         condition = self.condition.evaluate()
         condition = BuiltIns['bool'].call([condition]).value
@@ -143,21 +154,46 @@ class Conditional(Expression):
             return expressionize(self.alt).evaluate()
 
 
-class Loop(Expression):
+class ForLoop(ExprWithBlock):
+    var: list[Node]
+    iterable: Expression
     block: FuncBlock
-    alt: list[Node]
     def __init__(self, nodes: list[Node], line: int | None, source: str):
-        super().__init__(line, source)
+        super().__init__(nodes, line, source)
+        self.block = FuncBlock(nodes[self.block_index])
+        for i, node in enumerate(nodes):
+            if i == self.block_index:
+                raise SyntaxErr("For loop expression expected 'in' keyword.")
+            if node.source_text == 'in':
+                self.var = nodes[1:i]
+                self.iterable = expressionize(nodes[i+1:self.block_index])
+                break
 
-class ForLoop(Loop):
-    var: Option
-    def __init__(self, nodes: list[Node], line: int | None, source: str):
-        super().__init__(line, source)
+    def evaluate(self):
+        iterator = self.iterable.evaluate()
+        if not is_iterable(iterator):
+            raise TypeErr(f"Line {Context.line}: {self.iterable} is not iterable.")
+        if len(self.var) == 1:
+            var_node = self.var[0]
+            if var_node.type == TokenType.Name:
+                var_val = Value(var_node.source_text)
+            else:
+                var_val = eval_node(var_node)
+        else:
+            var_val = expressionize(self.var).evaluate()
+        patt = ListPatt(Parameter(patternize(var_val)))
+        variable = Context.env.assign_option(ListPatt(Parameter(patternize(var_val))))
+        for val in iterator.value:
+            variable.assign(val)
+            self.block.execute()
 
-class WhileLoop(Loop):
-    condition: list[Node]
+class WhileLoop(ExprWithBlock):
+    condition: Expression
+    block: FuncBlock
     def __init__(self, nodes: list[Node], line: int | None, source: str):
-        super().__init__(line, source)
+        super().__init__(nodes, line, source)
+        self.condition = expressionize(nodes[1:self.block_index])
+        self.block = FuncBlock(nodes[self.block_index])
 
 class Command(Expression):
     command: str
@@ -273,6 +309,11 @@ def string(text: str):
         return text[1:-1]
     return text[1:-1]
     # TO IMPLEMENT: "string {formatting}"
+
+def is_iterable(val: Function):
+    if hasattr(val, 'value') and type(val.value) in (list, tuple):
+        return True
+    return False
 
 def make_param_old(param_nodes: list[Node]) -> Parameter:
     last = param_nodes[-1]
