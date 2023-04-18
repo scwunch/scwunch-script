@@ -301,10 +301,10 @@ class List(NonTerminal):
 
 
 class FunctionLiteral(NonTerminal):
-    options: list[Statement]
+    statements: list[Statement]
     def __init__(self, items: list[Statement]):
         super().__init__(items)
-        self.options = items
+        self.statements = items
 
     def __repr__(self):
         return f"{{{' '.join(map(repr, self.options))}}}"

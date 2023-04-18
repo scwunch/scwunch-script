@@ -143,8 +143,18 @@ test[41] = my_list.push[55].len == 5 and my_list[1] == 'one' and my_list[-5] == 
 print 'test 41 ' + ('passed' if test[41] else 'failed')
 
 
+my_func = {any arg: print arg}
+my_func["ANY ARG"]
+
+
 exit
 # ***********************
+
+# for item in my_list
+# 	print item
+
+my_func = {}
+
 
 
 

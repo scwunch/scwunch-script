@@ -3,7 +3,7 @@ import types
 from fractions import Fraction
 
 import Env
-from Syntax import Block
+from Syntax import Block, FunctionLiteral
 from Env import *
 
 """
@@ -251,6 +251,8 @@ class ReusableMap:
 class FuncBlock:
     native = None
     def __init__(self, block, env=None):
+        if isinstance(block, FunctionLiteral):
+            pass
         if hasattr(block, 'statements'):
             self.exprs = list(map(Context.make_expr, block.statements))
         else:
@@ -270,7 +272,7 @@ class FuncBlock:
                 return Value(None)
 
         if self.native:
-            result = self.native(scope, *args)
+            result = self.native(scope, *(args or []))
             return break_() and result
         for expr in self.exprs:
             Context.line = expr.line

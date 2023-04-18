@@ -37,6 +37,9 @@ TypeMap.update({
     Union: BuiltIns['union'],
     ListPatt: BuiltIns['parameters']
 })
+BuiltIns['any'] = Value(None)
+BuiltIns['any'].value, BuiltIns['any'].type = Any, BuiltIns['pattern']
+TypeMap[AnyPattern] = BuiltIns['any']
 
 NoneParam = Parameter(Prototype(BuiltIns["none"]))
 BoolParam = Parameter(Prototype(BuiltIns["bool"]))
