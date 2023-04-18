@@ -29,7 +29,10 @@ class Context:
     @staticmethod
     def pop():
         Context._env.pop()
-        Context.env = Context._env[-1]
+        if Context._env:
+            Context.env = Context._env[-1]
+        else:
+            Context.env = BuiltIns['pili']
         Context.trace.pop()
 
     @staticmethod

@@ -164,7 +164,7 @@ print 'test 44 ' + ('passed' if (test[44] = i == 130) else 'failed')
 
 
 
-
+return 6d
 exit
 # ***********************
 
