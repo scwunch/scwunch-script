@@ -101,10 +101,10 @@ BuiltIns['len'].add_option(ListPatt(Parameter(Prototype(BuiltIns["pattern"]))), 
 
 # BuiltIns['prototype'] = Function(ListPatt(FunctionParam), lambda f: Value(f.value.prototype))
 
-BuiltIns['contains'] = Function(ListPatt(FunctionParam, AnyParam),
-                                lambda a, b: Value(b in (opt.value for opt in a.options)))
-BuiltIns['List'] = Function(ListPatt(Parameter(Any, quantifier='*')),
-                            lambda *vals: Value(list(*vals)))
+# BuiltIns['contains'] = Function(ListPatt(FunctionParam, AnyParam),
+#                                 lambda a, b: Value(b in (opt.value for opt in a.options)))
+# BuiltIns['List'] = Function(ListPatt(Parameter(Any, quantifier='*')),
+#                             lambda *vals: Value(list(*vals)))
 BuiltIns['len'].add_option(ListPatt(Parameter(Prototype(BuiltIns['list']))), lambda l: Value(len(l.value)))
 
 def list_get(scope: Function, *args: Value):
@@ -192,7 +192,8 @@ Operator('not',
          Function(ListPatt(AnyParam), lambda a: Value(not BuiltIns['bool'].call([a]).value)),
          prefix=6)
 Operator('in',
-         Function(AnyBinopPattern, lambda a, b: BuiltIns['contains'].call([b, a])),
+         Function(AnyBinopPattern, lambda a, b: Value(a in (opt.value for opt in b.options if hasattr(opt, 'value'))),
+                  {ListPatt(AnyParam, ListParam): lambda a, b: Value(a in b.value)}),
          binop=7)
 Operator('==',
          Function(AnyBinopPattern, lambda a, b: Value(a == b)),

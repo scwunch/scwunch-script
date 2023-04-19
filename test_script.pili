@@ -197,6 +197,9 @@ Fufu2.name = 'Fufu'
 test[51] = Fufu != Boulder and Fufu == Fufu2
 print 'test 51 ' + 'passed' if test[51] else 'failed'
 
+test[52] = 'three' in my_list and not 3 in my_list and 'Fufu' in Fufu and not 'Boulder' in Fufu
+print 'test 52 ' + 'passed' if test[52] else 'failed'
+
 
 exit
 # ***********************
