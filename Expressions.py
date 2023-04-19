@@ -186,6 +186,7 @@ class ForLoop(ExprWithBlock):
         for val in iterator.value:
             variable.assign(val)
             self.block.execute()
+        return Value(None)
 
 class WhileLoop(ExprWithBlock):
     condition: Expression
