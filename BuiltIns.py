@@ -133,6 +133,20 @@ BuiltIns['list'].add_option(ListPatt(NegativeIntParam), FuncBlock(list_get))
 BuiltIns['set'].add_option(ListPatt(ListParam, OneIndexList, AnyParam), list_set)
 BuiltIns['push'] = Function(ListPatt(Parameter(Prototype(BuiltIns['list'])), AnyParam),
                             lambda fn, val: fn.value.append(val) or fn)
+BuiltIns['join'] = Function(ListPatt(ListParam, StringParam),
+                            lambda ls, sep: Value(sep.value.join(BuiltIns['string'].call([item]).value for item in ls.value)))
+BuiltIns['split'] = Function(ListPatt(StringParam, StringParam), lambda txt, sep: Value(txt.value.split(sep.value)))
+
+def convert(name: str) -> Function:
+    o = object()
+    # py_fn = getattr(__builtins__, name, o)
+    py_fn = __builtins__.get(name, o)
+    if py_fn is o:
+        raise SyntaxErr(f"Name '{name}' not found.")
+    Context.root.add_option(ListPatt(Parameter(name)), lambda *args: Value(py_fn((arg.value for arg in args))))
+    return Function(ListPatt(AnyParam), lambda *args: Value(py_fn((arg.value for arg in args))))
+
+BuiltIns['import'] = Function(ListPatt(StringParam), lambda n: convert(n.value))
 
 #############################################################################################
 def eval_set_args(lhs: list[Node], rhs: list[Node]) -> list[Function]:

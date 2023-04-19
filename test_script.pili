@@ -200,6 +200,12 @@ print 'test 51 ' + 'passed' if test[51] else 'failed'
 test[52] = 'three' in my_list and not 3 in my_list and 'Fufu' in Fufu and not 'Boulder' in Fufu
 print 'test 52 ' + 'passed' if test[52] else 'failed'
 
+ls = [1,2,3]
+print ls.join[' :: ']
+
+b = import['bool']
+print b[1, 1]
+
 
 exit
 # ***********************
