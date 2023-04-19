@@ -491,7 +491,7 @@ class Function:
 
     def to_string(self):
         if hasattr(self, 'value') and self.value is not NotImplemented:
-            if self.instanceof(BuiltIns['numeric']) and not self.type == BuiltIns['bool']:
+            if self.instanceof(BuiltIns['num']) and not self.type == BuiltIns['bool']:
                 return Value(write_number(self.value))
             return Value(str(self.value))
         if self.name:

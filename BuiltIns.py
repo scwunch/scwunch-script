@@ -10,9 +10,9 @@ BuiltIns['_base_prototype'].type = None
 MetaType = Function(name="Type", type=BuiltIns['_base_prototype'])
 BuiltIns['BasicType'] = MetaType
 BuiltIns['none'] = Function(name='none', type=MetaType)
-BuiltIns['numeric'] = Function(name="numeric", type=MetaType)
-BuiltIns['float'] = Function(name='float', type=BuiltIns['numeric'])
-BuiltIns['ratio'] = Function(name='ratio', type=BuiltIns['numeric'])
+BuiltIns['num'] = Function(name="num", type=MetaType)
+BuiltIns['float'] = Function(name='float', type=BuiltIns['num'])
+BuiltIns['ratio'] = Function(name='ratio', type=BuiltIns['num'])
 BuiltIns['int'] = Function(name='int', type=BuiltIns['ratio'])
 BuiltIns['bool'] = Function(name='bool', type=BuiltIns['int'])
 BuiltIns['str'] = Function(name='str', type=MetaType)
@@ -50,7 +50,7 @@ NumericParam = Parameter(Union(Prototype(BuiltIns["bool"]), Prototype(BuiltIns["
 StringParam = Parameter(Prototype(BuiltIns["str"]))
 # NormalParam = Parameter(Union(Prototype(BuiltIns["bool"]), Prototype(BuiltIns["int"]), Prototype(BuiltIns["ratio"]),
 #                               Prototype(BuiltIns["float"]), Prototype(BuiltIns["str"])))
-NormalParam = Parameter(Union(Prototype(BuiltIns['numeric']), Prototype(BuiltIns['str'])))
+NormalParam = Parameter(Union(Prototype(BuiltIns['num']), Prototype(BuiltIns['str'])))
 ListParam = Param = Parameter(Prototype(BuiltIns["list"]))
 # TypeParam = Parameter(Prototype(BuiltIns["Type"]))
 PatternParam = Parameter(Prototype(BuiltIns["pattern"]))
@@ -198,7 +198,7 @@ Operator('==',
          Function(AnyBinopPattern, lambda a, b: Value(a == b)),
          binop=8)
 Operator('!=',
-         Function(AnyBinopPattern, lambda a, b: Value(a != b)),
+         Function(AnyBinopPattern, lambda a, b: Value(not BuiltIns['=='].call([a, b]).value)),
          binop=9)
 Operator('<',
          Function(NormalBinopPattern, lambda a, b: Value(a.value < b.value)),
@@ -207,10 +207,12 @@ Operator('>',
          Function(NormalBinopPattern, lambda a, b: Value(a.value > b.value)),
          binop=10, chainable=True)
 Operator('<=',
-         Function(NormalBinopPattern, lambda a, b: Value(a.value <= b.value)),
+         Function(AnyBinopPattern,
+                  lambda a, b: Value(BuiltIns['<'].call([a, b]).value or BuiltIns['=='].call([a, b]).value)),
          binop=10, chainable=True)
 Operator('>=',
-         Function(NormalBinopPattern, lambda a, b: Value(a.value >= b.value)),
+         Function(AnyBinopPattern,
+                  lambda a, b: Value(BuiltIns['>'].call([a, b]).value or BuiltIns['=='].call([a, b]).value)),
          binop=10, chainable=True)
 Operator('~',
          Function(AnyBinopPattern, lambda a, b: Value(bool(patternize(b).match_score(a)))),
@@ -313,14 +315,14 @@ def make_lambda_guard(type_name: str):
     else:
         return lambda a, b: Value(Prototype(BuiltIns[type_name], guard=lambda x: Value(a.value <= x.value <= b.value)))
 
-for type_name in ('numeric', 'ratio', 'float', 'int', 'str'):
+for type_name in ('num', 'ratio', 'float', 'int', 'str'):
     BuiltIns[type_name].add_option(ListPatt(NumericParam, NumericParam), make_lambda_guard(type_name))
 
 
 BuiltIns['str'].add_option(ListPatt(StringParam),
                            lambda regex: Value(Prototype(BuiltIns['str'],
                                                          guard=lambda s: Value(bool(re.fullmatch(regex.value, s.value))))))
-# BuiltIns['numeric'].add_option(ListPatt(NumericParam, NumericParam), lambda a, b: Value(Prototype(BuiltIns['numeric'], guard=lambda x: Value(a.value <= x.value <= b.value))))
+# BuiltIns['num'].add_option(ListPatt(NumericParam, NumericParam), lambda a, b: Value(Prototype(BuiltIns['num'], guard=lambda x: Value(a.value <= x.value <= b.value))))
 
 # Add shortcut syntax for adding function guards to type checks.  Eg `int > 0` or `float < 1.0`
 def number_guard(op_sym: str):
@@ -348,7 +350,7 @@ def add_guards(op_sym: str):
 
 
 for op_sym in ('>', '<', '>=', '<='):
-    for type_name in ('int', 'ratio', 'float', 'numeric'):
+    for type_name in ('int', 'ratio', 'float', 'num'):
         Op[op_sym].fn.add_option(ListPatt(Parameter(ValuePattern(BuiltIns[type_name])), NumericParam),
                                  number_guard(op_sym))
     Op[op_sym].fn.add_option(ListPatt(Parameter(ValuePattern(BuiltIns['str'])), NumericParam),

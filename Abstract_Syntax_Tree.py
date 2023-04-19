@@ -200,7 +200,8 @@ class AST(Builder):
                 self.seek()
                 nodes.append(self.read_statement(TokenType.GroupEnd))
             elif self.tok.type == TokenType.ListStart:
-                if self.col and self.peek(-1).type == TokenType.Name:
+                if self.col and self.peek(-1).type in \
+                        (TokenType.Name, TokenType.GroupEnd, TokenType.ListEnd, TokenType.FnEnd):
                     nodes.append(Token('.', self.tok.pos))
                 self.seek()
                 nodes.append(List(self.read_list(TokenType.ListEnd)))

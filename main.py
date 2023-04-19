@@ -4,7 +4,8 @@ from Abstract_Syntax_Tree import Tokenizer, AST
 from BuiltIns import *
 from StaticOperators import *
 
-if len(sys.argv) == 1:
+
+if len(sys.argv) == 1 and sys.executable == '/usr/bin/python3':  # test if running in console; pycharm executable is python3.10
     mode = 'shell'
 elif len(sys.argv) == 2:
     mode = 'script'

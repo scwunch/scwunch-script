@@ -143,7 +143,7 @@ test[41] = my_list.push[55].len == 5 and my_list[1] == 'one' and my_list[-5] == 
 print 'test 41 ' + ('passed' if test[41] else 'failed')
 
 my_func = {}
-my_func = {any arg: string[arg], numeric arg: string[arg+1]}
+my_func = {any arg: string[arg], num arg: string[arg+1]}
 test[42] = my_func["ANY ARG"] == "ANY ARG" and my_func[42] == "43"
 print 'test 42 ' + ('passed' if test[42] else 'failed')
 
@@ -162,9 +162,42 @@ while i < 130
 	i = i + 1
 print 'test 44 ' + ('passed' if (test[44] = i == 130) else 'failed')
 
+lt[num a, num b]: a < b
+
+item1 =
+	length = 230
+
+item2 =
+	length = 143
+	.['<'][any item]: length < item.length
+	.['>'][any item]: length > item.length
+
+# return .['<']
+test[45] = item2 < item1 and not item2 > item1
+item2.length = 55555
+test[45] = test[45] and not item2 < item1 and item2 > item1
+print 'test 45 ' + 'passed' if test[45] else 'failed'
+
+Dog[str name, num length]:
+	.bark: "hello my name is " + name
+	.['<'][Dog other_dog]: length < other_dog.length
+	.['>'][Dog other_dog]: length > other_dog.length
+
+Fufu = Dog['Fufu', 30]
+Boulder = Dog['Boulder', 140]
+
+test[50] = Fufu <= Boulder and Boulder > Fufu
+print 'test 50 ' + 'passed' if test[50] else 'failed'
+
+root['=='][Dog dog1, Dog dog2]:
+	return dog1.name == dog2.name
+
+Fufu2 = Dog['no name', 31]
+Fufu2.name = 'Fufu'
+test[51] = Fufu != Boulder and Fufu == Fufu2
+print 'test 51 ' + 'passed' if test[51] else 'failed'
 
 
-return 6d
 exit
 # ***********************
 
