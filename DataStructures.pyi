@@ -83,9 +83,31 @@ class Union(Pattern):
     def __eq__(self, other): ...
     def __hash__(self): ...
 
+class State:
+    """ a state has EITHER a pattern and success, OR two branches """
+    success: State | None
+    branches: tuple | None
+    def __init__(self): ...
+    def leaves(self) -> set[ParamState]: ...
+
+class ParamState(State, Parameter):
+    # pattern: Pattern | None
+    # name: str
+    # multi: bool
+    success: State
+    # branches: tuple[State, State] | None
+    def __init__(self, patt: Parameter, success: State): ...
+
+class Branch(State):
+    branches: tuple[State, State]
+    def __init__(self, b1: State, b2: State): ...
+
 class ListPatt(Pattern):
     parameters: tuple[Parameter, ...]
+    start: State
     def __init__(self, *parameters: Parameter): ...
+
+    def match_zip(self, args: list[Function] = None) -> tuple[float|int, dict[str, Function]] | 0: ...
     def zip(self, args: list[Function] = None) -> dict[Pattern, Function]: ...
     def min_len(self) -> int | float:
         count = 0

@@ -26,8 +26,6 @@ class Pattern:
                 score = int(arg == prototype) or (arg.instanceof(prototype)) * 35/36
             case Union(patterns=patterns):
                 count = len(self)
-                # if BasicType.Any in (getattr(p, "basic_type", None) for p in patterns):
-                #     count += len(BasicType) - 1
                 for patt in patterns:
                     m_score = patt.match_score(arg)
                     if m_score:
@@ -95,7 +93,7 @@ class Parameter:
     def __hash__(self):
         return hash((self.pattern, self.name, self.quantifier, self.inverse))
     def __repr__(self):
-        return f"{'!' * self.inverse}{self.pattern}" + (' ' + self.name if self.name else '')
+        return f"{'!' * self.inverse}{self.pattern}" + (' ' + self.name if self.name else '') + self.quantifier
 
 class ValuePattern(Pattern):
     def __init__(self, value, name: str = None):
@@ -153,14 +151,126 @@ class Union(Pattern):
     def __repr__(self):
         return '|'.join(map(repr, self.patterns))
 
+class StateOLD:
+    """ a state has EITHER a pattern and success, OR two branches """
+    def __init__(self, param=None, success=None, branches: tuple = None):
+        self.pattern = getattr(param, 'pattern', None)
+        self.multi = getattr(param, 'quantifier', None) in ("+", "*")
+        self.success = success
+        self.branches = branches
+    def __repr__(self):
+        if self.pattern:
+            return f"{self.pattern} --> {self.success}"
+        elif self.branches:
+            return "< branch"
+        else:
+            return "(SUCCESS)"
+
+
+class State:
+    """ a state has EITHER a pattern and success, OR two branches """
+    pattern = None
+    success = None
+    branches = None
+    def __init__(self):
+        pass
+    def leaves(self):
+        return {self}
+
+
+class ParamState(State):
+    # pattern: Pattern | None
+    # name: str
+    # multi: bool
+    param: Parameter
+    success: State
+    def __init__(self, param: Parameter, success: State):
+        Parameter.__init__(self, param.pattern, param.name, param.quantifier, param.inverse)
+        self.param = param
+        self.pattern = param.pattern
+        self.name = param.name
+        self.multi = param.multi
+        self.success = success
+    def __repr__(self):
+        return f"State{repr((self.param, self.success))}"
+
+
+class Branch(State):
+    branches: tuple[State, State]
+    def __init__(self, b1: State, b2: State):
+        self.branches = (b1, b2)
+    def leaves(self):
+        return set.union(self.branches[0].leaves(), self.branches[1].leaves())
+
+
+Success = State()
+
 class ListPatt(Pattern):
-    def __init__(self, *parameters: Parameter, name=None, guard=None):
+    def __init__0(self, *parameters: Parameter, name=None, guard=None):
         super().__init__(name, guard)
         self.parameters = tuple(parameters)
         if self.name:
             pass
         if len(parameters) == 1:
             self.name = parameters[0].name
+    def __init__(self, *parameters: Parameter):
+        super().__init__()
+        self.parameters = tuple(parameters)
+        if len(parameters) == 1:
+            self.name = parameters[0].name
+        # **********************
+        if len(parameters) == 0:
+            self.start = Success
+        else:
+            p = parameters[0]
+            next = ListPatt(*parameters[1:]).start
+            this = ParamState(p, next)
+            split = Branch(this, next)
+            match p.quantifier:
+                case "":
+                    self.start = this
+                case "?":
+                    self.start = split
+                case "*":
+                    self.start = split
+                    this.success = self.start
+                case "+":
+                    self.start = this
+                    this.success = split
+
+    def match_zip(self, args: list = None):
+        options: dict[str, Function] = {}
+        states = self.start.leaves()
+        # if self.start.branches:
+        #     states = set(self.start.branches)
+        # else:
+        #     states = {self.start}
+        for i, arg in enumerate(args):
+            next_states: set[ParamState] = set()
+            for state in states:
+                if state.branches:
+                    pass
+                if state.pattern and state.pattern.match_score(arg):
+                    name = state.name
+                    if name:
+                        if state.multi:
+                            if name not in options:
+                                options[name] = Value([])
+                            options[name].value.append(arg)
+                        else:
+                            options[name] = arg
+                    next_states.update(state.success.leaves())
+                    # if state.success.branches:
+                    #     next_states.update(state.success.branches)
+                    # else:
+                    #     next_states.add(state.success)
+            if not next_states:
+                return 0
+            states = next_states
+        if Success in states:
+            return options
+        return 0
+
     def zip(self, args: list):
         d = {}
         if args is None:
@@ -209,7 +319,7 @@ class ListPatt(Pattern):
             if not param:
                 pass
             p_score = param.match_score(arg)
-            if not p_score:
+            if not p_score and not param.optional:
                 return 0
             score += p_score
             # not yet implemented param.multi and param.optional
