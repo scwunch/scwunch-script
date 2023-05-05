@@ -1,6 +1,7 @@
 import math
 import types
 from fractions import Fraction
+from enum import Enum
 
 import Env
 from Syntax import Block, FunctionLiteral
@@ -205,7 +206,93 @@ class Branch(State):
 
 Success = State()
 
+class Instruction:
+    pass
+    # Char = 'char'
+    # Jump = 'jump'
+    # Split = 'split'
+    # Save = 'save'
+    # Match = 'match'
+
+class Char(Instruction):
+    pattern: Pattern
+    def __init__(self, pattern: Pattern):
+        self.pattern = pattern
+    def __repr__(self):
+        return f"Char({self.pattern})"
+
+class Jump(Instruction):
+    index: int
+    def __init__(self, index: int):
+        self.index = index
+    def __repr__(self):
+        return f"Jump({self.index})"
+
+class Split(Instruction):
+    index1: int
+    index2: int
+    def __init__(self, i1: int, i2: int):
+        self.index1 = i1
+        self.index2 = i2
+    def __repr__(self):
+        return f"Split{(self.index1, self.index2)}"
+
+class Mark(Instruction):
+    pass
+class Save(Instruction):
+    index: int
+    multi: bool
+    def __init__(self, index: int, multi):
+        self.index = index
+        self.multi = multi
+    def __repr__(self):
+        return f"Save({self.index})"
+
+class Match(Instruction):
+    pass
+
+
 class ListPatt(Pattern):
+    def __init__(self, *parameters: Parameter):
+        if True:
+            self.__init__1(*parameters)
+        else:
+            super().__init__()
+            self.parameters = tuple(parameters)
+            if len(parameters) == 1:
+                self.name = parameters[0].name
+        # ***********************************
+        self.instructions = []
+        for i, param in enumerate(parameters):
+            i_inst = len(self.instructions)
+            self.instructions.append(Mark())
+            match param.quantifier:
+                case "":
+                    self.instructions.append(Char(param.pattern))
+                case "?":
+                    self.instructions.append(Split(i_inst+1, i_inst+2))
+                    self.instructions.append(Char(param.pattern))
+                case "??":
+                    self.instructions.append(Split(i_inst + 2, i_inst + 1))
+                    self.instructions.append(Char(param.pattern))
+                case "+":
+                    self.instructions.append(Char(param.pattern))
+                    self.instructions.append((Split(i_inst, i_inst + 2)))
+                case "+?":
+                    self.instructions.append(Char(param.pattern))
+                    self.instructions.append((Split(i_inst + 2, i_inst)))
+                case "*":
+                    self.instructions.append(Jump(i_inst + 2))
+                    self.instructions.append(Char(param.pattern))
+                    self.instructions.append(Split(i_inst + 1, i_inst + 3))
+                case "*?":
+                    self.instructions.append(Jump(i_inst + 2))
+                    self.instructions.append(Char(param.pattern))
+                    self.instructions.append(Split(i_inst + 3, i_inst + 1))
+            if param.name:
+                self.instructions.append(Save(param.name, param.multi))
+        self.instructions.append(Match())
+
     def __init__0(self, *parameters: Parameter, name=None, guard=None):
         super().__init__(name, guard)
         self.parameters = tuple(parameters)
@@ -213,7 +300,7 @@ class ListPatt(Pattern):
             pass
         if len(parameters) == 1:
             self.name = parameters[0].name
-    def __init__(self, *parameters: Parameter):
+    def __init__1(self, *parameters: Parameter):
         super().__init__()
         self.parameters = tuple(parameters)
         if len(parameters) == 1:
@@ -237,6 +324,102 @@ class ListPatt(Pattern):
                 case "+":
                     self.start = this
                     this.success = split
+
+    def match_zip_VM(self, args: list = None, p_start=0, i_inst=0, i_arg=0, score=0, saves=None):
+        if saves is None:
+            saves = {}
+        while True:
+            match self.instructions[i_inst]:
+                case Char(pattern=patt):
+                    if i_arg >= len(args):
+                        return 0
+                    match_value = patt.match_score(args[i_arg])
+                    if not match_value:
+                        return 0
+                    score += match_value
+                    i_arg += 1
+                    i_inst += 1
+                case Jump(index=index):
+                    i_inst = index
+                case Split(index1=i1, index2=i2):
+                    case1 = self.match_zip_VM(args, i1, i_arg, score)
+                    if case1:
+                        return case1
+                    i_inst = i2
+                case Mark():
+                    p_start = i_arg
+                case Save(name=name, multi=multi):
+                    pass
+                case Match():
+                    return (score / len(args), saves)
+        return 0
+
+    def match_zip2(self, args: list = None, i_inst=0, i_arg=0, score=0, sub_score=0, saves=None):
+        if args is None:
+            return 1, {}
+        if saves is None:
+            saves = {}
+        while True:
+            if not (i_inst < len(self.parameters) and i_arg < len(args)):
+                if i_inst == len(self.parameters) and i_arg == len(args):
+                    break
+                # elif i_arg >= len(args):
+                #     return 0
+                elif i_inst >= len(self.parameters):
+                    pass
+            # if i_arg >= len(args):
+            #     return 0
+            param = self.parameters[i_inst]
+            key: str|int = param.name or i_arg
+            sub_score *= param.multi
+            match_value = param.pattern.match_score(args[i_arg]) if i_arg < len(args) else 0
+            # if not param.optional and not match_value:
+            #     return 0
+            match param.quantifier:
+                case "":
+                    # match patt, save, and move on
+                    if not match_value:
+                        return 0
+                    saves[key] = args[i_arg]
+                    score += match_value
+                    i_arg += 1
+                    i_inst += 1
+                case "?":
+                    # try match patt and save... move on either way
+                    if match_value:
+                        branch_saves = saves.copy()
+                        branch_saves[key] = args[i_arg]
+                        branch = self.match_zip2(args, i_inst+1, i_arg+1, score+match_value, 0, branch_saves)
+                        if branch:
+                            return branch
+                    i_inst += 1
+                case "+":
+                    if key not in saves:
+                        if not match_value:
+                            return 0
+                        saves[key] = Value([])
+                    if match_value:
+                        branch_saves = saves.copy()
+                        branch_saves[key].value.append(args[i_arg])
+                        sub_score += match_value
+                        i_arg += 1
+                        branch = self.match_zip2(args, i_inst, i_arg, score, sub_score, branch_saves)
+                        if branch:
+                            return branch
+                    score += sub_score / len(saves[key].value)
+                    i_inst += 1
+                case "*":
+                    if key not in saves:
+                        saves[key] = Value([])
+                    if match_value:
+                        branch_saves = saves.copy()
+                        branch_saves[key].value.append(args[i_arg])
+                        branch = self.match_zip2(args, i_inst, i_arg + 1, score, sub_score + match_value, branch_saves)
+                        if branch:
+                            return branch
+                    score += sub_score / (len(saves[key].value) or 6)
+                    i_inst += 1
+        return score, saves
 
     def match_zip(self, args: list = None):
         options: dict[str, Function] = {}
@@ -275,6 +458,11 @@ class ListPatt(Pattern):
         d = {}
         if args is None:
             return d
+        named_options = self.match_zip(args)
+        for key, value in named_options.items():
+            patt = ListPatt(Parameter(key))
+            d[patt] = value
+        return d
         if not self.min_len() <= len(args) <= self.max_len():
             pass
         if len(args) == 0:
@@ -305,6 +493,11 @@ class ListPatt(Pattern):
         if list_value.type != BuiltIns['list']:
             return 0
         args = list_value.value
+        if not self.min_len() <= len(args) <= self.max_len():
+            return 0
+        return self.match_zip2(args) and self.match_zip2(args)[0]
+        return self.match_zip_VM(args)
+        return self.match_zip(args) != 0
         if not self.min_len() <= len(args) <= self.max_len():
             return 0
         if len(args) == 0:
@@ -454,7 +647,7 @@ class Option:
             # btw: this is possibly the third time the env is getting overriden: it's first set when the FuncBlock is
             # defined, then overriden by the env argument passed to self.resolve, and finally here if it is a dot-option
             # ... I should consider making a multi-layer env, or using the prototype, or multiple-inheritance type-thing
-        fn = self.block.make_function(self.pattern.zip(args), env)
+        fn = self.block.make_function(self.pattern.match_zip2(args)[1], env)
         Context.push(Context.line, fn, self)
         return self.block.execute(args, fn)
 
@@ -603,6 +796,8 @@ class Function:
         if hasattr(self, 'value') and self.value is not NotImplemented:
             if self.instanceof(BuiltIns['num']) and not self.type == BuiltIns['bool']:
                 return Value(write_number(self.value))
+            if self.instanceof(BuiltIns['list']):
+                return Value(f"[{', '.join(v.to_string().value for v in self.value)}]")
             return Value(str(self.value))
         if self.name:
             return Value(self.name)

@@ -4,14 +4,14 @@ from Abstract_Syntax_Tree import Tokenizer, AST
 from BuiltIns import *
 from StaticOperators import *
 
-strs = ListPatt(Parameter(Prototype(BuiltIns['str']), "texts", quantifier="+"))
+strs = ListPatt(Parameter(Prototype(BuiltIns['str']), "texts", quantifier=""))
 print(strs.match_zip([]))
 print(strs.match_zip([Value('hello')]))
 print(strs.match_zip([Value('hello'), Value('hello')]))
 print(strs.match_zip([Value('hello'), Value('two'), Value('three')]))
 print(strs.match_zip([Value('hello'), Value('hello'), Value(0)]))
 print('done')
-exit()
+# exit()
 
 
 def convert(name: str) -> Function:

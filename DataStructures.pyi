@@ -102,11 +102,46 @@ class Branch(State):
     branches: tuple[State, State]
     def __init__(self, b1: State, b2: State): ...
 
+
+class Instruction:
+    Char = 'char'
+    Jump = 'jump'
+    Split = 'split'
+    Save = 'save'
+    Match = 'match'
+
+
+class Char(Instruction):
+    pattern: Pattern
+    def __init__(self, pattern: Pattern): ...
+
+class Jump(Instruction):
+    index: int
+    def __init__(self, index: int): ...
+
+class Split(Instruction):
+    index1: int
+    index2: int
+    def __init__(self, i1: int, i2: int): ...
+
+class Save(Instruction):
+    index: int
+    def __init__(self, index: int): ...
+
+class Match(Instruction):
+    pass
+
 class ListPatt(Pattern):
     parameters: tuple[Parameter, ...]
     start: State
+    instructions: list[Instruction | Char]
     def __init__(self, *parameters: Parameter): ...
 
+    def match_zip_VM(self, args: list = None, i_inst: int = 0, i_arg: int = 0, saves: dict[str, Function] = None) \
+            -> 0 | tuple[int|float, dict[str, Function]]: ...
+
+    def match_zip2(self, args: list = None, i_inst: int = 0, i_arg: int = 0, score: float = 0, sub_score: float = 0, saves: dict[str, Function] = None) \
+            -> 0 | tuple[int|float, dict[str, Function]]: ...
     def match_zip(self, args: list[Function] = None) -> tuple[float|int, dict[str, Function]] | 0: ...
     def zip(self, args: list[Function] = None) -> dict[Pattern, Function]: ...
     def min_len(self) -> int | float:

@@ -111,7 +111,7 @@ class Tokenizer(Builder):
             if self.char == '\\':
                 str_text += self.next_char()
         if self.char is None:
-            raise Exception(f"Unterminated string at {{ln={self.ln}, ch={self.col}}}: ",
+            raise Exception(f"Unterminated string at {{ln={self.ln+1}, ch={self.col+1}}}: ",
                             self.current_line.text[self.col:],
                             str_text)
         self.next_char()

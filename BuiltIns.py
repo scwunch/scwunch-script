@@ -263,10 +263,15 @@ Operator('**',
          binop=13, chainable=False, associativity='right')
 Operator('?',
          postfix=14, static=True)
-def has_option(fn: Function, arg: Function) -> Value:
+def has_option(fn: Function, arg: Function = None) -> Value:
     try:
+        if arg is None:
+            fn, arg = Context.env, fn
+            ascend = True
+        else:
+            ascend = False
         if arg.instanceof(BuiltIns['str']) or arg.instanceof(BuiltIns['list']):
-            fn.select(arg.value)
+            fn.select(arg.value, ascend_env=ascend)
         else:
             fn.select([arg])
         return Value(True)
@@ -274,8 +279,9 @@ def has_option(fn: Function, arg: Function) -> Value:
         return Value(False)
 Operator('has',
          Function(ListPatt(AnyParam, ListParam), has_option,
-                  {AnyBinopPattern: has_option}),
-         binop=14)
+                  {AnyBinopPattern: has_option,
+                   ListPatt(NormalParam): has_option}),
+         binop=14, prefix=14)
 
 def eval_call_args(lhs: list[Node], rhs: list[Node]) -> list[Function]:
     assert len(rhs) == 1

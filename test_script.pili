@@ -4,11 +4,11 @@ print test[0]
 
 greet = "hello world"
 test[1] = greet == 'hello world'
-print 'test 1 passed' if test[1] == true else 'test 1 failed'
+print 'test 1 passed' if test[1] == true else 'test 1 FAILED'
 
 greeting[str src]: 'Hello ' + src
 test[2] = "Hello Veronica" == greeting['Veronica']
-print 'test 2 passed' if test[2] == True else 'test 2 failed'
+print 'test 2 passed' if test[2] == True else 'test 2 FAILED'
 
 my_var[int num]:
 	prop1 = "hello"
@@ -17,38 +17,38 @@ my_var[int num]:
 
 my_var[str text]: text + '!'
 test[3] = my_var[1] == 10
-print 'test 3 passed' if test[3] else 'test 3 failed'
+print 'test 3 passed' if test[3] else 'test 3 FAILED'
 
 test[4] = my_var[2] == 11
-print 'test 4 passed' if test[4] else 'test 4 failed'
+print 'test 4 passed' if test[4] else 'test 4 FAILED'
 
 next_var =
 	str text: text + '?!?!'
 test[5] = next_var['hahahahaha'] == 'hahahahaha?!?!'
-print 'test 5 passed' if test[5] else 'test 5 failed'
+print 'test 5 passed' if test[5] else 'test 5 FAILED'
 
 my_var[3] = "three"
 test[6d] = my_var[3] == 'three'
-print 'test 10 passed' if test[6d] else 'test 10 failed'
+print 'test 10 passed' if test[6d] else 'test 10 FAILED'
 
 test[7d] = not 345 ~ type["345"] and 345 ~ type[3333]
-print 'test 11 passed' if test[7d] else 'test 11 failed'
+print 'test 11 passed' if test[7d] else 'test 11 FAILED'
 
 Dog[str name, str breed]:
 	.bark: "hello my name is " + name
 spot = Dog['Spot', 'terrier']
 test[8d] = spot.bark == "hello my name is Spot"
-print 'test 12 passed' if test[8d] else 'test 12 failed'
+print 'test 12 passed' if test[8d] else 'test 12 FAILED'
 
 test[9d] = (spot.breed == "terrier" or spot.name == "Spot") and (spot.breed != "terrier" or spot.name == "Spot") and not (spot.breed == "terrier" and spot.name != "Spot") and not (spot.breed != "terrier" and spot.name == "Spot")
-print 'test 13 passed' if test[9d] else 'test 13 failed'
+print 'test 13 passed' if test[9d] else 'test 13 FAILED'
 
 spot.name = 'Rover'
 test[14] = spot.name == 'Rover'
-print 'test 14 passed' if test[14] else 'test 14 failed'
+print 'test 14 passed' if test[14] else 'test 14 FAILED'
 
 test[15] = spot.bark == "hello my name is Rover"
-print 'test 15 passed' if test[15] else 'test 15 failed'
+print 'test 15 passed' if test[15] else 'test 15 FAILED'
 
 Range[int start, int end, int step]:
 	index = start
@@ -59,28 +59,28 @@ r = Range[0, 3, 1]
 # print r.next
 # print r.next
 test[20] = r.index == 0 and r.next == 1 and r.next == 2 and r.next == 3 and r.next == 'done'
-print 'test 20 passed' if test[20] else 'test 20 failed'
+print 'test 20 passed' if test[20] else 'test 20 FAILED'
 
 # test prototype modification
 Dog.bark_breed: "Hi, I'm a " + breed
 test[21] = (spot.bark_breed) == "Hi, I'm a terrier"
-print 'test 21 passed' if test[21] else 'test 21 failed'
+print 'test 21 passed' if test[21] else 'test 21 FAILED'
 
 test[22] = Dog has "asdfknasdf" == false and Dog has "bark_breed" == true
 test[22] = test[22] and not root has 'asdfasdf' and root has "Dog" == true
 test[22] = test[22] and pili has 'string'
-print 'test 22 passed' if test[22] else 'test 22 failed'
+print 'test 22 passed' if test[22] else 'test 22 FAILED'
 
 test[23] = (Dog[23] ?? "fall back") == "fall back" and (spot.name ?? "no name") == 'Rover'
-print 'test 23 passed' if test[23] else 'test 23 failed'
+print 'test 23 passed' if test[23] else 'test 23 FAILED'
 
 foo[str|int]: 'it worked'
 test[24] = foo[4] + foo["4"] == 'it worked' * 2
-print 'test 24 ' + ('passed' if test[24] else 'failed')
+print 'test 24 ' + ('passed' if test[24] else 'FAILED')
 
 foo2[str|int|bool var_name]: string[var_name] + ' worked'
 test[25] = foo2[1] == "1 worked"
-print 'test 25 ' + ('passed' if test[25] else 'failed')
+print 'test 25 ' + ('passed' if test[25] else 'FAILED')
 
 Cat =
 	str name:
@@ -90,19 +90,19 @@ Cat =
 
 my_cat = Cat["Ruby"]
 test[30] = string[my_cat] == my_cat.string and my_cat.string == "Cat 😸 Ruby"
-print 'test 30 ' + ('passed' if test[30] else 'failed')
+print 'test 30 ' + ('passed' if test[30] else 'FAILED')
 
 number = int|float|bool|ratio
 add[number a, number b]: integer[a] + b
 fav_num = 5
 test[31] = add[fav_num, 5]  == fav_num.add[5]
-print 'test 31 ' + ('passed' if test[31] else 'failed')
+print 'test 31 ' + ('passed' if test[31] else 'FAILED')
 
 
 test[32] = type[-10 / 20].string == "ratio" \
 	and type[4 * (1 + (-15 / 4))].string == "int" \
 		and type[1.0 / 1 + 1].string == "float"
-print 'test 32 ' + ('passed' if test[32] else 'failed')
+print 'test 32 ' + ('passed' if test[32] else 'FAILED')
 
 int_patt = int[-3, 5]
 test[33] = 1 ~ int_patt and -11 !~ int_patt and 0.0 !~ int_patt
@@ -110,13 +110,13 @@ small_str = str[1, 3]
 word_str = str[`\w+`]
 test[33] = test[33] and 'hi' ~ small_str and '' !~ small_str and 'too long' !~ small_str
 test[33] = test[33] and 'hi' ~ word_str and 'two words' !~ word_str
-print 'test 33 ' + ('passed' if test[33] else 'failed')
+print 'test 33 ' + ('passed' if test[33] else 'FAILED')
 
 neg_int = int < 0
 long_str = str >= 5
 test[34] = -1 ~ neg_int and 1 !~ neg_int
 test[34] = test[34] and 'hi' !~ long_str # and 'hello there' ~ long_str
-print 'test 34 ' + ('passed' if test[34] else 'failed')
+print 'test 34 ' + ('passed' if test[34] else 'FAILED')
 
 test[35] = 0
 if 1 == 2
@@ -126,7 +126,7 @@ else if 1 == 1
 else
 	test[35] = test[35] + 100
 
-print 'test 35 ' + ('passed' if test[35] == 10 else 'failed')
+print 'test 35 ' + ('passed' if test[35] == 10 else 'FAILED')
 
 
 my_list = []
@@ -137,15 +137,15 @@ my_list[3] = 'three'
 test[40] = len[my_list] == 3
 my_list.push['another value']
 test[40] = test[40] and len[my_list] == 4 # and my_list[-1] == 'another value'
-print 'test 40 ' + ('passed' if test[40] else 'failed')
+print 'test 40 ' + ('passed' if test[40] else 'FAILED')
 
 test[41] = my_list.push[55].len == 5 and my_list[1] == 'one' and my_list[-5] == 'one'
-print 'test 41 ' + ('passed' if test[41] else 'failed')
+print 'test 41 ' + ('passed' if test[41] else 'FAILED')
 
 my_func = {}
 my_func = {any arg: string[arg], num arg: string[arg+1]}
 test[42] = my_func["ANY ARG"] == "ANY ARG" and my_func[42] == "43"
-print 'test 42 ' + ('passed' if test[42] else 'failed')
+print 'test 42 ' + ('passed' if test[42] else 'FAILED')
 
 count = 0
 test[43] = true
@@ -153,14 +153,14 @@ for item in my_list
 	count = count + 1
 	test[43] = test[43] and item == my_list[count]
 
-print 'test 43 ' + ('passed' if test[43] else 'failed')
+print 'test 43 ' + ('passed' if test[43] else 'FAILED')
 
 i = 1
 while i < 130
 	if pili has 'verbose'
 		print i
 	i = i + 1
-print 'test 44 ' + ('passed' if (test[44] = i == 130) else 'failed')
+print 'test 44 ' + ('passed' if (test[44] = i == 130) else 'FAILED')
 
 lt[num a, num b]: a < b
 
@@ -176,7 +176,7 @@ item2 =
 test[45] = item2 < item1 and not item2 > item1
 item2.length = 55555
 test[45] = test[45] and not item2 < item1 and item2 > item1
-print 'test 45 ' + 'passed' if test[45] else 'failed'
+print 'test 45 ' + ('passed' if test[45] else 'FAILED')
 
 Dog[str name, num length]:
 	.bark: "hello my name is " + name
@@ -187,7 +187,7 @@ Fufu = Dog['Fufu', 30]
 Boulder = Dog['Boulder', 140]
 
 test[50] = Fufu <= Boulder and Boulder > Fufu
-print 'test 50 ' + 'passed' if test[50] else 'failed'
+print 'test 50 ' + ('passed' if test[50] else 'FAILED')
 
 root['=='][Dog dog1, Dog dog2]:
 	return dog1.name == dog2.name
@@ -195,10 +195,71 @@ root['=='][Dog dog1, Dog dog2]:
 Fufu2 = Dog['no name', 31]
 Fufu2.name = 'Fufu'
 test[51] = Fufu != Boulder and Fufu == Fufu2
-print 'test 51 ' + 'passed' if test[51] else 'failed'
+print 'test 51 ' + ('passed' if test[51] else 'FAILED')
 
 test[52] = 'three' in my_list and not 3 in my_list and 'Fufu' in Fufu and not 'Boulder' in Fufu
-print 'test 52 ' + 'passed' if test[52] else 'failed'
+print 'test 52 ' + ('passed' if test[52] else 'FAILED')
+
+
+join_strings[str items+, num n?]:
+	if has 'n'
+		items.push[n.string]
+	return items.join[' :: ']
+
+# print join_strings[]
+print join_strings["hi"]
+print join_strings["hi", "there"]
+print join_strings["hi", "there", "someone"]
+print join_strings["hi", 1]
+print join_strings["hi", "there", 2]
+print join_strings["hi", "there", "someone", 3.4d]
+print '*********************'
+
+ifs[int i*, float f?, str s+]:
+	result = ''
+	if has 'i'
+		result = result + string[i]
+	if has 'f'
+		result = result + string[f]
+	return result + ' ' + s.join[' ']
+
+print ifs['oh']
+print ifs[1, 'oh']
+print ifs[0.555, 'oh']
+print ifs[2, 0.00003, 'oh']
+print debug ifs[2, 1, 11, 0.00003, 'oh']
+print '*********************'
+
+joiner =
+	debug list ls, str sep:
+		result = ''
+		for s in ls
+			result = result + s.string + sep
+		return result
+	list ls:
+		return joiner[ls, ' ']
+
+# print my_list.joiner
+
+fsf[float f1*, str s*, float f2*]:
+	result = ''
+	if has 'f1'
+		result = "f1: " + f1.joiner + ','
+	if has 's'
+		result = result + ', ' + "s: " + s.join[' '] + ', '
+	if has 'f2'
+		result = result +'f2: '+ f2.joiner
+	return result
+
+print fsf[-1.3, 's', -0.122]
+print fsf['s', -0.122]
+print fsf[0.2345]
+print fsf['STRING']
+print fsf['STRING and ', 0.1, 0.2]
+print fsf[]
+
+exit
+
 
 ls = [1,2,3]
 print ls.join[' :: ']
