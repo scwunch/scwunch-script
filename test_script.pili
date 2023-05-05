@@ -227,11 +227,11 @@ print ifs['oh']
 print ifs[1, 'oh']
 print ifs[0.555, 'oh']
 print ifs[2, 0.00003, 'oh']
-print debug ifs[2, 1, 11, 0.00003, 'oh']
+print ifs[2, 1, 11, 0.00003, 'oh']
 print '*********************'
 
 joiner =
-	debug list ls, str sep:
+	list ls, str sep:
 		result = ''
 		for s in ls
 			result = result + s.string + sep

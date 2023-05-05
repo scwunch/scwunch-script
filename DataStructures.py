@@ -354,9 +354,21 @@ class ListPatt(Pattern):
                     return (score / len(args), saves)
         return 0
 
-    def match_zip2(self, args: list = None, i_inst=0, i_arg=0, score=0, sub_score=0, saves=None):
+    def match_zip(self, args):
         if args is None:
             return 1, {}
+        if not isinstance(args, list):
+            if args.type != BuiltIns['list']:
+                return 0, {}
+            args = args.value
+        # if len(args) == 0 == len(self.parameters):
+        #     return 1, {}
+        if not self.min_len() <= len(args) <= self.max_len():
+            return 0, {}
+        return self.match_zip2(args)
+
+
+    def match_zip2(self, args: list = None, i_inst=0, i_arg=0, score=0, sub_score=0, saves=None):
         if saves is None:
             saves = {}
         while True:
@@ -379,7 +391,7 @@ class ListPatt(Pattern):
                 case "":
                     # match patt, save, and move on
                     if not match_value:
-                        return 0
+                        return 0, {}
                     saves[key] = args[i_arg]
                     score += match_value
                     i_arg += 1
@@ -396,7 +408,7 @@ class ListPatt(Pattern):
                 case "+":
                     if key not in saves:
                         if not match_value:
-                            return 0
+                            return 0, {}
                         saves[key] = Value([])
                     if match_value:
                         branch_saves = saves.copy()
@@ -417,11 +429,14 @@ class ListPatt(Pattern):
                         branch = self.match_zip2(args, i_inst, i_arg + 1, score, sub_score + match_value, branch_saves)
                         if branch:
                             return branch
-                    score += sub_score / (len(saves[key].value) or 6)
+                    if len(saves[key].value):
+                        score += sub_score / len(saves[key].value)
+                    else:
+                        score += 1/36
                     i_inst += 1
         return score, saves
 
-    def match_zip(self, args: list = None):
+    def match_zip1(self, args: list = None):
         options: dict[str, Function] = {}
         states = self.start.leaves()
         # if self.start.branches:
@@ -490,6 +505,7 @@ class ListPatt(Pattern):
     def __getitem__(self, item):
         return self.parameters[item]
     def match_score(self, list_value):
+        return self.match_zip(list_value)[0]
         if list_value.type != BuiltIns['list']:
             return 0
         args = list_value.value
@@ -647,7 +663,7 @@ class Option:
             # btw: this is possibly the third time the env is getting overriden: it's first set when the FuncBlock is
             # defined, then overriden by the env argument passed to self.resolve, and finally here if it is a dot-option
             # ... I should consider making a multi-layer env, or using the prototype, or multiple-inheritance type-thing
-        fn = self.block.make_function(self.pattern.match_zip2(args)[1], env)
+        fn = self.block.make_function(self.pattern.match_zip(args)[1], env)
         Context.push(Context.line, fn, self)
         return self.block.execute(args, fn)
 
@@ -720,6 +736,7 @@ class Function:
         arg_list = Value(key)
         for i, opt in enumerate(self.options):
             score = opt.pattern.match_score(arg_list)
+            score, saves = opt.pattern.match_zip(arg_list)
             if score == 1:
                 return i
             if score > high_score:
