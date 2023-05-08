@@ -14,9 +14,9 @@ class Context:
     @staticmethod
     def push(line, env, option):
         BuiltIns['root'] = env
-        env.name = 'root'
+        # env.name = 'root'
         from DataStructures import ListPatt, Parameter
-        BuiltIns['pili'].add_option(ListPatt(Parameter('root')), env)
+        # BuiltIns['pili'].add_option(ListPatt(Parameter('pili')), env)
         Context.push = Context._push
         Context.push(line, env, option)
 

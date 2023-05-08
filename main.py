@@ -22,14 +22,14 @@ else:
     script_path = "test_script.pili"
     print('(test mode) running script', script_path)
 
-root = Function(ListPatt(Parameter('main')), lambda x: NotImplemented)
-BuiltIns['pili'] = root
+pili = Function(ListPatt(Parameter('main')), lambda x: NotImplemented, name='pili')
+BuiltIns['pili'] = pili
 for key, builtin in BuiltIns.items():
     if not builtin.name:
         builtin.name = key
-    root.add_option(ListPatt(Parameter(key)), builtin)
-Context.root = root
-Context.push(0, root, Option(Any))
+    pili.add_option(ListPatt(Parameter(key)), builtin)
+Context.root = pili
+Context.push(0, pili, Option(Any))
 
 def execute_code(code: str) -> Function:
     block = FuncBlock(AST(Tokenizer(code)).block)
@@ -71,12 +71,12 @@ if mode in ('test', 'script'):
 
     tokenizer = Tokenizer(script_string)
     ast = AST(tokenizer)
-    root.add_option(ListPatt(Parameter('main')), FuncBlock(ast.block))
+    pili.assign_option(ListPatt(Parameter('main')), FuncBlock(ast.block))
     # BuiltIns['pili'] = root
     # for key, builtin in BuiltIns.items():
     #     if not builtin.name:
     #         builtin.name = key
     #     root.add_option(ListPatt(Parameter(key)), builtin)
     # Context.root = root
-    output = root.deref('main')
+    output = pili.deref('main')
     print(output)

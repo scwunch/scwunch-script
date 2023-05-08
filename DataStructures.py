@@ -946,8 +946,8 @@ class Function:
         return True
 
     def __repr__(self):
-        if self is Context.root:
-            return 'root'
+        # if self is Context.root:
+        #     return 'root'
         if self.type is Context.root:
             return 'root.main'
         if self.value is not NotImplemented:

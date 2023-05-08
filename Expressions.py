@@ -404,7 +404,7 @@ def read_option(nodes: list[Node], is_value=False) -> Option:
     dot_option = nodes[0].source_text == '.'
     match nodes:
         case[Token(source_text='.'), List() as opt, Token(source_text='.'), List() as param_list]:
-            fn_nodes = [Token('root'), Token('.'), opt]
+            fn_nodes = [Token('pili'), Token('.'), opt]
             param_list = [item.nodes for item in param_list.nodes]
         case [Token(source_text='.'), *fn_nodes, Token(source_text='.'), List() as param_list]:
             param_list = [item.nodes for item in param_list.nodes]
