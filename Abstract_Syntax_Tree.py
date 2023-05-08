@@ -36,7 +36,7 @@ class Tokenizer(Builder):
         for i, line in enumerate(script_lines):
             self.lines.append(Line(line, i+1))
         self.current_line: Line | None = self.lines[0]
-        self.char = self.current_line.text[0]
+        self.char = self.current_line.text[0] if self.current_line.text else None
 
         # add tokens to lines
         for line in self.lines:
@@ -144,7 +144,7 @@ class AST(Builder):
         super().__init__()
         self.lines = toks.lines
         self.current_line = self.lines[0]
-        self.tok = self.current_line.tokens[0]
+        self.tok = self.current_line.tokens[0] if self.current_line.tokens else None
         self.block = self.read_block()
 
     def peek(self, count=1):
