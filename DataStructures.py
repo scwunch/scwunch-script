@@ -251,6 +251,15 @@ class Save(Instruction):
 class Match(Instruction):
     pass
 
+def copy_bindings(saves):
+    new_saves = {}
+    for key, value in saves.items():
+        if isinstance(value.value, list):
+            new_saves[key] = Value(value.value.copy())
+        else:
+            new_saves[key] = value
+    return new_saves
+
 
 class ListPatt(Pattern):
     def __init__(self, *parameters: Parameter):
@@ -399,11 +408,12 @@ class ListPatt(Pattern):
                 case "?":
                     # try match patt and save... move on either way
                     if match_value:
-                        branch_saves = saves.copy()
+                        branch_saves = copy_bindings(saves)
                         branch_saves[key] = args[i_arg]
                         branch = self.match_zip2(args, i_inst+1, i_arg+1, score+match_value, 0, branch_saves)
-                        if branch:
+                        if branch[0]:
                             return branch
+                    # saves[key] = Value(None)  # for some reason this line causes error later on in the execution!  I have no idea why, but I'll have to debug later
                     i_inst += 1
                 case "+":
                     if key not in saves:
@@ -411,12 +421,12 @@ class ListPatt(Pattern):
                             return 0, {}
                         saves[key] = Value([])
                     if match_value:
-                        branch_saves = saves.copy()
+                        branch_saves = copy_bindings(saves)
                         branch_saves[key].value.append(args[i_arg])
                         sub_score += match_value
                         i_arg += 1
                         branch = self.match_zip2(args, i_inst, i_arg, score, sub_score, branch_saves)
-                        if branch:
+                        if branch[0]:
                             return branch
                     score += sub_score / len(saves[key].value)
                     i_inst += 1
@@ -424,10 +434,10 @@ class ListPatt(Pattern):
                     if key not in saves:
                         saves[key] = Value([])
                     if match_value:
-                        branch_saves = saves.copy()
+                        branch_saves = copy_bindings(saves)
                         branch_saves[key].value.append(args[i_arg])
                         branch = self.match_zip2(args, i_inst, i_arg + 1, score, sub_score + match_value, branch_saves)
-                        if branch:
+                        if branch[0]:
                             return branch
                     if len(saves[key].value):
                         score += sub_score / len(saves[key].value)
@@ -746,6 +756,16 @@ class Function:
             raise IndexError
         return idx
 
+    def select_and_bind(self, key: list | ListPatt):
+        try:
+            if isinstance(key, ListPatt):
+                return [opt for opt in self.options if opt.pattern == key][0]
+
+        except IndexError:
+            pass
+        #
+        # -> tuple[Option, dict[str, Function]]:
+
     def select(self, key, walk_prototype_chain=True, ascend_env=False):
         try:
             match key:
@@ -781,6 +801,8 @@ class Function:
     def call(self, key, ascend=False):
         try:
             option = self.select(key)
+            # for opt in self.options:
+            #     bindings = opt.pattern.match_zip(key)
         except NoMatchingOptionError as e:
             if ascend and self.env:
                 try:

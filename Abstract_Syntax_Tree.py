@@ -66,6 +66,9 @@ class Tokenizer(Builder):
                 text = self.char
             else:
                 raise Exception("What kind of character is this?", self.char)
+            # warnings
+            if text == ':' and tokens and tokens[0].source_text in KeyWords:
+                print(f"SYNTAX WARNING ({self.ln+1}): Pili does not use colons for control blocks like if and for.")
             tokens.append(Token(text, pos))
             while self.col == pos[1] or self.char and re.match(r'\s', self.char):
                 self.next_char()

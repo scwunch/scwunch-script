@@ -257,6 +257,21 @@ print fsf[0.2345]
 print fsf['STRING']
 print fsf['STRING and ', 0.1, 0.2]
 print fsf[]
+print '*********************'
+
+fsnfi[float f1?, str s*, num n*, float f2+, int op_i?]:
+	args = []
+	if has 'f1'
+		args.push['f1='+f1.string]
+	args.push['s='+s.string]
+	args.push['n='+n.string]
+	args.push['f2='+f2.string]
+	if has 'op_i'
+		args.push['op_i='+op_i.string]
+	return args.joiner
+
+print fsnfi[1.434, debug 5]
+print "done"
 
 exit
 
