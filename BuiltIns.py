@@ -173,7 +173,7 @@ def assign_var(key: Value, val: Function):
     name = key.value
     assert isinstance(name, str)
     try:
-        option = Context.env.select(name, ascend_env=True)
+        option = Context.env.select_by_name(name)
         option.nullify()
         option.assign(val)
     except NoMatchingOptionError:
@@ -264,16 +264,20 @@ Operator('**',
 Operator('?',
          postfix=14, static=True)
 def has_option(fn: Function, arg: Function = None) -> Value:
+    if arg is None:
+        fn, arg = Context.env, fn
+        ascend = True
+    else:
+        ascend = False
     try:
-        if arg is None:
-            fn, arg = Context.env, fn
-            ascend = True
+        if arg.instanceof(BuiltIns['str']):
+            return Value(fn.select_by_name(arg.value, ascend_env=ascend) is not None)
+        elif arg.instanceof(BuiltIns['list']):
+            # fn.select(arg.value, ascend_env=ascend)
+            fn.select_and_bind(arg.value, ascend_env=ascend)
         else:
-            ascend = False
-        if arg.instanceof(BuiltIns['str']) or arg.instanceof(BuiltIns['list']):
-            fn.select(arg.value, ascend_env=ascend)
-        else:
-            fn.select([arg])
+            # fn.select([arg])
+            fn.select_and_bind([arg])
         return Value(True)
     except NoMatchingOptionError:
         return Value(False)

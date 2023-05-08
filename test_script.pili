@@ -1,3 +1,13 @@
+print 'root:'
+print root
+print 'pili:'
+print pili
+some_name = 'this is a name'
+debug root
+debug pili
+exit
+
+
 test =
 	0: 'test init success'
 print test[0]
@@ -270,7 +280,7 @@ fsnfi[float f1?, str s*, num n*, float f2+, int op_i?]:
 		args.push['op_i='+op_i.string]
 	return args.joiner
 
-print fsnfi[1.434, debug 5]
+print fsnfi[1.434, 5]
 print "done"
 
 exit

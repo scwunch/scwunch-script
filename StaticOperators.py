@@ -89,7 +89,7 @@ def option_exists(lhs: list[Node], rhs: list[Node]) -> Value:
             # assert lhs[-1] is '.' or '.['
             fn = expressionize(lhs[:-2]).evaluate()
             # assert isinstance(fn, Function)
-        fn.select(key)
+        fn.select_and_bind(key)
         return Value(True)
     except NoMatchingOptionError:
         return Value(False)

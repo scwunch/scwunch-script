@@ -454,11 +454,13 @@ def read_option(nodes: list[Node], is_value=False) -> Option:
         patt = ListPatt(Parameter(Prototype(Context.env)), *params)
     else:
         patt = ListPatt(*params)
-    try:
-        option = fn.select(patt, walk_prototype_chain=False, ascend_env=not definite_env)
-        """critical design decision here: I want to have walk_prototype_chain=False so I don't assign variables from the prototype..."""
-    except NoMatchingOptionError:
-        option = fn.add_option(patt)
+    # try:
+    #     # option = fn.select(patt, walk_prototype_chain=False, ascend_env=not definite_env)
+    #     option = fn.select_by_pattern(patt, walk_prototype_chain=False, ascend_env=not definite_env)
+    #     """critical design decision here: I want to have walk_prototype_chain=False so I don't assign variables from the prototype..."""
+    # except NoMatchingOptionError:
+    #     option = fn.add_option(patt)
+    option = fn.select_by_pattern(patt, ascend_env=True) or fn.add_option(patt)
     option.dot_option = dot_option
     return option
 

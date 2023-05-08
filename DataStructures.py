@@ -366,10 +366,6 @@ class ListPatt(Pattern):
     def match_zip(self, args):
         if args is None:
             return 1, {}
-        if not isinstance(args, list):
-            if args.type != BuiltIns['list']:
-                return 0, {}
-            args = args.value
         # if len(args) == 0 == len(self.parameters):
         #     return 1, {}
         if not self.min_len() <= len(args) <= self.max_len():
@@ -444,7 +440,7 @@ class ListPatt(Pattern):
                     else:
                         score += 1/36
                     i_inst += 1
-        return score, saves
+        return score/len(self.parameters), saves
 
     def match_zip1(self, args: list = None):
         options: dict[str, Function] = {}
@@ -661,7 +657,7 @@ class Option:
             case types.FunctionType(): self.fn = resolution
             case _:
                 raise ValueError("Could not assign resolution: ", resolution)
-    def resolve(self, args=None, env=None):
+    def resolve(self, args=None, env=None, bindings={}):
         if self.value:
             return self.value
         if self.fn:
@@ -673,9 +669,12 @@ class Option:
             # btw: this is possibly the third time the env is getting overriden: it's first set when the FuncBlock is
             # defined, then overriden by the env argument passed to self.resolve, and finally here if it is a dot-option
             # ... I should consider making a multi-layer env, or using the prototype, or multiple-inheritance type-thing
-        fn = self.block.make_function(self.pattern.match_zip(args)[1], env)
+        # fn = self.block.make_function(self.pattern.match_zip(args)[1], env)
+        fn = self.block.make_function(bindings, env)
         Context.push(Context.line, fn, self)
         return self.block.execute(args, fn)
+    def __eq__(self, other):
+        return isinstance(other, Option) and (self.pattern, self.resolution) == (other.pattern, other.resolution)
 
     def __repr__(self):
         if self.value:
@@ -724,21 +723,18 @@ class Function:
         return option
 
     def remove_option(self, pattern):
-        opt = self.select(pattern)
+        opt = self.select_by_pattern(pattern)
+        if opt is None:
+            raise NoMatchingOptionError(f'cannot find option "{pattern}" to remove')
         opt.nullify()
 
     def assign_option(self, pattern, resolution=None):
-        try:
-            opt = self.select(pattern)
-            opt.nullify()
-            opt.assign(resolution)
-        except NoMatchingOptionError:
+        opt = self.select_by_pattern(pattern)
+        if opt is None:
             return self.add_option(pattern, resolution)
+        opt.nullify()
+        opt.assign(resolution)
         return opt
-        if isinstance(resolution, Value):
-            return resolution
-        else:
-            return Value(None)
 
     def index_of(self, key) -> int:
         idx = None
@@ -756,15 +752,97 @@ class Function:
             raise IndexError
         return idx
 
-    def select_and_bind(self, key: list | ListPatt):
-        try:
-            if isinstance(key, ListPatt):
-                return [opt for opt in self.options if opt.pattern == key][0]
+    def get_option_and_binding_inner(self, key):
+        option = saves = None
+        high_score = 0
+        arg_list = Value(key)
+        for opt in self.options:
+            score, saves = opt.pattern.match_zip(arg_list)
+            if score == 1:
+                return opt, saves
+            if score > high_score:
+                high_score = score
+                option = opt
+        if option is None:
+            raise IndexError
+        return option, saves
 
-        except IndexError:
-            pass
-        #
+    def select_and_bind(self, key: list, walk_prototype_chain=True, ascend_env=False):
+        if len(key) == 1 and key[0].instanceof(BuiltIns['str']):
+            try:
+                return self.select_by_name(key[0].value, ascend_env), {}
+            except NoMatchingOptionError:
+                pass
+        option = bindings = saves = high_score = 0
+        for opt in self.options:
+            score, saves = opt.pattern.match_zip(key)
+            if score == 1:
+                return opt, saves
+            if score > high_score:
+                high_score = score
+                option, bindings = opt, saves
+        if option:
+            return option, bindings
+        # try:
+        #     match key:
+        #         case ListPatt():
+        #             return [opt for opt in self.options if opt.pattern == key][0], {}
+        #         case str() as key:
+        #             opt = self.named_options[key]
+        #             # I may want to remove this case
+        #             # BECAUSE foo.string should NOT match a possible [any] pattern on foo.
+        #             # It should ONLY match "string" named option on foo first, then string function globally second
+        #         case [arg] if arg.instanceof(BuiltIns['str']):
+        #             opt = self.named_options.get(arg.value, None)
+        #         case _:
+        #             assert isinstance(key, list)
+        #             opt = None
+        #     if opt:
+        #         return opt, {}
+        #     return self.get_option_and_binding_inner(key)
+        # except (KeyError, IndexError):
+        #     pass
+        if walk_prototype_chain and self.type:
+            try:
+                return self.type.select_and_bind(key, True, ascend_env)
+            except NoMatchingOptionError:
+                pass
+        if ascend_env and self.env:
+            try:
+                return self.env.select_and_bind(key, walk_prototype_chain, True)
+            except NoMatchingOptionError:
+                pass
+        raise NoMatchingOptionError(f"Line {Context.line}: key {key} not found in function {self}")
         # -> tuple[Option, dict[str, Function]]:
+
+    def select_by_pattern(self, patt=None, default=None, ascend_env=False):
+        # return [*[opt for opt in self.options if opt.pattern == patt], None][0]
+        for opt in self.options:
+            if opt.pattern == patt:
+                return opt
+        if ascend_env and self.env:
+            return self.env.select_by_pattern(patt, default)
+        return default
+
+    def select_by_name(self, name: str, ascend_env=True):
+        if name in self.named_options:
+            return self.named_options[name]
+        env = self.type
+        while env:
+            if name in env.named_options:
+                return env.named_options[name]
+            env = env.type
+        # if self.type:
+        #     try:
+        #         return self.type.select_by_name(name, False)
+        #     except NoMatchingOptionError:
+        #         pass
+        if ascend_env and self.env:
+            try:
+                return self.env.select_by_name(name, True)
+            except NoMatchingOptionError:
+                pass
+        raise NoMatchingOptionError(f"Line {Context.line}: '{name}' not found in current context")
 
     def select(self, key, walk_prototype_chain=True, ascend_env=False):
         try:
@@ -800,7 +878,8 @@ class Function:
 
     def call(self, key, ascend=False):
         try:
-            option = self.select(key)
+            # option = self.select(key)
+            option, bindings = self.select_and_bind(key)
             # for opt in self.options:
             #     bindings = opt.pattern.match_zip(key)
         except NoMatchingOptionError as e:
@@ -810,10 +889,11 @@ class Function:
                 except NoMatchingOptionError:
                     pass
             raise e
-        return option.resolve(key, self)
+        return option.resolve(key, self, bindings)
 
     def deref(self, name: str, ascend_env=True):
-        option = self.select(name, ascend_env=ascend_env)
+        # option = self.select(name, ascend_env=ascend_env)
+        option = self.select_by_name(name, ascend_env)
         return option.resolve(None, self)
 
     def instanceof(self, prototype):
@@ -855,11 +935,14 @@ class Function:
             return True
         if self.env != other.env or self.name != other.name:
             return False
-        try:
-            for opt in self.options:
-                assert opt.resolution == other.select(opt.pattern).resolution
-        except NoMatchingOptionError:
-            return False
+        # try:
+        #     for opt in self.options:
+        #         assert opt.resolution == other.select(opt.pattern).resolution
+        # except (NoMatchingOptionError, AssertionError):
+        #     return False
+        for opt in self.options:
+            if opt.resolution != getattr(other.select_by_pattern(opt.pattern), 'resolution', None):
+                return False
         return True
 
     def __repr__(self):
