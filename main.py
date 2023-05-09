@@ -29,7 +29,7 @@ for key, builtin in BuiltIns.items():
         builtin.name = key
     pili.add_option(ListPatt(Parameter(key)), builtin)
 Context.root = pili
-Context.push(0, pili, Option(Any))
+# Context.push(0, pili, Option(Any))
 
 def execute_code(code: str) -> Function:
     block = FuncBlock(AST(Tokenizer(code)).block)
@@ -42,6 +42,7 @@ def execute_code(code: str) -> Function:
 
 
 if mode == 'shell':
+    Context.push(0, pili, Option(Any))
     while True:
         code = ''
         next_line = input('> ')
