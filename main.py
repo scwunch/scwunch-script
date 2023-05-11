@@ -4,14 +4,6 @@ from Abstract_Syntax_Tree import Tokenizer, AST
 from BuiltIns import *
 from StaticOperators import *
 
-
-def convert(name: str) -> Function:
-    o = object()
-    py_fn = getattr(__builtins__, name, o)
-    if py_fn is o:
-        raise SyntaxErr(f"Name '{name}' not found.")
-    root.add_option(ListPatt(Parameter(name)), lambda *args: Value(py_fn((arg.value for arg in args))))
-
 if len(sys.argv) == 1 and sys.executable == '/usr/bin/python3':  # test if running in console; pycharm executable is python3.10
     mode = 'shell'
 elif len(sys.argv) == 2:

@@ -98,7 +98,7 @@ def read_number(text: str, base=6) -> int | float | Fraction:
 def write_number(num: int|float|Fraction, base=6, precision=12, sep="_") -> str:
     """ take a number and convert to a string of digits, possibly separated by / or . """
     if isinstance(num, Fraction):
-        return write_number(num.numerator) + "/" + write_number(num.denominator)
+        return write_number(num.numerator, base, sep=sep) + "/" + write_number(num.denominator, base, sep=sep)
     sign = "-" * (num < 0)
     num = abs(num)
     whole = int(num)
@@ -109,7 +109,7 @@ def write_number(num: int|float|Fraction, base=6, precision=12, sep="_") -> str:
         for i in range(len(digits)-4, 0, -4):
             digits.insert(i, sep)
     ls = sign + ''.join(digits)
-    if frac == 0:
+    if isinstance(num, int):
         return ls
     rs = frac_from_base(frac, base, precision)
     return f"{ls}.{''.join(str(d) for d in rs)}"
@@ -124,13 +124,18 @@ def get_digits(num: int, base=6) -> list[str]:
 
 def frac_from_base(num: float, base=6, precision=12):
     digits = []
-    remainders = []
+    # remainders = []
     for i in range(precision):
         tmp = num * base
         itmp = int(tmp)
         num = tmp - itmp
-        if 1-num < base ** (i-precision):
+        if itmp == 0 and num < base ** (i-precision):
+            break
+        elif 1-num < base ** (i-precision):
             digits += [itmp+1]
             break
         digits += [itmp]
+    # optionally fix an issue where numbers less than 1 but very close to one print as '0.6'
+    # if digits == [base]:
+    #     return [base-1] * precision
     return digits

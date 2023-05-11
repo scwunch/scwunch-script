@@ -58,6 +58,7 @@ FunctionParam = Parameter(Prototype(BuiltIns["fn"]))
 AnyParam = Parameter(Any)
 NormalBinopPattern = ListPatt(NormalParam, NormalParam)
 AnyBinopPattern = ListPatt(AnyParam, AnyParam)
+AnyListPatt = ListPatt(Parameter(Any, quantifier="*"))
 
 PositiveIntParam = Parameter(Prototype(BuiltIns["int"], guard=lambda x: Value(x.value > 0)))
 NegativeIntParam = Parameter(Prototype(BuiltIns["int"], guard=lambda x: Value(x.value < 0)))
@@ -143,10 +144,15 @@ def convert(name: str) -> Function:
     py_fn = __builtins__.get(name, o)
     if py_fn is o:
         raise SyntaxErr(f"Name '{name}' not found.")
-    Context.root.add_option(ListPatt(Parameter(name)), lambda *args: Value(py_fn((arg.value for arg in args))))
-    return Function(ListPatt(AnyParam), lambda *args: Value(py_fn((arg.value for arg in args))))
+    # Context.root.add_option(ListPatt(Parameter(name)), lambda *args: Value(py_fn((arg.value for arg in args))))
+    # def lambda_fn(*args):
+    #     arg_list = list(arg.value for arg in args)
+    #     return Value(py_fn(*arg_list))
+    # return Function(AnyListPatt, lambda_fn)
+    return Function(AnyListPatt, lambda *args:
+        Value(py_fn(*(arg.value for arg in args))))
 
-BuiltIns['import'] = Function(ListPatt(StringParam), lambda n: convert(n.value))
+BuiltIns['python'] = Function(ListPatt(StringParam), lambda n: convert(n.value))
 
 #############################################################################################
 def eval_set_args(lhs: list[Node], rhs: list[Node]) -> list[Function]:
@@ -169,9 +175,11 @@ def eval_set_args(lhs: list[Node], rhs: list[Node]) -> list[Function]:
         return [key, value]
     return [fn, key, value]
 
-def assign_var(key: Value, val: Function):
+def assign_var(key: Value, val: Function, aug_op: str = None):
     name = key.value
     assert isinstance(name, str)
+    if aug_op is not None:
+        val = BuiltIns[aug_op].call()
     try:
         option = Context.env.select_by_name(name)
         option.nullify()
@@ -179,6 +187,14 @@ def assign_var(key: Value, val: Function):
     except NoMatchingOptionError:
         option = Context.env.add_option(name, val)
     return option.value
+
+
+def augment_assign_fn(op: str):
+    def aug_assign(key: Value, val: Function):
+        initial = Context.env.deref(key.value)
+        new = BuiltIns[op].call([initial, val])
+        return assign_var(key, new)
+    return aug_assign
 
 
 # Operator('=', binop=1, static=True, associativity='right')
@@ -189,6 +205,11 @@ Operator('=',
                   {ListPatt(AnyParam, AnyParam, AnyParam): lambda *args: BuiltIns['set'].call(list(args))}),
          binop=1, associativity='right')
 Op['='].eval_args = eval_set_args
+for op in ('+', '-', '*', '/', '//', '**', '%'):
+    Operator(op+'=', Function(AnyBinopPattern, augment_assign_fn(op),
+                              {ListPatt(AnyParam, AnyParam, AnyParam): lambda *args: BuiltIns['set'].call(list(args))}),
+             binop=1, associativity='right')
+    Op[op+'='].eval_args = eval_set_args
 Operator('if',
          Function(ListPatt(AnyParam), lambda x: x),
          binop=2, static=True, ternary='else')
@@ -288,7 +309,8 @@ Operator('has',
          binop=14, prefix=14)
 
 def eval_call_args(lhs: list[Node], rhs: list[Node]) -> list[Function]:
-    assert len(rhs) == 1
+    if len(rhs) != 1:
+        raise SyntaxErr(f'Line {Context.line}: missing args')
     if rhs[0].type == TokenType.Name:
         right_arg = Value(rhs[0].source_text)
     else:

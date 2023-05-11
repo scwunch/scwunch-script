@@ -169,7 +169,7 @@ item1 =
 
 item2 =
 	length = 143
-	debug .['<'][any item]: length < item.length
+	.['<'][any item]: length < item.length
 	.['>'][any item]: length > item.length
 
 # return .['<']
@@ -206,29 +206,38 @@ join_strings[str items+, num n?]:
 		items.push[n.string]
 	return items.join[' :: ']
 
-# print join_strings[]
-print join_strings["hi"]
-print join_strings["hi", "there"]
-print join_strings["hi", "there", "someone"]
-print join_strings["hi", 1]
-print join_strings["hi", "there", 2]
-print join_strings["hi", "there", "someone", 3.4d]
-print '*********************'
+test[53] = join_strings["hi"] == 'hi' and join_strings["hi", "there"] == "hi :: there" and join_strings["hi", "there", "someone"] == "hi :: there :: someone" and join_strings["hi", 1] == "hi :: 1" and join_strings["hi", "there", 3.5d] == "hi :: there :: 3.3"
+
+print_test[num n]:
+	print 'test ' + n.string + (' passed' if test[n] else ' FAILED')
+
+print_test[53]
+
 
 ifs[int i*, float f?, str s+]:
 	result = ''
-	if has 'i'
-		result = result + string[i]
+	if has 'i' and len[i]
+		result = string[i]
 	if has 'f'
-		result = result + string[f]
-	return result + ' ' + s.join[' ']
+		result = result + ' ' * bool[result] + string[f]
+	return result + ' ' * bool[result] + '"' + s.join[' '] + '"'
 
-print ifs['oh']
-print ifs[1, 'oh']
-print ifs[0.555, 'oh']
-print ifs[2, 0.00003, 'oh']
-print ifs[2, 1, 11, 0.00003, 'oh']
-print '*********************'
+test[54] = ifs['oh'] == '"oh"' and ifs[1, 'oh'] == '[1] "oh"' and ifs[0.555, 'oh'] == '0.555 "oh"' and ifs[2, 0.0003, 'oh'] == '[2] 0.0003 "oh"' and ifs[2, 1, 11, 0.4, 'oh', 'my'] == '[2, 1, 11] 0.4 "oh my"'
+print_test[54]
+
+
+
+
+
+
+asdf = 1
+asdf += 2
+print asdf
+print asdf += 10
+print asdf += -20
+
+
+exit
 
 joiner =
 	list ls, str sep:
@@ -273,14 +282,12 @@ fsnfi[float f1?, str s*, num n*, float f2+, int op_i?]:
 print fsnfi[1.434, 5]
 print "done"
 
-exit
-
 
 ls = [1,2,3]
 print ls.join[' :: ']
 
-b = import['bool']
-print b[1, 1]
+b = python['int']
+print b['55', 10]
 
 
 exit
@@ -358,3 +365,19 @@ exit
 # 		return "some default"
 #
 #
+
+#
+# 3.300000000000
+# False
+# *********************
+# [] oh
+# [1] oh
+# []0.555000000000 oh
+# [2]0.000030000000 oh
+# [2, 1, 11]0.000030000000 oh
+# *********************
+# f1: -1.300000000000 ,, s: s, f2: -0.122
+# f1: ,, s: s, f2: -0.122
+# f1: 0.2345 ,, s: , f2:
+# f1: ,, s: STRING, f2:
+# f1: ,, s: STRING and , f2: 0.100000000000 0.200000000000
