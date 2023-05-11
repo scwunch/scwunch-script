@@ -95,11 +95,21 @@ def option_exists(lhs: list[Node], rhs: list[Node]) -> Value:
         return Value(False)
 Op['?'].static = option_exists
 
-def nullish_or(lhs: list[Node], rhs: list[Node]) -> Value:
+def try_or(lhs: list[Node], rhs: list[Node]) -> Value:
     try:
         return expressionize(lhs).evaluate()
     except NoMatchingOptionError:
         return expressionize(rhs).evaluate()
+def nullish_or(lhs: list[Node], rhs: list[Node]) -> Value:
+    first = expressionize(lhs).evaluate()
+    if first.not_null():
+        return first
+    return expressionize(rhs).evaluate()
 Op['??'].static = nullish_or
 
+def coalesce(lhs: list[Node], rhs: list[Node]) -> Value:
+    try:
+        return expressionize(lhs).evaluate()
+    except NoMatchingOptionError:
+        return expressionize(rhs).evaluate()
 

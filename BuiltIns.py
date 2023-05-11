@@ -345,7 +345,11 @@ Operator('.',
                   {AnyBinopPattern: dot_fn,
                    ListPatt(StringParam): lambda a: dot_fn(Context.env, a)}),
          binop=15, prefix=15)
-Op['.'].eval_args = eval_call_args
+Operator('.?',
+         Function(AnyBinopPattern, lambda a, b: BuiltIns['.'].call([a,b]) if BuiltIns['has'].call([a, b]).value else Value(None),
+                  {ListPatt(StringParam): lambda a: BuiltIns['.'].call([a]) if BuiltIns['has'].call([a]).value else Value(None),}),
+         binop=15, prefix=15)
+Op['.'].eval_args = Op['.?'].eval_args = eval_call_args
 
 # map-dot / swizzle operator
 Operator('..',

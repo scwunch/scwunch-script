@@ -71,7 +71,7 @@ test[22] = test[22] and not has 'asdfasdf' and has "Dog" == true
 test[22] = test[22] and pili has 'string'
 print 'test 22 passed' if test[22] else 'test 22 FAILED'
 
-test[23] = (Dog[23] ?? "fall back") == "fall back" and (spot.name ?? "no name") == 'Rover'
+test[23] = (Dog.?[23] ?? "fall back") == "fall back" and (spot.?name ?? "no name") == 'Rover'
 print 'test 23 passed' if test[23] else 'test 23 FAILED'
 
 foo[str|int]: 'it worked'
