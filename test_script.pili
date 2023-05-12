@@ -226,18 +226,16 @@ test[54] = ifs['oh'] == '"oh"' and ifs[1, 'oh'] == '[1] "oh"' and ifs[0.555, 'oh
 print_test[54]
 
 
-
-
-
-
 asdf = 1
 asdf += 2
-print asdf
-print asdf += 10
-print asdf += -20
+asdf -= 2 + 2
+asdf *= 20
+asdf /= -10
+asdf += true
+asdf //= 2
+test[55] = asdf == 1
+print_test[55]
 
-
-exit
 
 joiner =
 	list ls, str sep:
@@ -250,23 +248,23 @@ joiner =
 
 # print my_list.joiner
 
-fsf[float f1*, str s*, float f2*]:
-	result = ''
-	if has 'f1'
-		result = "f1: " + f1.joiner + ','
-	if has 's'
-		result = result + ', ' + "s: " + s.join[' '] + ', '
-	if has 'f2'
-		result = result +'f2: '+ f2.joiner
-	return result
-
-print fsf[-1.3, 's', -0.122]
-print fsf['s', -0.122]
-print fsf[0.2345]
-print fsf['STRING']
-print fsf['STRING and ', 0.1, 0.2]
-print fsf[]
-print '*********************'
+# fsf[float f1*, str s*, float f2*]:
+# 	result = ''
+# 	if has 'f1'
+# 		result = "f1: " + f1.joiner + ','
+# 	if has 's'
+# 		result = result + ', ' + "s: " + s.join[' '] + ', '
+# 	if has 'f2'
+# 		result = result +'f2: '+ f2.joiner
+# 	return result
+#
+# print fsf[-1.3, 's', -0.122]
+# print fsf['s', -0.122]
+# print fsf[0.2345]
+# print fsf['STRING']
+# print fsf['STRING and ', 0.1, 0.2]
+# print fsf[]
+# print '*********************'
 
 fsnfi[float f1?, str s*, num n*, float f2+, int op_i?]:
 	args = []
@@ -279,15 +277,41 @@ fsnfi[float f1?, str s*, num n*, float f2+, int op_i?]:
 		args.push['op_i='+op_i.string]
 	return args.joiner
 
-print fsnfi[1.434, 5]
-print "done"
+test[100] = fsnfi[0.11, 'string', 1/2, -3.2] == 'f1=0.11 s=[string] n=[1/2] f2=[-3.2] '
+test[100] = test[100] and fsnfi[1.434, 5] == 's=[] n=[] f2=[1.434] op_i=5 '
+print_test[100]
 
 
 ls = [1,2,3]
-print ls.join[' :: ']
+test[101] = ls.join[' :: '] == '1 :: 2 :: 3'
+print_test[101]
 
-b = python['int']
-print b['55', 10]
+
+intize = python['int']
+test[102] = intize['36'] == 100 and intize[10.1] == 10
+print_test[102]
+
+
+var_name ??= 5
+var_name ??= -10
+test[103] = var_name == 5
+var_name = none
+var_name ??= 'done'
+test[103] = test[103] and var_name == 'done'
+print_test[103]
+
+
+names = ['Chairman Meow', 'Purrfect', 'Fuzz Aldrin']
+cats = names..Cat
+test[104] = cats..name == ['😸 Chairman Meow', '😸 Purrfect', '😸 Fuzz Aldrin']
+test[104] = test[104] and cats..string.join['\n'] == 'Cat 😸 Chairman Meow\nCat 😸 Purrfect\nCat 😸 Fuzz Aldrin'
+print_test[104]
+
+exit
+
+fnls = [Cat, Cat, Cat]
+print fnls..["ralph"]
+
 
 
 exit

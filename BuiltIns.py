@@ -175,11 +175,9 @@ def eval_set_args(lhs: list[Node], rhs: list[Node]) -> list[Function]:
         return [key, value]
     return [fn, key, value]
 
-def assign_var(key: Value, val: Function, aug_op: str = None):
+def assign_var(key: Value, val: Function):
     name = key.value
     assert isinstance(name, str)
-    if aug_op is not None:
-        val = BuiltIns[aug_op].call()
     try:
         option = Context.env.select_by_name(name)
         option.nullify()
@@ -210,6 +208,22 @@ for op in ('+', '-', '*', '/', '//', '**', '%'):
                               {ListPatt(AnyParam, AnyParam, AnyParam): lambda *args: BuiltIns['set'].call(list(args))}),
              binop=1, associativity='right')
     Op[op+'='].eval_args = eval_set_args
+
+def null_assign(key: Value, val: Function):
+    try:
+        initial = Context.env.deref(key.value)
+        if initial.value is not None:
+            return initial
+    # WARNING: if the initial value calls a function in it's dereference, and that function contains
+    # a NoMatchingOptionErrr, this will erroneously trigger
+    except NoMatchingOptionError:
+        pass
+    return assign_var(key, val)
+Operator('??=',
+         Function(AnyBinopPattern, null_assign,
+                  {ListPatt(AnyParam, AnyParam, AnyParam): lambda *args: BuiltIns['set'].call(list(args))}),
+         binop=1, associativity='right')
+Op['??='].eval_args = eval_set_args
 Operator('if',
          Function(ListPatt(AnyParam), lambda x: x),
          binop=2, static=True, ternary='else')
@@ -274,7 +288,7 @@ Operator('/',
                   Value(Fraction(a.value.numerator * b.value.denominator, a.value.denominator * b.value.numerator))}),
          binop=12, chainable=False)
 Operator('//',
-         Function(ListPatt(NumericParam, NumericParam), lambda a, b: Value(a.value // b.value)),
+         Function(ListPatt(NumericParam, NumericParam), lambda a, b: Value(int(a.value // b.value))),
          binop=12, chainable=False)
 Operator('%',
          Function(ListPatt(NumericParam, NumericParam), lambda a, b: Value(a.value % b.value)),
@@ -318,7 +332,7 @@ def eval_call_args(lhs: list[Node], rhs: list[Node]) -> list[Function]:
     if not right_arg.instanceof(BuiltIns['list']):
         return [expressionize(lhs).evaluate(), right_arg]
     args = right_arg
-    if len(lhs) > 2 and lhs[-1].type == TokenType.Name and lhs[-2].source_text == '.':
+    if len(lhs) > 2 and lhs[-1].type == TokenType.Name and lhs[-2].source_text in ('.', '..'):
         name = lhs[-1].source_text
         a = expressionize(lhs[:-2]).evaluate()
         try:
@@ -334,11 +348,12 @@ def dot_fn(a: Function, b: Value):
     try:
         return a.deref(name, ascend_env=False)
     except NoMatchingOptionError:
-        fn = Context.env.deref(name)
-        if not fn.instanceof(BuiltIns['fn']):
-            raise OperatorError(f"Line {Context.line}: '{name}' is not an option or function.")
-        # assert isinstance(fn.value, Function)
-        return fn.call([a])
+        pass
+    fn = Context.env.deref(name)
+    if not fn.instanceof(BuiltIns['fn']):
+        raise OperatorError(f"Line {Context.line}: '{name}' is not an option or function.")
+    # assert isinstance(fn.value, Function)
+    return fn.call([a])
 
 Operator('.',
          Function(ListPatt(AnyParam, ListParam), lambda a, b: a.call(b.value),
@@ -349,14 +364,11 @@ Operator('.?',
          Function(AnyBinopPattern, lambda a, b: BuiltIns['.'].call([a,b]) if BuiltIns['has'].call([a, b]).value else Value(None),
                   {ListPatt(StringParam): lambda a: BuiltIns['.'].call([a]) if BuiltIns['has'].call([a]).value else Value(None),}),
          binop=15, prefix=15)
-Op['.'].eval_args = Op['.?'].eval_args = eval_call_args
-
 # map-dot / swizzle operator
 Operator('..',
-         Function(ListPatt(ListParam, StringParam), lambda l, n: Value([dot_fn(el, n) for el in l.value]),
-                  options={ListPatt(StringParam): lambda a: dot_fn(Context.env, a)}),
+         Function(ListPatt(ListParam, AnyParam), lambda ls, name: Value([dot_fn(el, name) for el in ls.value])),
          binop=15, prefix=15)
-
+Op['.'].eval_args = Op['.?'].eval_args = Op['..'].eval_args = eval_call_args
 
 
 # pattern generator options for int, str, float, etc

@@ -199,7 +199,7 @@ class Line:
         line = re.sub(r'\s{4}', '\t', line)
         tabs = re.match(r'^\t+', line)
         self.indent = tabs.end() if tabs else 0
-        line = re.sub(r'(#|//).*', '', line)
+        line = re.sub(r'(#).*', '', line)
         self.text = line.strip()
         self.tokens: list[Token] = []
         # self.read_tokens(ast)
