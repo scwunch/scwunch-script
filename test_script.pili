@@ -314,11 +314,27 @@ cats = fnls..["ralph"]
 print cats..meow
 print len[test]
 all_test_passed = true
+count = 0
 for i in test
-	if not i
+	count += 1
+	for j in [1,2,3,4,5]
+		1
+		# print i.string +', ' + j.string
+		if count > 1 and j == 4
+			break 2
+	if count >= 14
+		break
+
+test[105] = j == 4 and count == 2
+print_test[105]
+
+
+for t in test
+	if not t
 		all_test_passed = false
+		break
 if all_test_passed
-	print "All " + string[test.len] + " passed!"
+	print "All " + string[test.len] + " tests passed!"
 else
 	print "some tests failed :("
 

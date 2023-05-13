@@ -1,4 +1,6 @@
 from fractions import Fraction
+
+import Env
 from Syntax import *
 from DataStructures import *
 from Env import *
@@ -185,8 +187,14 @@ class ForLoop(ExprWithBlock):
         variable = Context.env.assign_option(patt, Value(None))
         # variable = Context.env.select_by_pattern(patt)
         for val in iterator.value:
+            if Context.break_loop:
+                Context.break_loop -= 1
+                break
             variable.assign(val)
             self.block.execute()
+            if Context.break_loop:
+                Context.break_loop -= 1
+                break
         return Value(None)
 
 class WhileLoop(ExprWithBlock):
@@ -200,11 +208,17 @@ class WhileLoop(ExprWithBlock):
     def evaluate(self):
         result = Value(None)
         for i in range(6 ** 6):
+            if Context.break_loop:
+                Context.break_loop -= 1
+                return Value(None)
             condition_value = self.condition.evaluate()
             if BuiltIns['bool'].call([condition_value]).value:
                 result = self.block.execute()
             else:
                 return result
+            if Context.break_loop:
+                Context.break_loop -= 1
+                return Value(None)
         raise RuntimeErr(f"Line {self.line or Context.line}: Loop exceeded limit of 46656 executions.")
 
 class Command(Expression):
@@ -232,6 +246,18 @@ class Command(Expression):
                 # print('!@>', BuiltIns['string'].call([self.expr.evaluate()]).value)
                 print(BuiltIns['string'].call([self.expr.evaluate()]).value)
                 return Value(None)
+            case 'break':
+                result = self.expr.evaluate()
+                match result.value:
+                    case None:
+                        levels = 1
+                    case int() as levels:
+                        pass
+                    case _:
+                        raise RuntimeErr(f"Line {Context.line}: "
+                                         f"break expression should evaluate to non-negative integer.  Found {result}.")
+                Context.break_block += levels
+                Context.break_loop += levels
             case _:
                 raise SyntaxErr(f"Unhandled command {self.command}")
 

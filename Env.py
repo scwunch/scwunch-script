@@ -8,7 +8,8 @@ class Context:
     root = None
     debug = False
     trace = []
-    break_ = 0
+    break_block = 0
+    break_loop = 0
     continue_ = 0
 
     @staticmethod
