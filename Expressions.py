@@ -1,3 +1,4 @@
+import contextvars
 from fractions import Fraction
 
 import Env
@@ -186,14 +187,15 @@ class ForLoop(ExprWithBlock):
         patt = ListPatt(Parameter(patternize(var_val)))
         variable = Context.env.assign_option(patt, Value(None))
         for val in iterator.value:
-            if Context.break_loop:
-                Context.break_loop -= 1
-                break
             variable.assign(val)
             self.block.execute()
             if Context.break_loop:
                 Context.break_loop -= 1
                 break
+            elif Context.continue_:
+                Context.continue_ -= 1
+                if Context.continue_:
+                    break
         return Value(None)
 
 class WhileLoop(ExprWithBlock):
@@ -256,6 +258,17 @@ class Command(Expression):
                         raise RuntimeErr(f"Line {Context.line}: "
                                          f"break expression should evaluate to non-negative integer.  Found {result}.")
                 Context.break_loop += levels
+            case 'continue':
+                result = self.expr.evaluate()
+                match result.value:
+                    case None:
+                        levels = 1
+                    case int() as levels:
+                        pass
+                    case _:
+                        raise RuntimeErr(f"Line {Context.line}: "
+                                         f"break expression should evaluate to non-negative integer.  Found {result}.")
+                Context.continue_ += levels
             case _:
                 raise SyntaxErr(f"Unhandled command {self.command}")
 

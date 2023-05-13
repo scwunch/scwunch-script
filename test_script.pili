@@ -321,7 +321,7 @@ for i in test
 		1
 		# print i.string +', ' + j.string
 		if count > 1 and j == 4
-			debug break 2
+			break 2
 			print "count = " + count.string + "j = " + j.string
 	if count >= 14
 		break
@@ -330,6 +330,32 @@ for i in test
 
 test[105] = j == 4 and count == 2
 print_test[105]
+
+
+count = 0
+j = 0
+for i in test
+	if (count += 1) > 13
+		break
+	if count < 5
+		continue
+	for j in [1,2,3,4,5]
+		if j > 4.5
+			continue
+		# print 'j='+j.string
+		if j > 2.5
+			continue 2
+	if j > 2.5 and count >= 5
+		print "WILL NOT PRINT THIS LINE"
+	# print 'count='+count.string
+	if count >= 10
+		break
+# print 'COUNT='+count.string
+# print 'J='+j.string
+test[110] = count == 14 and j == 3
+print_test[110]
+
+
 
 
 for t in test
