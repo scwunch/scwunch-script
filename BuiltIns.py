@@ -145,8 +145,11 @@ BuiltIns['len'].add_option(ListPatt(Parameter(Prototype(BuiltIns["pattern"]))), 
 #                             lambda *vals: Value(list(*vals)))
 BuiltIns['len'].add_option(ListPatt(Parameter(Prototype(BuiltIns['list']))), lambda l: Value(len(l.value)))
 
-BuiltIns['names'] = Function(ListPatt(AnyParam), lambda x: Value(list(x.named_options.keys())))
-BuiltIns['keys'] = Function(ListPatt(AnyParam), lambda x: Value([Value(lp.pattern) for lp in x.options]))
+BuiltIns['options'] = Function(ListPatt(AnyParam), lambda x: Value([Value(lp.pattern) for lp in x.options]))
+BuiltIns['names'] = Function(ListPatt(AnyParam), lambda x: Value([Value(k) for k in x.named_options.keys()]))
+BuiltIns['keys'] = Function(ListPatt(AnyParam),
+                            lambda x: Value([lp.pattern[0].pattern.value for lp in x.options
+                                             if len(lp.pattern) == 1 and isinstance(lp.pattern[0].pattern, ValuePattern)]))
 
 def list_get(scope: Function, *args: Value):
     fn = scope.type
