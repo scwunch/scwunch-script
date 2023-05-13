@@ -113,8 +113,9 @@ BuiltIns['set'] = Function(ListPatt(AnyParam, AnyParam, AnyParam),
 
 BuiltIns['bool'].add_option(ListPatt(AnyParam), lambda x: Value(bool(x.value)))
 BuiltIns['number'] = Function(ListPatt(BoolParam), lambda x: Value(int(x.value)),
-                              options={ListPatt(NumericParam): Value.clone,
-                                       ListPatt(StringParam): lambda x: Value(read_number(x.value, Context.settings['base']))},
+                              {ListPatt(NumericParam): Value.clone,
+                               ListPatt(StringParam): lambda x: Value(read_number(x.value, Context.settings['base'])),
+                               ListPatt(StringParam, IntegralParam): lambda x, b: Value(read_number(x.value, b.value))},
                               name='number')
 BuiltIns['integer'] = Function(ListPatt(NormalParam), lambda x: Value(int(BuiltIns['number'].call([x]).value)),
                                name='integer')
@@ -122,6 +123,7 @@ BuiltIns['rational'] = Function(ListPatt(NormalParam), lambda x: Value(Fraction(
                                 name='rational')
 # BuiltIns['float'] = Function(ListPatt(NormalParam), lambda x: Value(float(BuiltIns['number'].call([x]).value)))
 BuiltIns['string'] = Function(ListPatt(AnyParam), lambda x: x.to_string(), name='string')
+BuiltIns['string'].add_option(ListPatt(NumericParam, IntegralParam), lambda n, b: Value(write_number(n.value, b.value)))
 # BuiltIns['string'].add_option(ListPatt(ListParam), lambda l: Value(str(l.value[1:])))
 # BuiltIns['string'].add_option(ListPatt(NumberParam),
 #                               lambda n: Value('-' * (n.value < 0) +
@@ -142,6 +144,9 @@ BuiltIns['len'].add_option(ListPatt(Parameter(Prototype(BuiltIns["pattern"]))), 
 # BuiltIns['List'] = Function(ListPatt(Parameter(Any, quantifier='*')),
 #                             lambda *vals: Value(list(*vals)))
 BuiltIns['len'].add_option(ListPatt(Parameter(Prototype(BuiltIns['list']))), lambda l: Value(len(l.value)))
+
+BuiltIns['names'] = Function(ListPatt(AnyParam), lambda x: Value(list(x.named_options.keys())))
+BuiltIns['keys'] = Function(ListPatt(AnyParam), lambda x: Value([Value(lp.pattern) for lp in x.options]))
 
 def list_get(scope: Function, *args: Value):
     fn = scope.type

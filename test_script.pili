@@ -92,8 +92,8 @@ my_cat = Cat["Ruby"]
 test[30] = string[my_cat] == my_cat.string and my_cat.string == "Cat 😸 Ruby"
 print 'test 30 ' + ('passed' if test[30] else 'FAILED')
 
-number = int|float|bool|ratio
-add[number a, number b]: integer[a] + b
+numberlicious = int|float|bool|ratio
+add[numberlicious a, numberlicious b]: integer[a] + b
 fav_num = 5
 test[31] = add[fav_num, 5]  == fav_num.add[5]
 print 'test 31 ' + ('passed' if test[31] else 'FAILED')
@@ -301,18 +301,14 @@ test[103] = test[103] and var_name == 'done'
 print_test[103]
 
 
-names = ['Chairman Meow', 'Purrfect', 'Fuzz Aldrin']
-cats = names..Cat
+cat_names = ['Chairman Meow', 'Purrfect', 'Fuzz Aldrin']
+cats = cat_names..Cat
 test[104] = cats..name == ['😸 Chairman Meow', '😸 Purrfect', '😸 Fuzz Aldrin']
 test[104] = test[104] and cats..string.join['\n'] == 'Cat 😸 Chairman Meow\nCat 😸 Purrfect\nCat 😸 Fuzz Aldrin'
 threeCats = [Cat, Cat, Cat]
 cats = threeCats..["ralph"]
 test[104] = test[104] and cats..meow.join[''] == 'hello my name is 😸 ralph' * 3
 print_test[104]
-
-
-
-
 
 
 count = 0
@@ -362,6 +358,11 @@ test[43] = 19 == 19d and pili.settings.get['base'] == 'd'
 pili.settings.set['base', 'h']
 test[43] = test[43] and pili.settings.get['base'] == 'h'
 print_test[111]
+
+print len[test].string[14]
+print number.names
+print number.keys
+print number['9', 14]
 
 
 
