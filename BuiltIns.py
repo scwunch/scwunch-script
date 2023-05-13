@@ -344,19 +344,28 @@ def eval_call_args(lhs: list[Node], rhs: list[Node]) -> list[Function]:
         fn = expressionize(lhs).evaluate()
     return [fn, args]
 def dot_fn(a: Function, b: Value):
-    name = b.value
-    try:
-        return a.deref(name, ascend_env=False)
-    except NoMatchingOptionError:
-        pass
-    fn = Context.env.deref(name)
-    if not fn.instanceof(BuiltIns['fn']):
-        raise OperatorError(f"Line {Context.line}: '{name}' is not an option or function.")
-    # assert isinstance(fn.value, Function)
-    return fn.call([a])
+    match b.value:
+        case str() as name:
+            try:
+                return a.deref(name, ascend_env=False)
+            except NoMatchingOptionError:
+                pass
+            fn = Context.env.deref(name)
+            if not fn.instanceof(BuiltIns['fn']):
+                raise OperatorError(f"Line {Context.line}: '{name}' is not an option or function.")
+            # assert isinstance(fn.value, Function)
+            return fn.call([a])
+        case list() | tuple() as args:
+            return a.call(list(args))
+        case _ as val:
+            print("WARNING: Line {Context.line}: "
+                  "right-hand operand of dot operator should be string or list of arguments.  Found {b}.")
+            return a.call([b])
+    # raise OperatorError(f"Line {Context.line}: "
+    #                     f"right-hand operand of dot operator should be string or list of arguments.  Found {b}.")
 
 Operator('.',
-         Function(ListPatt(AnyParam, ListParam), lambda a, b: a.call(b.value),
+         Function(ListPatt(AnyParam, ListParam), dot_fn,
                   {AnyBinopPattern: dot_fn,
                    ListPatt(StringParam): lambda a: dot_fn(Context.env, a)}),
          binop=15, prefix=15)

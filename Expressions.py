@@ -182,7 +182,8 @@ class ForLoop(ExprWithBlock):
         else:
             var_val = expressionize(self.var).evaluate()
         patt = ListPatt(Parameter(patternize(var_val)))
-        variable = Context.env.assign_option(patt)
+        variable = Context.env.assign_option(patt, Value(None))
+        # variable = Context.env.select_by_pattern(patt)
         for val in iterator.value:
             variable.assign(val)
             self.block.execute()

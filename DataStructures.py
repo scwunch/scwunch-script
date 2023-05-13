@@ -348,7 +348,7 @@ class Option:
             case FuncBlock(): self.block = resolution
             case types.FunctionType(): self.fn = resolution
             case _:
-                raise ValueError("Could not assign resolution: ", resolution)
+                raise ValueError(f"Line {Context.line}: Could not assign resolution {resolution} to option {self}")
     def resolve(self, args=None, env=None, bindings=None):
         if self.value:
             return self.value

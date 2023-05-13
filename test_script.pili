@@ -1,5 +1,5 @@
-test =
-	0: 'test init success'
+test = []
+test[0]: 'test init success'
 print test[0]
 
 greet = "hello world"
@@ -307,10 +307,20 @@ test[104] = cats..name == ['😸 Chairman Meow', '😸 Purrfect', '😸 Fuzz Ald
 test[104] = test[104] and cats..string.join['\n'] == 'Cat 😸 Chairman Meow\nCat 😸 Purrfect\nCat 😸 Fuzz Aldrin'
 print_test[104]
 
-exit
+
 
 fnls = [Cat, Cat, Cat]
-print fnls..["ralph"]
+cats = fnls..["ralph"]
+print cats..meow
+print len[test]
+all_test_passed = true
+for i in test
+	if not i
+		all_test_passed = false
+if all_test_passed
+	print "All " + string[test.len] + " passed!"
+else
+	print "some tests failed :("
 
 
 
