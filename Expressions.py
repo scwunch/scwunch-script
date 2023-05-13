@@ -75,7 +75,7 @@ class Mathological(Expression):
         prev_op = get_op(0)
         for i in range(1, len(nodes) - 1):
             op = get_op(i)
-            if op and op.binop and op.binop <= min_precedence + (op.associativity == 'right'):
+            if op and op.binop and op.binop < min_precedence + (op.associativity == 'left'):
                 if op.prefix:
                     prev_op = get_op(i-1)
                     if prev_op and prev_op.binop and not prev_op.postfix:

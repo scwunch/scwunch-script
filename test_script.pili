@@ -332,8 +332,7 @@ test[105] = j == 4 and count == 2
 print_test[105]
 
 
-count = 0
-j = 0
+count = j = 0
 for i in test
 	if (count += 1) > 13
 		break
@@ -355,7 +354,13 @@ for i in test
 test[110] = count == 14 and j == 3
 print_test[110]
 
+print 2 ** 3 ** 4
+print 2 ** (3 ** 4)
+print (2 ** 3) ** 4
 
+print 2/3/4
+print 2/(3/4)
+print (2/3)/4
 
 
 for t in test
