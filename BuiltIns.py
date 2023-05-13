@@ -65,6 +65,41 @@ NegativeIntParam = Parameter(Prototype(BuiltIns["int"], guard=lambda x: Value(x.
 NonZeroIntParam = Parameter(Prototype(BuiltIns["int"], guard=lambda x: Value(x.value != 0)))
 OneIndexList = Parameter(Prototype(BuiltIns['list'], guard=lambda x: Value(len(x.value) == 1 and
                                                                            NonZeroIntParam.match_score(x.value[0]))))
+bases = {'b': 2, 't': 3, 'q': 4, 'p': 5, 'h': 6, 's': 7, 'o': 8, 'n': 9, 'd': 10}
+def setting_set(prop: Value, val: Value):
+    prop = prop.value
+    val = val.value
+    if prop == 'base' and isinstance(val, str):
+        if not val in bases:
+            raise ValueError('Invalid setting for base.  See manual for available settings.')
+        val = bases[val[0]]
+    Context.settings[prop] = val
+def setting_get(prop: Value):
+    if prop.value == 'base':
+        match Context.settings['base']:
+            case 2:
+                return Value('b')
+            case 3:
+                return Value('t')
+            case 4:
+                return Value('q')
+            case 5:
+                return Value('p')
+            case 6:
+                return Value('h')
+            case 7:
+                return Value('s')
+            case 8:
+                return Value('o')
+            case 9:
+                return Value('n')
+            case 10:
+                return Value('d')
+    return Value(Context.settings[prop.value])
+BuiltIns['settings'] = Function(named_patt('set'),
+                                Function(ListPatt(StringParam, AnyParam), setting_set),
+                                {named_patt('get'):
+                                 Function(ListPatt(StringParam), setting_get)})
 
 def key_to_param_set(key: Value) -> ListPatt:
     if hasattr(key, 'value') and isinstance(key.value, list):
@@ -79,7 +114,7 @@ BuiltIns['set'] = Function(ListPatt(AnyParam, AnyParam, AnyParam),
 BuiltIns['bool'].add_option(ListPatt(AnyParam), lambda x: Value(bool(x.value)))
 BuiltIns['number'] = Function(ListPatt(BoolParam), lambda x: Value(int(x.value)),
                               options={ListPatt(NumericParam): Value.clone,
-                                       ListPatt(StringParam): lambda x: Value(read_number(x.value))},
+                                       ListPatt(StringParam): lambda x: Value(read_number(x.value, Context.settings['base']))},
                               name='number')
 BuiltIns['integer'] = Function(ListPatt(NormalParam), lambda x: Value(int(BuiltIns['number'].call([x]).value)),
                                name='integer')

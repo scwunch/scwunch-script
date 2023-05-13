@@ -10,6 +10,7 @@ class Context:
     trace: list[Call]
     break_loop: int
     continue_: int
+    settings: dict
     @staticmethod
     def push(line: int, env: Function, option: Option): ...
     @staticmethod

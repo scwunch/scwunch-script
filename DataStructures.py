@@ -515,7 +515,7 @@ class Function:
     def to_string(self):
         if hasattr(self, 'value') and self.value is not NotImplemented:
             if self.instanceof(BuiltIns['num']) and not self.type == BuiltIns['bool']:
-                return Value(write_number(self.value))
+                return Value(write_number(self.value, Context.settings['base']))
             if self.instanceof(BuiltIns['list']):
                 return Value(f"[{', '.join(v.to_string().value for v in self.value)}]")
             return Value(str(self.value))

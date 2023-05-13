@@ -339,7 +339,7 @@ def eval_token(tok: Token) -> Function:
             # t = BasicType.none if s == 'none' else BasicType.Float if s == 'inf' else BasicType.Boolean
             # return Value(singleton_mapper(s), t)
         case TokenType.Number:
-            return Value(read_number(s))
+            return Value(read_number(s, Context.settings['base']))
         case TokenType.String:
             return Value(string(s))
         # case TokenType.Type:

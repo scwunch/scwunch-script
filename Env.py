@@ -10,6 +10,7 @@ class Context:
     trace = []
     break_loop = 0
     continue_ = 0
+    settings = {'base': 6}
 
     @staticmethod
     def push(line, env, option):
@@ -66,7 +67,7 @@ BuiltIns = {}
 TypeMap = {}
 
 
-def read_number(text: str, base=6) -> int | float | Fraction:
+def read_number(text: str, base) -> int | float | Fraction:
     """ take a number in the form of a string of digits, or digits separated by a / or .
         if the number ends with a d, it will be read as a decimal"""
     if isinstance(text, int) or isinstance(text, float) or isinstance(text, Fraction):
@@ -95,7 +96,7 @@ def read_number(text: str, base=6) -> int | float | Fraction:
             pow *= base
         return val
 
-def write_number(num: int|float|Fraction, base=6, precision=12, sep="_") -> str:
+def write_number(num: int|float|Fraction, base, precision=12, sep="_") -> str:
     """ take a number and convert to a string of digits, possibly separated by / or . """
     if isinstance(num, Fraction):
         return write_number(num.numerator, base, sep=sep) + "/" + write_number(num.denominator, base, sep=sep)
@@ -114,7 +115,7 @@ def write_number(num: int|float|Fraction, base=6, precision=12, sep="_") -> str:
     rs = frac_from_base(frac, base, precision)
     return f"{ls}.{''.join(str(d) for d in rs)}"
 
-def get_digits(num: int, base=6) -> list[str]:
+def get_digits(num: int, base) -> list[str]:
     if num < base:
         return [str(num)]
     else:
@@ -122,7 +123,7 @@ def get_digits(num: int, base=6) -> list[str]:
         result.append(str(num % base))
         return result
 
-def frac_from_base(num: float, base=6, precision=12):
+def frac_from_base(num: float, base, precision=12):
     digits = []
     # remainders = []
     for i in range(precision):
