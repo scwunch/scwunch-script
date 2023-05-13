@@ -8,7 +8,6 @@ class Context:
     root: Function
     debug: bool
     trace: list[Call]
-    break_block: int
     break_loop: int
     continue_: int
     @staticmethod

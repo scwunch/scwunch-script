@@ -185,7 +185,6 @@ class ForLoop(ExprWithBlock):
             var_val = expressionize(self.var).evaluate()
         patt = ListPatt(Parameter(patternize(var_val)))
         variable = Context.env.assign_option(patt, Value(None))
-        # variable = Context.env.select_by_pattern(patt)
         for val in iterator.value:
             if Context.break_loop:
                 Context.break_loop -= 1
@@ -256,7 +255,6 @@ class Command(Expression):
                     case _:
                         raise RuntimeErr(f"Line {Context.line}: "
                                          f"break expression should evaluate to non-negative integer.  Found {result}.")
-                Context.break_block += levels
                 Context.break_loop += levels
             case _:
                 raise SyntaxErr(f"Unhandled command {self.command}")

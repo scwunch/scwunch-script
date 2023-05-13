@@ -298,8 +298,7 @@ class FuncBlock:
             expr.evaluate()
             if scope.return_value:
                 break
-            if Context.break_block:
-                Context.break_block -= 1
+            if Context.break_loop:
                 break
         return break_()
 

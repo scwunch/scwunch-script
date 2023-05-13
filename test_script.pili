@@ -321,9 +321,12 @@ for i in test
 		1
 		# print i.string +', ' + j.string
 		if count > 1 and j == 4
-			break 2
+			debug break 2
+			print "count = " + count.string + "j = " + j.string
 	if count >= 14
 		break
+	count += 5 * (count > 1)
+	# print "count = " + count.string
 
 test[105] = j == 4 and count == 2
 print_test[105]

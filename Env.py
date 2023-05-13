@@ -8,7 +8,6 @@ class Context:
     root = None
     debug = False
     trace = []
-    break_block = 0
     break_loop = 0
     continue_ = 0
 
