@@ -364,35 +364,23 @@ test[112] = len[test].string[14] == '43' and number['9.5', 10d] == 13.3
 print_test[112]
 
 
-object_with_various_options =
+some_options =
 	named_option = "This is a named option"
 	[5] = "This is a numbered option"
 	any x: 'function option'
-print object_with_various_options.len
-print object_with_various_options.options
-print object_with_various_options[5]
-print object_with_various_options.names
-print object_with_various_options.keys
-
-print '***************'
-
-print 'number.names'
-print number.names
-print 'number options'
-print number.options..string.join[' :: ']
-print 'test.keys'
-test[-1/2] = 'negative one half'
-test.helloworld = 'hello'
-print test.keys
-print 'pili names'
-print names[pili]
-print keys[pili]
-print 'nine'
-print number['9', 14]
+# print some_options.len
+# print some_options.options
+# print some_options[5]
+# print some_options.names
+# print some_options.keys
+test[113] = [len, options, names, keys]..[some_options]..string.join['\n'] \
+	== '3\n[[Any x], [ValuePattern(5)], [ValuePattern(named_option) named_option]]\n[named_option, x]\n[5, named_option]'
+print_test[113]
 
 
 ls = [1,2,3,4,5]
-print ls[1,3]
+test[114] = ls[1,3] == [1,2]
+print_test[114]
 
 
 

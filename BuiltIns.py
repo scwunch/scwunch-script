@@ -200,7 +200,7 @@ BuiltIns['push'] = Function(ListPatt(Parameter(Prototype(BuiltIns['list'])), Any
                             lambda fn, val: fn.value.append(val) or fn)
 BuiltIns['join'] = Function(ListPatt(ListParam, StringParam),
                             lambda ls, sep: Value(sep.value.join(BuiltIns['string'].call([item]).value for item in ls.value)))
-BuiltIns['split'] = Function(ListPatt(StringParam, StringParam), lambda txt, sep: Value(txt.value.split(sep.value)))
+BuiltIns['split'] = Function(ListPatt(StringParam, StringParam), lambda txt, sep: Value([Value(s) for s in txt.value.split(sep.value)]))
 
 def convert(name: str) -> Function:
     o = object()
