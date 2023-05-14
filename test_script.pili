@@ -359,8 +359,23 @@ pili.settings.set['base', 'h']
 test[43] = test[43] and pili.settings.get['base'] == 'h'
 print_test[111]
 
-print 'len[test].string[14]'
-print len[test].string[14]
+
+test[112] = len[test].string[14] == '43' and number['9.5', 10d] == 13.3
+print_test[112]
+
+
+object_with_various_options =
+	named_option = "This is a named option"
+	[5] = "This is a numbered option"
+	any x: 'function option'
+print object_with_various_options.len
+print object_with_various_options.options
+print object_with_various_options[5]
+print object_with_various_options.names
+print object_with_various_options.keys
+
+print '***************'
+
 print 'number.names'
 print number.names
 print 'number options'
@@ -370,12 +385,14 @@ test[-1/2] = 'negative one half'
 test.helloworld = 'hello'
 print test.keys
 print 'pili names'
-print debug names[pili]
+print names[pili]
 print keys[pili]
 print 'nine'
 print number['9', 14]
 
 
+ls = [1,2,3,4,5]
+print ls[1,3]
 
 
 

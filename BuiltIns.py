@@ -3,7 +3,7 @@ from fractions import Fraction
 from Syntax import Node, Token, List, TokenType
 from Env import *
 from DataStructures import *
-from Expressions import expressionize, read_number
+from Expressions import expressionize, read_number, eval_token
 
 BuiltIns['_base_prototype'] = Function(name='base_prototype', type=True)  # noqa
 BuiltIns['_base_prototype'].type = None
@@ -151,6 +151,12 @@ BuiltIns['keys'] = Function(ListPatt(AnyParam),
                             lambda x: Value([lp.pattern[0].pattern.value for lp in x.options
                                              if len(lp.pattern) == 1 and isinstance(lp.pattern[0].pattern, ValuePattern)]))
 
+BuiltIns['max'] = Function(ListPatt(Parameter(Any, quantifier='+')), lambda *args: Value(max(*[arg.value for arg in args])))
+BuiltIns['max'] = Function(ListPatt(Parameter(Any, quantifier='+')), lambda *args: Value(max(*[arg.value for arg in args])))
+BuiltIns['map'] = Function()
+BuiltIns['filter'] = Function()
+BuiltIns['trim'] = Function()
+
 def list_get(scope: Function, *args: Value):
     fn = scope.type
     if len(args) == 1:
@@ -172,8 +178,23 @@ def list_set(ls: Value, index: Value, val: Function):
     else:
         ls.value[i] = val
     return val
+def list_slice(ls: Value, start: Value, stop: Value):
+    ls = ls.type.value  # I don't know why this works, but it does... I need to fix the prototyping and context handling
+    start, stop = start.value,  stop.value
+    if start == 0:
+        start = None
+    elif start > 0:
+        start -= 1
+    if stop == 0:
+        stop = None
+    elif stop > 0:
+        stop -= 1
+    return Value(ls[start:stop])
+
+
 BuiltIns['list'].add_option(ListPatt(PositiveIntParam), FuncBlock(list_get))
 BuiltIns['list'].add_option(ListPatt(NegativeIntParam), FuncBlock(list_get))
+BuiltIns['list'].add_option(ListPatt(IntegralParam, IntegralParam), FuncBlock(list_slice))
 BuiltIns['set'].add_option(ListPatt(ListParam, OneIndexList, AnyParam), list_set)
 BuiltIns['push'] = Function(ListPatt(Parameter(Prototype(BuiltIns['list'])), AnyParam),
                             lambda fn, val: fn.value.append(val) or fn)
@@ -204,6 +225,10 @@ def eval_set_args(lhs: list[Node], rhs: list[Node]) -> list[Function]:
     match lhs:
         case [Token(type=TokenType.Name, source_text=name)]:
             key = Value(name)
+        # case [Token(type=TokenType.Number|TokenType.String) as tok]:
+        #     key = eval_token(tok)
+        case [List(nodes=statements)]:
+            key = Value(list(map(lambda s: expressionize(s.nodes).evaluate(), statements)))
         case [*fn_nodes, Token(source_text='.'), Token(type=TokenType.Name, source_text=name)]:
             key = Value(name)
             fn = expressionize(fn_nodes).evaluate()
@@ -219,14 +244,25 @@ def eval_set_args(lhs: list[Node], rhs: list[Node]) -> list[Function]:
     return [fn, key, value]
 
 def assign_var(key: Value, val: Function):
-    name = key.value
-    assert isinstance(name, str)
-    try:
-        option = Context.env.select_by_name(name)
-        option.nullify()
-        option.assign(val)
-    except NoMatchingOptionError:
-        option = Context.env.add_option(name, val)
+    key_value = key.value
+    if isinstance(key_value, str):
+        name = key_value
+        try:
+            option = Context.env.select_by_name(name)
+            option.nullify()
+            option.assign(val)
+        except NoMatchingOptionError:
+            option = Context.env.add_option(name, val)
+    elif isinstance(key_value, list):
+        patt = ListPatt(*[Parameter(patternize(k)) for k in key_value])
+        option = Context.env.select_by_pattern(patt)
+        if option is None:
+            option = Context.env.add_option(patt, val)
+        else:
+            option.nullify()
+            option.assign(val)
+    else:
+        assert(0 == 1)
     return option.value
 
 
