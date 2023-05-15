@@ -1,0 +1,5 @@
+# anything after a # and before a newline is a comment
+
+
+exit
+# the exit command is not necessary, but without it, the script will return the running function, which is awkwardly printed as root.main
