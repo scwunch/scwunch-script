@@ -1,4 +1,24 @@
 # anything after a # and before a newline is a comment
+# "line 13 {"a{a}" + "b{2}"} in it."
+print `string \n literal`
+print ""
+print "hello"
+print "{55}h"
+print "{}"
+
+
+print "hello {"world"}"
+print "hello{"world"}"
+print ``has ` in it``
+print ``in \n\t quotes``
+a = b = 1
+c = 'stellar'
+print "line 12 {"a" + "b"} in it."
+print "line 13 {"a{a}" + "b{2}"} in it."
+print "line 14 {"a\{2}" + "b\{3}"} in it."
+print "line 15 {"a{'2'}" + "b{'3'}"} in it."
+print "line 16 {a + b} in it."
+print 'string \n\t with {{any x: string[x]}["inter{c}!" * (a + b)]} in it.'
 
 
 exit

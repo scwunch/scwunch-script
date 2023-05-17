@@ -12,7 +12,7 @@ elif len(sys.argv) == 2:
 else:
     mode = 'test'
     script_path = "test_script.pili"
-    # script_path = 'syntax_demo.pili'
+    script_path = 'syntax_demo.pili'
     print('(test mode) running script', script_path)
 
 pili = Function(ListPatt(Parameter('main')), lambda x: NotImplemented, name='pili')
@@ -64,7 +64,11 @@ if mode in ('test', 'script'):
         script_string = f.read()
 
     tokenizer = Tokenizer(script_string)
+    print(tokenizer)
+    print('**********************************')
     ast = AST(tokenizer)
+    print(ast)
+    print('**********************************')
     pili.assign_option(ListPatt(Parameter('main')), FuncBlock(ast.block))
     # BuiltIns['pili'] = root
     # for key, builtin in BuiltIns.items():

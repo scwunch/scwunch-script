@@ -1,4 +1,5 @@
 # import re
+import Env
 from Syntax import *
 
 
@@ -26,8 +27,10 @@ class Tokenizer(Builder):
     lines: list[Line]
     ln, col: indices for line and column
     char, current_line: current character and line of reader
+    in_string: ' or " or None
     """
-
+    in_string: list[str]
+    fn_lv: int
     def __init__(self, script: str):
         super().__init__()
 
@@ -38,6 +41,8 @@ class Tokenizer(Builder):
         self.current_line: Line | None = self.lines[0]
         self.char = self.current_line.text[0] if self.current_line.text else None
 
+        self.in_string = []
+        self.fn_lv = 0
         # add tokens to lines
         for line in self.lines:
             line.tokens = self.read_tokens()
@@ -52,16 +57,37 @@ class Tokenizer(Builder):
         tokens: list[Token] = []
         while self.char:
             pos = (self.ln, self.col)
+            token_type = None
             if re.match(r'\d', self.char):
                 text = self.read_number()
-            elif self.char == '"' or self.char == "'" or self.char == "`":
-                text = self.read_string()
+            # elif self.in_string and tokens and tokens[-1].source_text == '}':
+            #     text = self.read_string(self.in_string[-1])
+            elif self.char == "`":
+                # self.next_char()
+                text = self.read_string_literal()
+                token_type = TokenType.StringLiteral
+                # self.next_char()
+            elif self.char in ('"', "'",  "`"):
+                text = self.char
+                if len(self.in_string) > self.fn_lv:
+                    token_type = TokenType.StringEnd
+                    self.in_string.pop()
+                else:
+                    token_type = TokenType.StringStart
+                    self.in_string.append(text)
+                # tokens.append(Token(self.char, pos, TokenType.StringStart))
+                # string_level = len(self.in_string)
+                # self.in_string.append(self.char)
+                # text = self.char
+                # text = self.read_string()
+                # token_type = TokenType.String if string_level == len(self.in_string) else TokenType.StringPart
             elif re.match(r'\w', self.char):
                 text = self.read_word()
             elif re.match(op_char_patt, self.char):
                 text = self.read_operator()
-            elif re.match(r'[\[\]{}(),]', self.char):
+            elif self.char in "[]{}(),":
                 text = self.char
+                self.fn_lv += (self.char == "{") - (self.char == "}")
             elif self.char == '\\':
                 text = self.char
             else:
@@ -69,7 +95,13 @@ class Tokenizer(Builder):
             # warnings
             if text == ':' and tokens and tokens[0].source_text in KeyWords:
                 print(f"SYNTAX WARNING ({self.ln+1}): Pili does not use colons for control blocks like if and for.")
-            tokens.append(Token(text, pos))
+            tokens.append(Token(text, pos, token_type))
+            if len(self.in_string) > self.fn_lv:
+                # self.next_char()
+                tokens.append(Token(self.read_string(self.in_string[-1]), (self.ln, self.col), TokenType.StringPart))
+            # if text == "}" and len(self.in_string) > self.fn_lv:
+            #     self.next_char()
+            #     tokens.append(Token(self.read_string(self.in_string[-1]), (self.ln, self.col), TokenType.StringPart))
             while self.col == pos[1] or self.char and re.match(r'\s', self.char):
                 self.next_char()
             # if self.char == '\\' and re.match(r'\\\s*', self.current_line.text[self.col:]):
@@ -106,19 +138,34 @@ class Tokenizer(Builder):
             self.next_char()
         return num_text
 
-    def read_string(self):
-        quote = self.char
-        str_text = quote
-        while self.next_char() and self.char != quote:
+    def read_string(self, quote: str) -> str:
+        str_text = ""
+        while self.next_char():
+            if self.char == "\\":
+                str_text += self.char + (self.next_char() or "")
+                if self.char is None:
+                    raise NotImplemented("Should detect newline at line ", self.ln + 1)
+                continue
+            if self.char in ("{", quote):
+                return str_text
             str_text += self.char
-            if self.char == '\\':
-                str_text += self.next_char()
-        if self.char is None:
-            raise Exception(f"Unterminated string at {{ln={self.ln+1}, ch={self.col+1}}}: ",
-                            self.current_line.text[self.col:],
-                            str_text)
-        self.next_char()
-        return str_text + quote
+        raise Env.SyntaxErr(f"Unterminated string at {{ln={self.ln + 1}, ch={self.col + 1}}}: "
+                            f"{self.current_line.text[self.col:]} "
+                            f"{str_text}")
+    def read_string_literal(self):
+        backticks = 1
+        while self.next_char() and self.char == "`":
+            backticks += 1
+        str_text = "`" * backticks
+        while self.char:
+            str_text += self.char
+            if str_text.endswith("`" * backticks):
+                self.next_char()
+                return str_text
+            self.next_char()
+        raise Env.SyntaxErr(f"Unterminated string at {{ln={self.ln + 1}, ch={self.col + 1}}}: "
+                            f"{self.current_line.text[self.col:]} "
+                            f"{str_text}")
 
     def read_word(self):
         word = self.char
@@ -134,7 +181,7 @@ class Tokenizer(Builder):
 
     def peek(self, offset=1, count=1):
         index = self.col + offset
-        if 0 <= index < len(self.lines):
+        if 0 <= index < len(self.current_line.text):
             return self.current_line.text[index:index + count]
         return None
 
@@ -198,7 +245,7 @@ class AST(Builder):
                 # self.seek()
                 return Statement(nodes)
             elif self.tok.type in (TokenType.GroupEnd, TokenType.ListEnd, TokenType.FnEnd):
-                raise Exception(f'Unexpected {repr(self.tok)} found at {self.tok.pos}!')
+                raise Env.SyntaxErr(f'Unexpected {repr(self.tok)} found at {self.tok.pos}!')
             elif self.tok.type == TokenType.GroupStart:
                 self.seek()
                 nodes.append(self.read_statement(TokenType.GroupEnd))
@@ -211,38 +258,22 @@ class AST(Builder):
             elif self.tok.type == TokenType.FnStart:
                 self.seek()
                 nodes.append(FunctionLiteral(self.read_list(TokenType.FnEnd)))
-            elif self.tok.type == TokenType.Name:
-                # or `,` or `]` too?
-                # if self.peek() and self.peek().source_text.startswith(':') \
-                #         and (self.peek(-1) is None or self.peek(-1).type != TokenType.Operator):
-                #     # nodes.append(Token('&name'))
-                #     # self.tok.type = TokenType.PatternName
-                #     pass
-                # elif self.peek(-1) and self.peek(-1).source_text == '.':
-                #     self.tok.type = TokenType.PatternName
-                nodes.append(self.tok)
-            elif self.tok.source_text == '-' and (not self.peek(-1) or self.peek(-1).type == TokenType.Operator):
-                nodes.append(self.tok)
+            elif self.tok.type == TokenType.StringStart:
+                nodes.append(self.read_string())
+            # elif self.tok.source_text == '-' and (not self.peek(-1) or self.peek(-1).type == TokenType.Operator):
+            #     nodes.append(self.tok)
             elif self.tok.source_text == 'if' and not nodes:
                 self.tok.type = TokenType.Keyword
                 nodes.append(self.tok)
-            # elif self.tok.source_text == ':' and self.peek():
-            #     nodes.append(self.tok)
-            #     self.seek()
-            #     return_node: list[Node] = [Token('return')]
-            #     nodes.append(Block([Statement(return_node + self.read_statement().nodes)]))
-            #       I thought I could be smart and automatically transform a `name: inline-function`
-            #       pattern to a block ... but it doesn't work because there are some examples where
-            #       blocks don't work, like in parameter expressions.
             elif self.tok.type == TokenType.Backslash:
                 if not super().next_line():
-                    raise SyntaxError("Expected statement after backslash at: ", self.ln, self.col)
+                    raise Env.SyntaxErr(f"Expected statement after backslash at: {(self.ln, self.col)}")
             else:
                 nodes.append(self.tok)
             self.seek()
         else:
             if end_of_statement:
-                raise Exception("End of line, expected: " + repr(end_of_statement))
+                raise Exception(f"End of line {self.ln+1}, expected: {' or '.join(map(repr, end_of_statement))}")
 
         indent = self.current_line.indent
         if self.next_line():
@@ -271,9 +302,23 @@ class AST(Builder):
 
         return items
 
+    def read_string(self) -> StringNode:
+        nodes = []
+        while self.seek():
+            match self.tok.type:
+                case TokenType.StringPart:
+                    nodes.append(self.tok)
+                case TokenType.FnStart:
+                    self.seek()
+                    nodes.append(self.read_statement(TokenType.FnEnd))
+                case TokenType.StringEnd:
+                    return StringNode(nodes)
+                case _:
+                    raise Env.SyntaxErr(f"Found unexpected token in string on line {self.ln+1}")
+        raise Env.SyntaxErr(f"Unterminated string on line {self.ln+1}")
+
     def __repr__(self):
         return '\n'.join((repr(expr) if expr else '') for expr in self.block.statements)
-        # (print(line) for line in self.block.statements)
 
 
 if __name__ == "__main__":

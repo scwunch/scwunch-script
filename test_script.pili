@@ -209,7 +209,7 @@ join_strings[str items+, num n?]:
 test[53] = join_strings["hi"] == 'hi' and join_strings["hi", "there"] == "hi :: there" and join_strings["hi", "there", "someone"] == "hi :: there :: someone" and join_strings["hi", 1] == "hi :: 1" and join_strings["hi", "there", 3.5d] == "hi :: there :: 3.3"
 
 print_test[num n]:
-	print 'test ' + n.string + (' passed' if test[n] else ' FAILED')
+	print "test {n} {' passed' if test[n] else ' FAILED'}"
 
 print_test[53]
 

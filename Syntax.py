@@ -16,7 +16,11 @@ EnumMeta.__contains__ = contains
 
 class TokenType(Enum):
     Unknown = '?'
-    String = 'string'
+    StringLiteral = 'string'
+    StringStart = 'string_start'
+    StringPart = 'string_part'
+    # StringMid = 'string_mid'
+    StringEnd = 'string_end'
     Number = 'number'
     Singleton = 'singleton'
     Operator = 'operator'
@@ -152,30 +156,31 @@ class Token(Node):
     type: TokenType
     """
 
-    def __init__(self, text: str, pos: tuple[int, int] = (-1, -1)):
+    def __init__(self, text: str, pos: tuple[int, int] = (-1, -1), type: TokenType = None):
         self.pos = pos[0]+1, pos[1]+1
-        self.type: TokenType
+        self.type = type
         self.source_text = text
 
-        if re.match(r'["\'`]', text):
-            self.type = TokenType.String
-        elif re.fullmatch(r'-?\d+(\.\d*)?d?', text):
-            self.type = TokenType.Number
-        elif re.match(op_char_patt, text) or text in OperatorWord:
-            self.type = TokenType.Operator
-        elif text in Commands:
-            self.type = TokenType.Command
-        elif text.lower() in Singletons:
-            self.source_text = text.lower()
-            self.type = TokenType.Singleton
-        # elif text in BasicType:
-        #     self.type = TokenType.Type
-        elif text in KeyWords:
-            self.type = TokenType.Keyword
-        elif re.fullmatch(r'\w+', text):
-            self.type = TokenType.Name
-        else:
-            self.type = token_mapper(text)
+        if not type:
+            if re.match(r'["\'`]', text):
+                self.type = TokenType.String
+            elif re.fullmatch(r'-?\d+(\.\d*)?d?', text):
+                self.type = TokenType.Number
+            elif re.match(op_char_patt, text) or text in OperatorWord:
+                self.type = TokenType.Operator
+            elif text in Commands:
+                self.type = TokenType.Command
+            elif text.lower() in Singletons:
+                self.source_text = text.lower()
+                self.type = TokenType.Singleton
+            # elif text in BasicType:
+            #     self.type = TokenType.Type
+            elif text in KeyWords:
+                self.type = TokenType.Keyword
+            elif re.fullmatch(r'\w+', text):
+                self.type = TokenType.Name
+            else:
+                self.type = token_mapper(text)
 
     def __str__(self):
         return self.source_text
@@ -250,6 +255,10 @@ class NonTerminal(Node):
         self.source_text = ' '.join(n.source_text for n in nodes)
 
 
+class StringNode(NonTerminal):
+    def __repr__(self):
+        return ''.join(map(repr,self.nodes))
+
 class Statement(NonTerminal):
     """
     The parts that make up a block, executed in order
@@ -307,7 +316,7 @@ class FunctionLiteral(NonTerminal):
         self.statements = items
 
     def __repr__(self):
-        return f"{{{' '.join(map(repr, self.options))}}}"
+        return f"{{{' '.join(map(repr, self.statements))}}}"
 
 
 if __name__ == "__main__":

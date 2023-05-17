@@ -31,6 +31,9 @@ def expressionize(nodes: list[Node] | Statement):
 
     return Mathological(nodes, line, src)
 
+
+Context.make_expr = expressionize
+
 class Expression:
     line: int = None
     nodes: list[Node] = None
@@ -283,8 +286,6 @@ class SingleNode(Expression):
         super().__init__(line, source)
         self.node = node
     def evaluate(self):
-        if self.source == '[]':
-            return Value([])
         return eval_node(self.node)
 
 def eval_node(node: Node) -> Function:
@@ -296,14 +297,19 @@ def eval_node(node: Node) -> Function:
         case Block() | FunctionLiteral() as block:
             opt = Option(ListPatt(), FuncBlock(block))
             return opt.resolve(None)
-        case List() as node:
-            # return Value([eval_node(n) for n in node.nodes])
-            return Value(list(map(eval_node, node.nodes)))
-
+        case List(nodes=nodes):
+            return Value(list(map(eval_node, nodes)))
+        case StringNode(nodes=nodes):
+            return Value(''.join(map(eval_string_part, nodes)))
     raise ValueError(f'Could not evaluate node {node} at line: {node.pos}')
 
+def eval_string_part(node: Node) -> str:
+    if node.type == TokenType.StringPart:
+        return eval_string(node.source_text)
+    if isinstance(node, Statement):
+        return BuiltIns['string'].call([expressionize(node).evaluate()]).value
+    raise ValueError('invalid string part')
 
-Context.make_expr = expressionize
 
 def precook_args(op: Operator, lhs, rhs) -> list[Value]:
     if op.binop and lhs and rhs:
@@ -318,64 +324,51 @@ def precook_args(op: Operator, lhs, rhs) -> list[Value]:
 Operator.eval_args = precook_args
 
 
-class OpSplitter:
-    op: Operator
-    idx: int
-    precedence: int
-    fix: str  # binop | prefix | postfix
-    def __init__(self, op: Operator, index: int, precedence, fix):
-        self.op = op
-        self.idx = index
-        self.precedence = precedence
-        self.fix = fix
-
-
 def eval_token(tok: Token) -> Function:
     s = tok.source_text
     match tok.type:
         case TokenType.Singleton:
             return Value(singletons[s])
-            #     case 'none': return Value(None)
-            # t = BasicType.none if s == 'none' else BasicType.Float if s == 'inf' else BasicType.Boolean
-            # return Value(singleton_mapper(s), t)
         case TokenType.Number:
             return Value(read_number(s, Context.settings['base']))
-        case TokenType.String:
-            return Value(string(s))
-        # case TokenType.Type:
-        #     return Value(type_mapper(s), BasicType.Type)
+        case TokenType.StringLiteral:
+            return Value(s.strip("`"))
         case TokenType.Name:
             return Context.env.deref(s)
-        case TokenType.PatternName:
-            return Value(s)
         case _:
             raise Exception("Could not evaluate token", tok)
 
 
-def string(text: str):
-    q = text[0]
-    if q == "`":
-        return text[1:-1]
-    return text[1:-1]
-    # TO IMPLEMENT: "string {formatting}"
+def eval_string(text: str):
+    value = ""
+    for i in range(len(text)):
+        if i and text[i-1] == '\\':
+            continue
+        if text[i] == '\\':
+            match text[i+1]:
+                case 'n':
+                    value += '\n'
+                case 'r':
+                    value += '\r'
+                case 't':
+                    value += '\t'
+                case 'b':
+                    value += '\b'
+                case 'f':
+                    value += '\f'
+                case c:
+                    # assume char is one of: ', ", {, \
+                    value += c
+        else:
+            value += text[i]
+    return value
+
 
 def is_iterable(val: Function):
     if hasattr(val, 'value') and type(val.value) in (list, tuple):
         return True
     return False
 
-def make_param_old(param_nodes: list[Node]) -> Parameter:
-    last = param_nodes[-1]
-    if isinstance(last, Token) and last.type == TokenType.Name:
-        name = last.source_text
-        param_nodes = param_nodes[:-1]
-    else:
-        name = None
-    if not param_nodes:
-        return Parameter(name)
-    expr_val = expressionize(param_nodes).evaluate()
-    pattern = patternize(expr_val)
-    return Parameter(pattern, name)
 
 def make_value_param(param_nodes: list[Node]) -> Parameter:
     name = None
