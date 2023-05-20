@@ -12,7 +12,8 @@ elif len(sys.argv) == 2:
 else:
     mode = 'test'
     script_path = "test_script.pili"
-    script_path = 'syntax_demo.pili'
+    # script_path = 'syntax_demo.pili'
+    # script_path = "Dates.pili"
     print('(test mode) running script', script_path)
 
 pili = Function(ListPatt(Parameter('main')), lambda: NotImplemented, name='pili')

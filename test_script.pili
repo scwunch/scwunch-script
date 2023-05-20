@@ -102,6 +102,9 @@ print 'test 31 ' + ('passed' if test[31] else 'FAILED')
 test[32] = type[-10 / 20].string == "ratio" \
 	and type[4 * (1 + (-15 / 4))].string == "int" \
 		and type[1.0 / 1 + 1].string == "float"
+print type[-10/20]
+print type[4 * (1 + (-15 / 4))]
+print type[1.0 / 1 + 1]
 print 'test 32 ' + ('passed' if test[32] else 'FAILED')
 
 int_patt = int[-3, 5]
@@ -267,17 +270,19 @@ joiner =
 # print '*********************'
 
 fsnfi[float f1?, str s*, num n*, float f2+, int op_i?]:
-	args = []
+	arguments = []
 	if has 'f1'
-		args.push['f1='+f1.string]
-	args.push['s='+s.string]
-	args.push['n='+n.string]
-	args.push['f2='+f2.string]
+		arguments.push['f1='+f1.string]
+	arguments.push['s='+s.string]
+	arguments.push['n='+n.string]
+	arguments.push['f2='+f2.string]
 	if has 'op_i'
-		args.push['op_i='+op_i.string]
-	return args.joiner
+		arguments.push['op_i='+op_i.string]
+	return arguments.joiner
 
 test[100] = fsnfi[0.11, 'string', 1/2, -3.2] == 'f1=0.11 s=[string] n=[1/2] f2=[-3.2] '
+print fsnfi[0.11, 'string', 1/2, -3.2]
+print fsnfi[1.434, 5]
 test[100] = test[100] and fsnfi[1.434, 5] == 's=[] n=[] f2=[1.434] op_i=5 '
 print_test[100]
 
@@ -381,6 +386,24 @@ print_test[113]
 ls = [1,2,3,4,5]
 test[114] = ls[1,3] == [1,2]
 print_test[114]
+
+
+some_function[any arg1, any arg2]:
+	print args == self.args
+	print args[1]
+	print args[2]
+	print args[pili]
+	d = Dog['Bertrand', 'Doberman']
+	print args[d]
+	print args[d][1]
+	dargs = d.args
+	d.name = 'Rolly'
+	print dargs[1]
+	print args[d][1]
+
+some_function['x', 'y']
+
+
 
 
 

@@ -45,11 +45,9 @@ NoneParam = Parameter(Prototype(BuiltIns["none"]))
 BoolParam = Parameter(Prototype(BuiltIns["bool"]))
 IntegralParam = Parameter(Union(Prototype(BuiltIns["bool"]), Prototype(BuiltIns["int"])))
 FloatParam = Parameter(Prototype(BuiltIns["float"]))
-RationalParam = Parameter(Union(Prototype(BuiltIns["bool"]), Prototype(BuiltIns["int"]), Prototype(BuiltIns["ratio"])))
-NumericParam = Parameter(Union(Prototype(BuiltIns["bool"]), Prototype(BuiltIns["int"]), Prototype(BuiltIns["ratio"]), Prototype(BuiltIns["float"])))
+RationalParam = Parameter(Prototype(BuiltIns["ratio"]))
+NumericParam = Parameter(Prototype(BuiltIns["num"]))
 StringParam = Parameter(Prototype(BuiltIns["str"]))
-# NormalParam = Parameter(Union(Prototype(BuiltIns["bool"]), Prototype(BuiltIns["int"]), Prototype(BuiltIns["ratio"]),
-#                               Prototype(BuiltIns["float"]), Prototype(BuiltIns["str"])))
 NormalParam = Parameter(Union(Prototype(BuiltIns['num']), Prototype(BuiltIns['str'])))
 ListParam = Param = Parameter(Prototype(BuiltIns["list"]))
 # TypeParam = Parameter(Prototype(BuiltIns["Type"]))
@@ -152,21 +150,32 @@ BuiltIns['keys'] = Function(ListPatt(AnyParam),
                             lambda x: Value([lp.pattern[0].pattern.value for lp in x.options
                                              if len(lp.pattern) == 1 and isinstance(lp.pattern[0].pattern, ValuePattern)]))
 
-BuiltIns['max'] = Function(ListPatt(Parameter(Any, quantifier='+')), lambda *args: Value(max(*[arg.value for arg in args])))
-BuiltIns['max'] = Function(ListPatt(Parameter(Any, quantifier='+')), lambda *args: Value(max(*[arg.value for arg in args])))
-BuiltIns['map'] = Function()
+BuiltIns['max'] = Function(ListPatt(Parameter(Prototype(BuiltIns["num"]), quantifier='+')),
+                           lambda *args: Value(max(*[arg.value for arg in args])),
+                           {ListPatt(Parameter(Prototype(BuiltIns["str"]), quantifier='+')):
+                                lambda *args: Value(max(*[arg.value for arg in args]))})
+BuiltIns['min'] = Function(ListPatt(Parameter(Prototype(BuiltIns["num"]), quantifier='+')),
+                           lambda *args: Value(min(*[arg.value for arg in args])),
+                           {ListPatt(Parameter(Prototype(BuiltIns["str"]), quantifier='+')):
+                                lambda *args: Value(min(*[arg.value for arg in args]))})
+BuiltIns['map'] = Function(ListPatt(ListParam, FunctionParam), lambda ls, fn: Value([fn.call([val]) for val in ls.value]),
+                           {ListPatt(FunctionParam, ListParam): lambda fn, ls: Value([fn.call([val]) for val in ls.value])})
 BuiltIns['filter'] = Function()
-BuiltIns['trim'] = Function()
+BuiltIns['trim'] = Function(StringParam, lambda text: Value(text.value.strip()),
+                            {ListPatt(StringParam, StringParam): lambda t, c: Value(t.value.strip(c.value))})
 BuiltIns['self'] = lambda: Context.env
+def Args(fn: Function):
+    arg_list = Value([opt.value for opt in fn.args])
+    arg_list.add_option(FunctionParam, lambda fn: Args(fn))
+    return arg_list
+BuiltIns['args'] = lambda: Args(Context.env)
 
 def list_get(scope: Function, *args: Value):
     fn = scope.type
     if len(args) == 1:
-        if abs(args[0].value) > BuiltIns['len'].call([fn]).value:
-            raise IndexError(f'Line {Context.line}: Index {args[0]} out of range')
         length = BuiltIns['len'].call([fn])
         index = args[0].value
-        if BuiltIns['>'].call([Value(abs(index)), length]).value:
+        if abs(index) > length.value:
             raise IndexError(f'Line {Context.line}: Index {args[0]} out of range')
         index -= index > 0
         return fn.value[index]
@@ -431,8 +440,8 @@ def dot_fn(a: Function, b: Value):
             except NoMatchingOptionError:
                 pass
             fn = Context.env.deref(name)
-            if not fn.instanceof(BuiltIns['fn']):
-                raise OperatorError(f"Line {Context.line}: '{name}' is not an option or function.")
+            # if not fn.instanceof(BuiltIns['fn']):
+            #     raise OperatorError(f"Line {Context.line}: '{name}' is not an option or function.")
             # assert isinstance(fn.value, Function)
             return fn.call([a])
         case list() | tuple() as args:

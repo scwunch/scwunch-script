@@ -20,7 +20,7 @@ class Pattern:
             case ValuePattern(value=value):
                 return int(arg == value)
             case Prototype(prototype=prototype):
-                score = int(arg == prototype) or (arg.instanceof(prototype)) * 35/36
+                score = (arg == prototype) * 35/36 or arg.instanceof(prototype)
             case Union(patterns=patterns):
                 count = len(self)
                 for patt in patterns:
@@ -280,7 +280,7 @@ class FuncBlock:
             self.native = block
         self.env = env or Context.env
     def make_function(self, options, env=None):
-        return Function(options=options, type=env, env=env or self.env)
+        return Function(args=options, type=env, env=env or self.env)
     def execute(self, args=None, scope=None):
         if scope:
             def break_():
@@ -381,12 +381,16 @@ class Option:
 class Function:
     return_value = None
     value = NotImplemented
-    def __init__(self, opt_pattern=None, resolution=None, options=None, type=None, env=None, name=None):
+    def __init__(self, opt_pattern=None, resolution=None, options=None, args=None, type=None, env=None, name=None):
         self.name = name
         self.type = type or BuiltIns['fn']
         self.env = env or Context.env
         self.options = []
+        self.args = []
         self.named_options = {}
+        if args:
+            for patt, val in args.items():
+                self.args.append(self.add_option(patt, val))
         if options:
             for patt, val in options.items():
                 self.add_option(patt, val)
@@ -500,7 +504,7 @@ class Function:
         return option.resolve([], self)
 
     def instanceof(self, prototype):
-        return bool(self.type == prototype or self.type and self.type.instanceof(prototype))
+        return int(self.type == prototype) or (self.type or 0) and self.type.instanceof(prototype)/2
 
     def clone(self):
         if hasattr(self, "value"):
