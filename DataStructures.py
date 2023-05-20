@@ -175,7 +175,7 @@ class ListPatt(Pattern):
                 elif i_inst >= len(self.parameters):
                     pass
             param = self.parameters[i_inst]
-            key: str|int = param.name or i_arg
+            key: str|int = param.name or i_inst
             sub_score *= param.multi
             match_value = param.pattern.match_score(args[i_arg]) if i_arg < len(args) else 0
             match param.quantifier:
@@ -210,7 +210,8 @@ class ListPatt(Pattern):
                         branch = self.match_zip2(args, i_inst, i_arg, score, sub_score, branch_saves)
                         if branch[0]:
                             return branch
-                    score += sub_score / len(saves[key].value)
+                    if sub_score:  #  if len(saves[key].value):
+                        score += sub_score / len(saves[key].value)
                     i_inst += 1
                 case "*":
                     if key not in saves:
@@ -221,7 +222,7 @@ class ListPatt(Pattern):
                         branch = self.match_zip2(args, i_inst, i_arg + 1, score, sub_score + match_value, branch_saves)
                         if branch[0]:
                             return branch
-                    if len(saves[key].value):
+                    if sub_score:  # if len(saves[key].value):
                         score += sub_score / len(saves[key].value)
                     else:
                         score += 1/36
@@ -530,6 +531,9 @@ class Function:
         # if self.instanceof(BuiltIns['BasicType']):
         #     return Value(self.name)
         return Value(str(self))
+
+    def py_vals(self):
+        return [val.value for val in self.value]
 
     def __eq__(self, other):
         if self is other:

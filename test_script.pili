@@ -1,3 +1,6 @@
+print range[1,20,3]
+exit
+
 test = []
 test[0]: 'test init success'
 print test[0]

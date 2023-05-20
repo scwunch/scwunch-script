@@ -153,16 +153,58 @@ BuiltIns['keys'] = Function(ListPatt(AnyParam),
 BuiltIns['max'] = Function(ListPatt(Parameter(Prototype(BuiltIns["num"]), quantifier='+')),
                            lambda *args: Value(max(*[arg.value for arg in args])),
                            {ListPatt(Parameter(Prototype(BuiltIns["str"]), quantifier='+')):
-                                lambda *args: Value(max(*[arg.value for arg in args]))})
+                                lambda *args: Value(max(*[arg.value for arg in args])),
+                            ListParam: lambda ls: Value(max(*[arg.value for arg in ls.value]    ))})
 BuiltIns['min'] = Function(ListPatt(Parameter(Prototype(BuiltIns["num"]), quantifier='+')),
                            lambda *args: Value(min(*[arg.value for arg in args])),
                            {ListPatt(Parameter(Prototype(BuiltIns["str"]), quantifier='+')):
-                                lambda *args: Value(min(*[arg.value for arg in args]))})
+                                lambda *args: Value(min(*[arg.value for arg in args])),
+                            ListParam: lambda ls: Value(min(*[arg.value for arg in ls.value]))})
+BuiltIns['abs'] = Function(NumericParam, lambda n: Value(abs(n.value)))
+BuiltIns['round'] = Function(NumericParam, lambda n: Value(round(n.value)))
+                             # {ListPatt(NumericParam, IntegralParam): lambda n, p: Value(round(n.value, p.value))})
+
+def inclusive_range(*args: Value):
+    step = 1
+    match len(args):
+        case 0:
+            return Value([])
+        case 1:
+            stop = args[0].value
+            if stop == 0:
+                return Value([Value(0)])
+            elif stop > 0:
+                start = 1
+            else:
+                start = step = -1
+        case 2:
+            start = args[0].value
+            stop = args[1].value
+            step = stop > start or -1
+        case 3:
+            start, stop, step = (a.value for a in args)
+            if not step:
+                raise RuntimeErr(f"Line {Context.line}: Third argument in range (step) cannot be 0.")
+        case _:
+            raise RuntimeErr(f"Line {Context.line}: Too many arguments for range")
+    i = start
+    ls = []
+    while step > 0 and i <= stop or step < 0 and i >= stop:
+        ls.append(Value(i))
+        i += step
+    return Value(ls)
+BuiltIns['range'] = Function(Parameter(Prototype(BuiltIns['num']), quantifier="*"), inclusive_range)
 BuiltIns['map'] = Function(ListPatt(ListParam, FunctionParam), lambda ls, fn: Value([fn.call([val]) for val in ls.value]),
                            {ListPatt(FunctionParam, ListParam): lambda fn, ls: Value([fn.call([val]) for val in ls.value])})
-BuiltIns['filter'] = Function()
+BuiltIns['filter'] = Function(ListPatt(ListParam, FunctionParam),
+                        lambda ls, fn: Value([v for v in ls.value if BuiltIns['bool'].call([fn.call([v])]).value]),
+                        {ListPatt(FunctionParam, ListParam):
+                            lambda fn, ls: Value([v for v in ls.value if BuiltIns['bool'].call([fn.call([v])]).value])})
+BuiltIns['sum'] = Function(ListParam, lambda ls: Value(sum(ls.py_vals())))
 BuiltIns['trim'] = Function(StringParam, lambda text: Value(text.value.strip()),
                             {ListPatt(StringParam, StringParam): lambda t, c: Value(t.value.strip(c.value))})
+BuiltIns['upper'] = Function(StringParam, lambda text: Value(text.value.upper()))
+BuiltIns['lower'] = Function(StringParam, lambda text: Value(text.value.lower()))
 BuiltIns['self'] = lambda: Context.env
 def Args(fn: Function):
     arg_list = Value([opt.value for opt in fn.args])
