@@ -107,7 +107,7 @@ class Prototype(Pattern):
     def __init__(self, prototype, name=None, guard=None, *exprs):
         super().__init__(name, guard)
         self.prototype = prototype
-        self.exprs = exprs
+        self.exprs = list(exprs)
     def __eq__(self, other):
         return isinstance(other, Prototype) and \
             id(self.prototype) == id(other.prototype) and super().__eq__(other)

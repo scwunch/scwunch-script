@@ -3,7 +3,7 @@ from fractions import Fraction
 from Syntax import Node, Token, List, TokenType
 from Env import *
 from DataStructures import *
-from Expressions import expressionize, read_number, eval_token
+from Expressions import expressionize, read_number, Expression
 
 BuiltIns['_base_prototype'] = Function(name='base_prototype', type=True)  # noqa
 BuiltIns['_base_prototype'].type = None
@@ -452,6 +452,21 @@ Operator('has',
                   {AnyBinopPattern: has_option,
                    ListPatt(NormalParam): has_option}),
          binop=14, prefix=14)
+def add_guard_fn(fn: Function, guard: Function):
+    patt = patternize(fn)
+    patt.guard = guard
+    return Value(patt)
+def add_guard_expr(fn: Function, expr: Expression):
+    patt = patternize(fn)
+    patt.exprs.append(expr)
+    return Value(patt)
+Operator('&',
+         Function(ListPatt(AnyParam, AnyParam), add_guard_expr,
+                  {ListPatt(FunctionParam, AnyParam): add_guard_expr}),
+         binop=14)
+# def eval_patt_guard_args(lhs: list[Node], rhs: list[Node]) -> [Function, Expression]:
+#     return [expressionize(lhs).evaluate(), expressionize(rhs)]
+Op['&'].eval_args = lambda lhs, rhs: [expressionize(lhs).evaluate(), expressionize(rhs)]
 
 def eval_call_args(lhs: list[Node], rhs: list[Node]) -> list[Function]:
     if len(rhs) != 1:

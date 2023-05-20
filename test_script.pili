@@ -1,6 +1,3 @@
-print range[1,20,3]
-exit
-
 test = []
 test[0]: 'test init success'
 print test[0]
@@ -384,6 +381,15 @@ some_options =
 test[113] = [len, options, names, keys]..[some_options]..string.join['\n'] \
 	== '3\n[[Any x], [ValuePattern(5)], [ValuePattern(named_option) named_option]]\n[named_option, x]\n[5, named_option]'
 print_test[113]
+
+
+my_sum[Dog&(has length) dog+]:
+	return sum[dog..length]
+
+print Fufu.?length
+print Boulder.?length
+print my_sum[Fufu, Boulder]
+
 
 
 ls = [1,2,3,4,5]
