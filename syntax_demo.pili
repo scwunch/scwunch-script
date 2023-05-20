@@ -1,24 +1,155 @@
-# anything after a # and before a newline is a comment
-# "line 13 {"a{a}" + "b{2}"} in it."
-print `string \n literal`
-print ""
-print "hello"
-print "{55}h"
-print "{}"
+var = "hi"
+print self.var = "hello"
+print var
+print self.var
+exit
 
 
-print "hello {"world"}"
-print "hello{"world"}"
-print ``has ` in it``
-print ``in \n\t quotes``
-a = b = 1
-c = 'stellar'
-print "line 12 {"a" + "b"} in it."
-print "line 13 {"a{a}" + "b{2}"} in it."
-print "line 14 {"a\{2}" + "b\{3}"} in it."
-print "line 15 {"a{'2'}" + "b{'3'}"} in it."
-print "line 16 {a + b} in it."
-print 'string \n\t with {{any x: string[x]}["inter{c}!" * (a + b)]} in it.'
+# basic values are numbers and strings
+print "string literals can use double quotes"
+print 'or single quotes'
+print `or backticks`
+print ''
+
+# escape characters are recognized in single or double quoted strings, but in backtick strings are interpreted literally
+print "\tmulti\n\t\"line\"\n\tstring"
+print `not \n multi \n line`
+print ``double-backticked strings can have `backticks` inside them``
+print ''
+
+print 'string interpolation using \{} also works'
+print '1 + 2 = {1 + 2}'
+CAN = 'can'
+print 'Can you nest string interpolation? {'Yes, you {CAN}' if 1 == 1 else 'nope'}'
+print ''
+
+# pili fluidly and automatically converts between booleans, integers, and rational numbers,
+# depending on what operators are applied to them
+# floats only appear if a function explicitly returns a float (like the float function) or float literals
+my_bool = 2 + 2 == 4
+my_int = my_bool * 10
+my_ratio = my_int / 4
+print '10/4 = {my_ratio} (type: {type[my_ratio]})'
+print "10/4 * 2 = {my_ratio*2} (type: {type[my_ratio*2]})"
+my_float = 0.55400
+print my_float
+
+# by the way, all numbers in pili are heximal (base-six).  To input decimal numbers, use a 'd' suffix.  To output decimal numbers, convert using the string function
+print '9d = {9d}'
+print 'string[20, 10d] = {string[20, 10d]}'
+print ''
+
+# the default base is stored in the pili.settings module
+print "current base: " + pili.settings.get['base']
+print "the base is a letter representing (from binary to decimal): 'btqphsond'"
+# set the default base like this:
+pili.settings.set['base', 'd']
+print 9
+print ''
+
+# How do you define function?
+greeting[str name]:
+    return 'Hello ' + name
+
+# the function must have an identifier (usually a simple name like 'greeting')
+# the function must have a set of 0 or more parameters
+# each parameter has a pattern and (optionally) a name to bind to when matched.
+# in this case, the pattern is the prototype 'str' and the name is 'name'
+# this function happens to only need one line — it could be written like this:
+greeting[str name]: 'Hello ' + name
+
+print greeting["Ryan"]
+
+# of course, functions may have multiple options — that's kinda Pili's thing.  They can be added simply by redefining the function again with different parameters
+
+greeting[str name, int times]:
+    return 'Hi {name}! ' * times
+
+# the actual code that runs depends on the arguments passed to the function — the match is automatically detected
+
+print "greeting['Bob'] -> " + greeting['Bob']
+print "greeting['Bob', 3] -> " + greeting['Bob', 3]
+
+
+# patterns can get pretty complicated if you need them to.  And parameters can have quantifers like regex
+greeting[str name, int<0 times]: "Goodbye {name}. " * -times
+greeting[str names+, int times?]:
+    greets = []
+    for name in names
+        greets.push['Hi {name}']
+    if not has 'times'
+        times = 1
+    return greets.join[', '] * times
+
+print "greeting['Bob', -2] -> " + greeting['Bob', -2]
+print "greeting['Bob', 'Ryan'] -> " + greeting['Bob', 'Ryan']
+print ''
+
+# You just say the "has" operator above; it checks for the existence of an option (by name or pattern or by list of arguments)
+
+print 'greeting has ["any random name"] -> {greeting has ["any random name", 444]}'
+print 'greeting has "name" -> {greeting has "name"}'
+print 'greeting has "Ryan" -> {greeting has "Ryan"}'
+print 'has "greeting" ->  {has "greeting"}'
+print ''
+
+# How does this matching work?  There are three main classes of patterns:
+# 1. value patterns
+# 2. prototype patterns
+# 3. union patterns
+# value patterns are created when you use the = operator to assign a value to a value pattern.  Eg
+print "Value Patterns"
+greeting[1] = "One"
+greeting["one"] = 1
+print 'greeting[1] => ' + greeting[1]
+print 'greeting["one"] => {greeting["one"]}'
+# notice how that second pattern *overrides* the very first pattern [str name] that we put on greeting.  Value patterns generally take precedence over prototype patterns
+print "value patterns are mostly just used as keys in dictionary-like options; they either match a value or they don't — not that exciting so let's move on to prototype patterns."
+
+print "\nPrototype Patterns"
+# prototype patterns are interpreted from values when used as parameters, like [str name] above
+# prototype matching is also used by the MATCH ~ operator
+print '-33 ~ int => {-33 ~ int}'
+print '0.43 ~ float and 0.43 ~ num and -33 ~ num => {0.43 ~ float and 0.43 ~ num and -33 ~ num}'
+print '0.43 ~ str => {0.43 ~ str}'
+# union patterns match if any of the sub-patterns match
+print "'hello' ~ num|str => {'hello' ~ num|str}"
+neg_float_or_pos_int = float < 0 | int > 0
+print "for n in [-1, 0 , 1, -0.3, 0.0, 0.3]"
+for n in [-1, 0 , 1, -0.3, 0.0, 0.3]
+    print "{' ' * (10-len[n.string])}{n} ~ float < 0 | int > 0 => {n ~ neg_float_or_pos_int}"
+print "5 ~ float | int > 4 => {5 ~ float | int > 4}"
+print "-0.3 ~ float | int > 4 => {-0.3 ~ float | int > 4}"
+# these are just some built-in types.  We can create our own too
+print 5 ~ float | int > 4
+print 5 ~ int > 4 | float
+
+
+
+
+print ".., ??, ~, "
+print "***************************************"
+x = "global x"
+level_six[]:
+    z = "outer z"
+    donky[]:
+        inner[any y]:
+            return [x, y, z]
+
+        z = "donky z"
+        return inner
+
+    chonky[]:
+        x = "chonky x"
+        f = donky[]
+        return f
+        return f["y arg"]
+
+    f = chonky[]
+    return f["y arg"]
+    return chonky[]
+
+print level_six[]
 
 
 exit

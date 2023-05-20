@@ -161,6 +161,8 @@ class ListPatt(Pattern):
         #     return 1, {}
         if not self.min_len() <= len(args) <= self.max_len():
             return 0, {}
+        if len(self.parameters) == len(args) == 0:
+            return 1, {}
         return self.match_zip2(args)
 
     def match_zip2(self, args: list = None, i_inst=0, i_arg=0, score=0, sub_score=0, saves=None):
@@ -348,7 +350,7 @@ class Option:
             case types.FunctionType(): self.fn = resolution
             case _:
                 raise ValueError(f"Line {Context.line}: Could not assign resolution {resolution} to option {self}")
-    def resolve(self, args=None, env=None, bindings=None):
+    def resolve(self, args, env=None, bindings=None):
         if self.value:
             return self.value
         if self.fn:
@@ -495,7 +497,7 @@ class Function:
     def deref(self, name: str, ascend_env=True):
         # option = self.select(name, ascend_env=ascend_env)
         option = self.select_by_name(name, ascend_env)
-        return option.resolve(None, self)
+        return option.resolve([], self)
 
     def instanceof(self, prototype):
         return bool(self.type == prototype or self.type and self.type.instanceof(prototype))

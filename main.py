@@ -15,10 +15,10 @@ else:
     script_path = 'syntax_demo.pili'
     print('(test mode) running script', script_path)
 
-pili = Function(ListPatt(Parameter('main')), lambda x: NotImplemented, name='pili')
+pili = Function(ListPatt(Parameter('main')), lambda: NotImplemented, name='pili')
 BuiltIns['pili'] = pili
 for key, builtin in BuiltIns.items():
-    if not builtin.name:
+    if not getattr(builtin, 'name', False):
         builtin.name = key
     pili.add_option(ListPatt(Parameter(key)), builtin)
 Context.root = pili
@@ -64,11 +64,11 @@ if mode in ('test', 'script'):
         script_string = f.read()
 
     tokenizer = Tokenizer(script_string)
-    print(tokenizer)
-    print('**********************************')
+    # print(tokenizer)
+    # print('**********************************')
     ast = AST(tokenizer)
-    print(ast)
-    print('**********************************')
+    # print(ast)
+    # print('**********************************')
     pili.assign_option(ListPatt(Parameter('main')), FuncBlock(ast.block))
     # BuiltIns['pili'] = root
     # for key, builtin in BuiltIns.items():

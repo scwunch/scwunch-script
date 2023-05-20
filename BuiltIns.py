@@ -74,6 +74,7 @@ def setting_set(prop: Value, val: Value):
             raise ValueError('Invalid setting for base.  See manual for available settings.')
         val = bases[val[0]]
     Context.settings[prop] = val
+    return BuiltIns['settings']
 def setting_get(prop: Value):
     if prop.value == 'base':
         match Context.settings['base']:
@@ -156,6 +157,7 @@ BuiltIns['max'] = Function(ListPatt(Parameter(Any, quantifier='+')), lambda *arg
 BuiltIns['map'] = Function()
 BuiltIns['filter'] = Function()
 BuiltIns['trim'] = Function()
+BuiltIns['self'] = lambda: Context.env
 
 def list_get(scope: Function, *args: Value):
     fn = scope.type
@@ -312,10 +314,6 @@ Operator('or',
          binop=4, static=True)
 Operator('and',
          binop=5, static=True)
-Operator('|',
-         Function(ListPatt(PatternParam, PatternParam), lambda a, b: Value(Union(patternize(a), patternize(b)))),
-         binop=4)
-Op['|'].fn.add_option(AnyBinopPattern, lambda a, b: Value(Union(patternize(a), patternize(b))))
 Operator('not',
          Function(ListPatt(AnyParam), lambda a: Value(not BuiltIns['bool'].call([a]).value)),
          prefix=6)
@@ -328,6 +326,15 @@ Operator('==',
          binop=8)
 Operator('!=',
          Function(AnyBinopPattern, lambda a, b: Value(not BuiltIns['=='].call([a, b]).value)),
+         binop=8)
+Operator('~',
+         Function(AnyBinopPattern, lambda a, b: Value(bool(patternize(b).match_score(a)))),
+         binop=8, chainable=False)
+Operator('!~',
+         Function(AnyBinopPattern, lambda a, b: Value(not patternize(b).match_score(a))),
+         binop=8, chainable=False)
+Operator('|',
+         Function(AnyBinopPattern, lambda a, b: Value(Union(patternize(a), patternize(b)))),
          binop=9)
 Operator('<',
          Function(NormalBinopPattern, lambda a, b: Value(a.value < b.value)),
@@ -343,12 +350,6 @@ Operator('>=',
          Function(AnyBinopPattern,
                   lambda a, b: Value(BuiltIns['>'].call([a, b]).value or BuiltIns['=='].call([a, b]).value)),
          binop=10, chainable=True)
-Operator('~',
-         Function(AnyBinopPattern, lambda a, b: Value(bool(patternize(b).match_score(a)))),
-         binop=9, chainable=False)
-Operator('!~',
-         Function(AnyBinopPattern, lambda a, b: Value(not patternize(b).match_score(a))),
-         binop=9, chainable=False)
 Operator('+',
          Function(NormalBinopPattern, lambda a, b: Value(a.value + b.value),
                   options={ListPatt(AnyParam): lambda a: BuiltIns['number'].call([a])}),

@@ -296,7 +296,7 @@ def eval_node(node: Node) -> Function:
             return eval_token(tok)
         case Block() | FunctionLiteral() as block:
             opt = Option(ListPatt(), FuncBlock(block))
-            return opt.resolve(None)
+            return opt.resolve([])
         case List(nodes=nodes):
             return Value(list(map(eval_node, nodes)))
         case StringNode(nodes=nodes):
