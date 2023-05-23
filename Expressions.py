@@ -28,6 +28,8 @@ def expressionize(nodes: list[Node] | Statement):
             return ForLoop(nodes, line, src)
         case 'while':
             return WhileLoop(nodes, line, src)
+        # case 'try':
+        #     return TryCatch(nodes, line, src)
 
     return Mathological(nodes, line, src)
 
@@ -119,25 +121,29 @@ class ExprWithBlock(Expression):
         super().__init__(line, source)
         for i, node in enumerate(nodes):
             if isinstance(node, Block):
+                if nodes[i-1].source_text == ':':
+                    raise SyntaxErr(f"Line ({self.line}): "
+                                    f"Pili does not use colons for control blocks like if and for.")
                 self.block_index = i
                 self.header = nodes[:i]
                 self.block = FuncBlock(node)
                 if i+1 == len(nodes):
                     self.alt = []
                     break
-                elif i+2 == len(nodes):
-                    raise SyntaxErr("Expected else followed by block.  Got ", nodes[i+1])
-                try:
-                    assert nodes[i+1].source_text == 'else'  # and isinstance(nodes[i+2], Block)
-                    node = nodes[i+2]
-                    if isinstance(node, Block):
-                        self.alt = FuncBlock(node)
-                    elif node.source_text == 'if':
-                        self.alt = nodes[i+2:]
-                    else:
-                        assert False
-                except AssertionError:
-                    raise SyntaxErr("Expected 'else' block or 'else if' after if block.  Got ", nodes[i+1:])
+                if not (nodes[i + 1].source_text == 'else' and i+2 < len(nodes)):
+                    raise SyntaxErr(f"Line {nodes[i+1].pos[0]}: Expected else followed by block.  Got {nodes[i+1]}")
+
+                node = nodes[i+2]
+                if isinstance(node, Block):
+                    self.alt = FuncBlock(node)
+                elif node.source_text == 'if':
+                    self.alt = nodes[i+2:]
+                elif node.source_text == ':':
+                    raise SyntaxErr(f"Line ({node.pos[0]}): "
+                                    f"Pili does not use colons for control blocks like if and for.")
+                else:
+                    raise SyntaxErr(f"Line {node.pos[0]}: "
+                                    f"Expected 'else' block or 'else if' after if block.  Got \n\t{nodes[i+1:]}")
                 break
 
 class Conditional(ExprWithBlock):
@@ -273,7 +279,7 @@ class Command(Expression):
                                          f"break expression should evaluate to non-negative integer.  Found {result}.")
                 Context.continue_ += levels
             case _:
-                raise SyntaxErr(f"Unhandled command {self.command}")
+                raise SyntaxErr(f"Line {Context.line}: Unhandled command {self.command}")
 
 class EmptyExpr(Expression):
     def __init__(self):

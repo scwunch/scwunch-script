@@ -29,45 +29,68 @@ class Tokenizer(Builder):
     char, current_line: current character and line of reader
     in_string: ' or " or None
     """
+    idx: int
+    indent: int
+    ln: int
+    col: int
+    char: str | None
     in_string: list[str]
     fn_lv: int
+    tokens: list[Token]
     def __init__(self, script: str):
         super().__init__()
 
         # initialize lines
-        script_lines = script.split("\n")
-        for i, line in enumerate(script_lines):
-            self.lines.append(Line(line, i+1))
-        self.current_line: Line | None = self.lines[0]
-        self.char = self.current_line.text[0] if self.current_line.text else None
+        # script_lines = script.split("\n")
+        # for i, line in enumerate(script_lines):
+        #     self.lines.append(Line(line, i+1))
+        # self.current_line: Line | None = self.lines[0]
+        # self.char = self.current_line.text[0] if self.current_line.text else None
 
+        self.script = script
+        self.idx = -1
+        self.ln, self.col = 0, 0
+        self.char = None
+        self.next_line()
+        # self.char = script and script[0]
+        # self.indent = 0
         self.in_string = []
         self.fn_lv = 0
+        self.tokens = self.read_tokens()
         # add tokens to lines
-        for line in self.lines:
-            line.tokens = self.read_tokens()
-            self.next_line()
+        # for line in self.lines:
+        #     line.tokens = self.read_tokens()
+        #     self.next_line()
 
     def __repr__(self):
         head = f"Tokenizer State:\n\t" \
                f"head:({self.ln}, {self.col})\n\tcurrent_line:{self.current_line}\n\tchar:{self.char}\n"
-        return head + "\n".join(repr(line) for line in self.lines)
+        lines = []
+        ln = 0
+        start = 0
+        indent = ''
+        for i, tok in enumerate(self.tokens):
+            if tok.type == TokenType.NewLine:
+                ln = tok.pos[0]
+            if tok.type in (TokenType.NewLine, TokenType.BlockEnd):
+                lines.append(f"{ln}. {indent}{' '.join(t.source_text.strip() for t in self.tokens[start:i])}")
+                start = i+1
+            if tok.type in (TokenType.BlockStart, TokenType.BlockEnd):
+                indent = tok.source_text
+        return head + "\n".join(lines)
 
     def read_tokens(self):
         tokens: list[Token] = []
         while self.char:
+            start = self.idx
             pos = (self.ln, self.col)
             token_type = None
             if re.match(r'\d', self.char):
                 text = self.read_number()
-            # elif self.in_string and tokens and tokens[-1].source_text == '}':
-            #     text = self.read_string(self.in_string[-1])
             elif self.char == "`":
-                # self.next_char()
                 text = self.read_string_literal()
                 token_type = TokenType.StringLiteral
-                # self.next_char()
-            elif self.char in ('"', "'",  "`"):
+            elif self.char in ('"', "'"):
                 text = self.char
                 if len(self.in_string) > self.fn_lv:
                     token_type = TokenType.StringEnd
@@ -75,54 +98,74 @@ class Tokenizer(Builder):
                 else:
                     token_type = TokenType.StringStart
                     self.in_string.append(text)
-                # tokens.append(Token(self.char, pos, TokenType.StringStart))
-                # string_level = len(self.in_string)
-                # self.in_string.append(self.char)
-                # text = self.char
-                # text = self.read_string()
-                # token_type = TokenType.String if string_level == len(self.in_string) else TokenType.StringPart
             elif re.match(r'\w', self.char):
                 text = self.read_word()
             elif re.match(op_char_patt, self.char):
                 text = self.read_operator()
-            elif self.char in "[]{}(),":
+            elif self.char in "{}":
                 text = self.char
-                self.fn_lv += (self.char == "{") - (self.char == "}")
+                if self.in_string:
+                    if self.char == '{' and len(self.in_string) - self.fn_lv == 1:
+                        self.fn_lv += 1
+                    elif self.char == '}':
+                        self.fn_lv -= 1
+            elif self.char in '[](),':
+                text = self.char
+            elif self.char in "#\n":
+                last_indent = self.indent
+                self.next_line()
+                if self.indent == last_indent:
+                    text = '\n'
+                    token_type = TokenType.NewLine
+                else:
+                    text = '\t' * self.indent
+                    if self.indent > last_indent:
+                        token_type = TokenType.BlockStart
+                    else:
+                        token_type = TokenType.BlockEnd
             elif self.char == '\\':
-                text = self.char
+                while self.next_char() and self.char in ' \t':
+                    pass
+                if self.char != '\n':
+                    raise Env.SyntaxErr(f"Expected newline after backslash at {pos}")
+                self.next_line()
+                continue
             else:
-                raise Exception("What kind of character is this?", self.char)
-            # warnings
-            if text == ':' and tokens and tokens[0].source_text in KeyWords:
-                print(f"SYNTAX WARNING ({self.ln+1}): Pili does not use colons for control blocks like if and for.")
+                raise Env.SyntaxErr(f'{pos} What kind of character is this? "{self.char}"')
+            if text == 'debug':
+                pass
             tokens.append(Token(text, pos, token_type))
             if len(self.in_string) > self.fn_lv:
-                # self.next_char()
-                tokens.append(Token(self.read_string(self.in_string[-1]), (self.ln, self.col), TokenType.StringPart))
-            # if text == "}" and len(self.in_string) > self.fn_lv:
-            #     self.next_char()
-            #     tokens.append(Token(self.read_string(self.in_string[-1]), (self.ln, self.col), TokenType.StringPart))
-            while self.col == pos[1] or self.char and re.match(r'\s', self.char):
+                tokens.append(Token(self.read_string(self.in_string[-1]),  (self.ln, self.col),  TokenType.StringPart))
+            while self.idx == start or self.char and self.char in ' \t':
                 self.next_char()
-            # if self.char == '\\' and re.match(r'\\\s*', self.current_line.text[self.col:]):
-            #     self.next_line()
-        # self.tokens = tokens
         return tokens
 
-    def next_char(self):
-        self.col += 1
-        if self.col >= len(self.current_line):
+    def next_char(self, count=1):
+        self.idx += count
+        if self.idx >= len(self.script):
             self.char = None
-        else:
-            self.char = self.current_line.text[self.col]
+            return None
+        self.col += count
+        self.char = self.script[self.idx]
         return self.char
 
     def next_line(self):
-        if super().next_line():
+        while self.char and self.char != '\n':
             self.next_char()
-            return self.current_line
-        else:
-            return None
+        self.ln += 1
+        self.indent = 0
+        while self.next_char():
+            if self.char == '\t':
+                self.indent += 1
+            elif self.script[self.idx:self.idx+4] == '    ':
+                self.next_char(4)
+                self.indent += 1
+            elif self.char in '#\n':
+                return self.next_line()
+            else:
+                break
+        self.col = 1
 
     def read_number(self):
         num_text = self.char
@@ -181,32 +224,34 @@ class Tokenizer(Builder):
 
     def peek(self, offset=1, count=1):
         index = self.col + offset
-        if 0 <= index < len(self.current_line.text):
-            return self.current_line.text[index:index + count]
+        if 0 <= index < len(self.script):  # current_line.text):
+            return self.script[index:index + count]
         return None
 
 
 class AST(Builder):
     def __init__(self, toks: Tokenizer):
         super().__init__()
-        self.lines = toks.lines
-        self.current_line = self.lines[0]
-        self.tok = self.current_line.tokens[0] if self.current_line.tokens else None
-        self.block = self.read_block()
+        # self.lines = toks.lines
+        # self.current_line = self.lines[0]
+        self.tokens = toks.tokens
+        self.idx = 0
+        self.tok = self.tokens[0] if self.tokens else None
+        self.block = self.read_block(0)
 
     def peek(self, count=1):
-        i = self.col + count
-        if 0 <= i < len(self.current_line.tokens):
-            return self.current_line.tokens[i]
+        i = self.idx + count
+        if 0 <= i < len(self.tokens):
+            return self.tokens[i]
         else:
             return None
 
     def seek(self, count=1):
-        self.col += count
-        if self.col >= len(self.current_line.tokens):
+        self.idx += count
+        if self.idx >= len(self.tokens):
             self.tok = None
             return None
-        self.tok = self.current_line.tokens[self.col]
+        self.tok = self.tokens[self.idx]
         return self.tok
 
     def next_line(self):
@@ -216,60 +261,68 @@ class AST(Builder):
         else:
             return None
 
-    def read_block(self) -> Block:
-        indent = self.current_line.indent
+    def read_block(self, indent: int) -> Block:
         executables: list[Statement] = []
-        first_line = self.current_line  # just for error checking
-        while self.current_line is not None:
-            if not self.current_line.tokens:
-                self.next_line()
-                continue
-            if self.current_line.indent < indent:
+        next_line = self.current_line  # just for error checking
+        while self.tok:
+            statement = self.read_statement(TokenType.NewLine, TokenType.BlockEnd)
+            if statement.nodes:
+                executables.append(statement)
+            if self.tok is None:
                 break
-            else:
-                executables.append(self.read_statement())
+            elif self.tok.type == TokenType.NewLine:
+                self.seek()
+            elif self.tok.type == TokenType.BlockEnd:
+                self.indent = len(self.tok.source_text)
+                if self.indent < indent:
+                    break
+                else:
+                    self.seek()
 
-            # check to make sure we successfully advanced at least one line
-            if first_line == self.current_line:
-                raise Exception("read statement but failed to advance to next line")
-            else:
-                first_line = self.current_line
-
-        block = Block(executables)
-        return block
+        return Block(executables)
 
     def read_statement(self, *end_of_statement: TokenType) -> Statement:
         nodes: list[Node] = []
         while self.tok:
             if self.tok.type in end_of_statement:
-                # self.seek()
                 return Statement(nodes)
-            elif self.tok.type in (TokenType.GroupEnd, TokenType.ListEnd, TokenType.FnEnd):
-                raise Env.SyntaxErr(f'Unexpected {repr(self.tok)} found at {self.tok.pos}!')
-            elif self.tok.type == TokenType.GroupStart:
-                self.seek()
-                nodes.append(self.read_statement(TokenType.GroupEnd))
-            elif self.tok.type == TokenType.ListStart:
-                if self.col and self.peek(-1).type in \
-                        (TokenType.Name, TokenType.GroupEnd, TokenType.ListEnd, TokenType.FnEnd):
-                    nodes.append(Token('.', self.tok.pos))
-                self.seek()
-                nodes.append(List(self.read_list(TokenType.ListEnd)))
-            elif self.tok.type == TokenType.FnStart:
-                self.seek()
-                nodes.append(FunctionLiteral(self.read_list(TokenType.FnEnd)))
-            elif self.tok.type == TokenType.StringStart:
-                nodes.append(self.read_string())
-            # elif self.tok.source_text == '-' and (not self.peek(-1) or self.peek(-1).type == TokenType.Operator):
-            #     nodes.append(self.tok)
-            elif self.tok.source_text == 'if' and not nodes:
-                self.tok.type = TokenType.Keyword
-                nodes.append(self.tok)
-            elif self.tok.type == TokenType.Backslash:
-                if not super().next_line():
-                    raise Env.SyntaxErr(f"Expected statement after backslash at: {(self.ln, self.col)}")
-            else:
-                nodes.append(self.tok)
+            match self.tok.type:
+                case TokenType.GroupEnd | TokenType.ListEnd | TokenType.FnEnd:
+                    raise Env.SyntaxErr(f'Unexpected {repr(self.tok)} found at {self.tok.pos}!')
+                case TokenType.NewLine | TokenType.BlockEnd:
+                    pass
+                case TokenType.BlockStart:
+                    indent = len(self.tok.source_text)
+                    self.seek()
+                    nodes.append(self.read_block(indent))
+                    if self.indent == indent-1 and self.peek() and self.peek().source_text == 'else':
+                        self.seek()
+                    continue
+                case TokenType.GroupStart:
+                    if nodes and nodes[-1].type not in (TokenType.Operator, TokenType.Command, TokenType.Keyword):
+                        nodes.append(Token('&'))
+                    self.seek()
+                    nodes.append(self.read_statement(TokenType.GroupEnd))
+                case TokenType.ListStart:
+                    if self.idx and self.peek(-1).type in \
+                            (TokenType.Name, TokenType.GroupEnd, TokenType.ListEnd, TokenType.FnEnd):
+                        nodes.append(Token('.', self.tok.pos))
+                    self.seek()
+                    nodes.append(List(self.read_list(TokenType.ListEnd)))
+                case TokenType.FnStart:
+                    self.seek()
+                    nodes.append(FunctionLiteral(self.read_list(TokenType.FnEnd)))
+                case TokenType.StringStart:
+                    nodes.append(self.read_string())
+                case TokenType.Comma:
+                    self.tok.type = TokenType.Operator
+                    nodes.append(self.tok)
+                case _:
+                    if self.tok.source_text == 'if' and not nodes:
+                        self.tok.type = TokenType.Keyword
+                    nodes.append(self.tok)
+                    if self.tok.source_text == 'debug':
+                        pass
             self.seek()
         else:
             if end_of_statement:
@@ -277,30 +330,34 @@ class AST(Builder):
 
         indent = self.current_line.indent
         if self.next_line():
-            if self.current_line.indent > indent:
+            if nodes and self.current_line.indent > indent:
                 sub_block = self.read_block()
                 nodes.append(sub_block)
                 if self.tok and self.tok.source_text == 'else':
                     # self.seek()
-                    nodes += self.read_statement().nodes
+                    nodes += self.read_statement(TokenType.NewLine).nodes
 
-        executable = Statement(nodes)
-        return executable
+        return Statement(nodes)
 
     def read_list(self, end: TokenType) -> list[Statement]:
-        if self.tok.type == end:
-            return []
+        white_space_tokens = TokenType.NewLine, TokenType.BlockStart, TokenType.BlockEnd
         items: list[Statement] = []
         while self.tok:
-            items.append(self.read_statement(end, TokenType.Comma))
-            if self.tok.type == TokenType.Comma:
+            while self.tok and self.tok.type in white_space_tokens:
                 self.seek()
-            elif self.tok.type == end:
+            if self.tok is None:
                 break
+            if self.tok.type == end:
+                return items
+            statement = self.read_statement(end, TokenType.Comma, *white_space_tokens)
+            if statement.nodes:
+                items.append(statement)
             else:
-                raise Exception(f"Unexpected token {repr(self.tok)}; expected {end}")
+                continue
+            if self.tok and self.tok.type == TokenType.Comma:
+                self.seek()
 
-        return items
+        raise Env.SyntaxErr("Reached EOF: Expected " + repr(end))
 
     def read_string(self) -> StringNode:
         nodes = []

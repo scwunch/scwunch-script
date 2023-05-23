@@ -2,7 +2,7 @@ import math
 from enum import Enum, EnumMeta
 import re
 
-op_char_patt = r'[:.<>?/~!@#$%^&*+=|-]'
+op_char_patt = r'[:.<>?/~!@$%^&*+=|-]'
 
 def contains(cls, item):
     if isinstance(item, cls):
@@ -38,6 +38,9 @@ class TokenType(Enum):
     FnEnd = "}"
     Comma = ','
     Backslash = '\\'
+    NewLine = '\n'
+    BlockStart = '\t'
+    BlockEnd = '\t\n'
 
 
 class Commands(Enum):
@@ -52,21 +55,6 @@ class Commands(Enum):
     Exit = 'exit'
     Debug = 'debug'
     Else = 'else'
-
-
-# class BasicType(Enum):
-#     none = 'none'
-#     Boolean = 'bool'
-#     Integer = 'int'
-#     Rational = 'ratio'
-#     Float = 'float'
-#     String = 'str'
-#     Function = 'fn'
-#     List = 'list'
-#     Type = 'pattern.type'
-#     Pattern = 'pattern'
-#     Name = 'pattern.name'
-#     Any = 'any'
 
 
 class OptionType(Enum):
@@ -126,8 +114,6 @@ def token_mapper(item: str) -> TokenType:
     return TokenType._value2member_map_.get(item, TokenType.Unknown)
 def command_mapper(item: str) -> Commands:
     return Commands._value2member_map_.get(item)
-def option_type_mapper(item: str) -> OptionType:
-    return OptionType._value2member_map_.get(item, None)
 def singleton_mapper(item: str) -> Singletons:
     return Singletons._value2member_map_.get(item, None)
 singletons = {'none': None, 'false': False, 'true': True, 'inf': math.inf}
@@ -157,7 +143,7 @@ class Token(Node):
     """
 
     def __init__(self, text: str, pos: tuple[int, int] = (-1, -1), type: TokenType = None):
-        self.pos = pos[0]+1, pos[1]+1
+        self.pos = pos[0], pos[1]
         self.type = type
         self.source_text = text
 
@@ -173,12 +159,12 @@ class Token(Node):
             elif text.lower() in Singletons:
                 self.source_text = text.lower()
                 self.type = TokenType.Singleton
-            # elif text in BasicType:
-            #     self.type = TokenType.Type
             elif text in KeyWords:
                 self.type = TokenType.Keyword
             elif re.fullmatch(r'\w+', text):
                 self.type = TokenType.Name
+            elif text.startswith('\t'):
+                self.type = TokenType.BlockStart
             else:
                 self.type = token_mapper(text)
 
@@ -211,7 +197,7 @@ class Line:
         # tokens are added by the Tokenizer
 
     def __len__(self):
-        return len(self.text)
+        return len(self.text) or len(self.tokens)
 
     def split2(self, pattern):
         # returns -> tuple[list[Token], Token, list[Token]]:
