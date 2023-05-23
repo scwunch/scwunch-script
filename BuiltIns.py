@@ -363,9 +363,18 @@ Operator('??=',
          binop=2, associativity='right')
 Op['??='].eval_args = eval_set_args
 Operator(',',
-         Function(AnyBinopPattern, lambda x, y: Value((x,y)),
+         Function(ListPatt(Parameter(Any, quantifier='+')), lambda *args: Value(tuple(args)),
                   {AnyParam: lambda x: Value((x,))}),
-         binop=2, postfix=2)
+         binop=2, postfix=2, associativity='right')
+def eval_tuple_args(lhs: list[Node], rhs: list[Node]) -> list[Function]:
+    left = expressionize(lhs).evaluate()
+    if not rhs:
+        return [left]
+    right_expr = expressionize(rhs)
+    if getattr(right_expr, 'op', None) == Op[',']:
+        return [left, *eval_tuple_args(right_expr.lhs, right_expr.rhs)]
+    return [left, right_expr.evaluate()]
+Op[','].eval_args = eval_tuple_args
 Operator('if',
          Function(ListPatt(AnyParam), lambda x: x),
          binop=3, static=True, ternary='else')
@@ -450,7 +459,7 @@ def has_option(fn: Function, arg: Function = None) -> Value:
             return Value(fn.select_by_name(arg.value, ascend_env=ascend) is not None)
         elif arg.instanceof(BuiltIns['list']):
             # fn.select(arg.value, ascend_env=ascend)
-            fn.select_and_bind(arg.value, ascend_env=ascend)
+            fn.select_and_bind(arg.value, ascend_env=ascend)  # why ascend here?  that should only be for the prefix version
         else:
             # fn.select([arg])
             fn.select_and_bind([arg])

@@ -2,7 +2,7 @@ import math
 from enum import Enum, EnumMeta
 import re
 
-op_char_patt = r'[:.<>?/~!@$%^&*+=|-]'
+op_char_patt = r'[:.<>?/~!@;$%^&*+=|-]'
 
 def contains(cls, item):
     if isinstance(item, cls):
@@ -19,17 +19,13 @@ class TokenType(Enum):
     StringLiteral = 'string'
     StringStart = 'string_start'
     StringPart = 'string_part'
-    # StringMid = 'string_mid'
     StringEnd = 'string_end'
     Number = 'number'
     Singleton = 'singleton'
     Operator = 'operator'
-    # OptionSet = ':='
     Command = 'command'  # return, break, continue, ...
     Keyword = 'keyword'  # in, with, ...
-    # Type = "type"
     Name = 'name'
-    # PatternName = 'pattern name'
     GroupStart = '('
     GroupEnd = ')'
     ListStart = '['
@@ -37,7 +33,6 @@ class TokenType(Enum):
     FnStart = "{"
     FnEnd = "}"
     Comma = ','
-    Backslash = '\\'
     NewLine = '\n'
     BlockStart = '\t'
     BlockEnd = '\t\n'
@@ -148,9 +143,9 @@ class Token(Node):
         self.source_text = text
 
         if not type:
-            if re.match(r'["\'`]', text):
-                self.type = TokenType.String
-            elif re.fullmatch(r'-?\d+(\.\d*)?d?', text):
+            # if re.match(r'["\'`]', text):
+            #     self.type = TokenType.String
+            if re.fullmatch(r'-?\d+(\.\d*)?d?', text):
                 self.type = TokenType.Number
             elif re.match(op_char_patt, text) or text in OperatorWord:
                 self.type = TokenType.Operator
@@ -173,60 +168,6 @@ class Token(Node):
 
     def __repr__(self):
         return f"<{self.source_text}:{self.type.name}>"
-
-
-class Line:
-    """
-    line_number: int    line number in file
-    source_text: str    original text from file
-    text: str           trimmed text without comments
-    indent: int
-    tokens: list[Token]
-    """
-
-    def __init__(self, line: str, number: int):
-        self.source_text = line
-        self.line_number = number
-        line = re.sub(r'\s{4}', '\t', line)
-        tabs = re.match(r'^\t+', line)
-        self.indent = tabs.end() if tabs else 0
-        line = re.sub(r'(#).*', '', line)
-        self.text = line.strip()
-        self.tokens: list[Token] = []
-        # self.read_tokens(ast)
-        # tokens are added by the Tokenizer
-
-    def __len__(self):
-        return len(self.text) or len(self.tokens)
-
-    def split2(self, pattern):
-        # returns -> tuple[list[Token], Token, list[Token]]:
-        i, tok = 0, None
-        for i, tok in enumerate(self.tokens):
-            if re.search(pattern, tok.source_text):
-                break
-        first = self.tokens[0:i]
-        final = self.tokens[i + 1:] if i + 1 < len(self.tokens) else []
-        return first, tok, final
-
-    def split(self, pattern):
-        # returns -> list[list[Token]]
-        token_array: list[list[Token]] = []
-        start, i, tok = 0, 0, None
-        for i, tok in enumerate(self.tokens):
-            if re.search(pattern, tok.source_text):
-                token_array.append(self.tokens[start:i])
-                start = i + 1
-        if start < len(self.tokens):
-            token_array.append(self.tokens[start:i])
-        return token_array
-
-    def __repr__(self):
-        # tok_strings = list(map(repr, self.toks))
-        if not self.tokens:
-            return f'Line {self.line_number}: ' + '\t' * self.indent + self.text
-        toks = list(map(repr, self.tokens))
-        return f'Line {self.line_number}: ' + '\t' * self.indent + ' '.join(toks)
 
 
 class NonTerminal(Node):

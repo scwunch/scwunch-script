@@ -108,6 +108,24 @@ class Prototype(Pattern):
         super().__init__(name, guard)
         self.prototype = prototype
         self.exprs = list(exprs)
+
+    def match_score(self, arg):
+        score = ((arg == self.prototype) or arg.instanceof(self.prototype)) * 5/6
+        if score and self.guard:
+            result = self.guard.call([arg])
+            score *= BuiltIns['bool'].call([result]).value * 35/36 * 6/5
+        if score and self.exprs:
+            Context.push(Context.line, arg)
+            for expr in self.exprs:
+                result = expr.evaluate()
+                if not BuiltIns['bool'].call([result]).value:
+                    score = 0
+                    break
+            else:
+                score *= 35/36 * 6/5
+            Context.pop()
+        return score
+
     def __eq__(self, other):
         return isinstance(other, Prototype) and \
             id(self.prototype) == id(other.prototype) and super().__eq__(other)

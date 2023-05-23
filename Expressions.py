@@ -1,7 +1,3 @@
-import contextvars
-from fractions import Fraction
-
-import Env
 from Syntax import *
 from DataStructures import *
 from Env import *
@@ -94,22 +90,15 @@ class Mathological(Expression):
 
         if op_idx is None:
             raise OperatorError(f'Line {Context.line}: No operator found in expression: {nodes}')
-        self.op_idx = op_idx
+        self.op = Op[nodes[op_idx].source_text]
         self.lhs = nodes[:op_idx]
         self.rhs = nodes[op_idx+1:]
-        # operator = Op[nodes[op_idx].source_text]
-        # mid = nodes[op_idx + 1:right_idx]
-        # rhs = nodes[right_idx + 1:]
-        # lhs = Expression(lhs) if lhs else None
-        # rhs = Expression(rhs) if rhs else None
-        # return lhs, operator, mid, rhs
 
     def evaluate(self):
-        op = Op[self.nodes[self.op_idx].source_text]
-        if op.static:
-            return op.static(self.lhs, self.rhs)
-        args = op.eval_args(self.lhs, self.rhs)
-        return op.fn.call(args)
+        if self.op.static:
+            return self.op.static(self.lhs, self.rhs)
+        args = self.op.eval_args(self.lhs, self.rhs)
+        return self.op.fn.call(args)
 
 
 class ExprWithBlock(Expression):
@@ -408,9 +397,10 @@ def make_param(param_nodes: list[Node]) -> Parameter:
             pattern_nodes = param_nodes
             # return Parameter(patternize(eval_node(node)), quantifier=quantifier)
         case [*pattern_nodes, Token(type=TokenType.Name, source_text=str() as name)]:
+            last_op: Operator
             last_op = Op.get(param_nodes[-2].source_text, None)
             if last_op is None or last_op.postfix:
-                if last_op and last_op.binop:
+                if last_op is not None and last_op.binop:
                     print("WARNING: ambiguous pattern")
             else:
                 pattern_nodes = param_nodes

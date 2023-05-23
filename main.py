@@ -36,7 +36,7 @@ def execute_code(code: str) -> Function:
 
 
 if mode == 'shell':
-    Context.push(0, pili, Option(Any))
+    Context.push(0, pili)
     while True:
         code = ''
         next_line = input('> ')

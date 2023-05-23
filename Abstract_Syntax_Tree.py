@@ -3,26 +3,7 @@ import Env
 from Syntax import *
 
 
-class Builder:
-    def __init__(self):
-        self.ln: int = 0
-        self.col: int = 0
-        self.lines: list[Line] = []
-        self.current_line: Line | None = None
-
-    def next_line(self):
-        self.ln += 1
-        if self.ln < len(self.lines):
-            self.current_line = self.lines[self.ln]
-            self.col = -1
-            # self.read_char()
-            # self.next_token()
-        else:
-            self.current_line = None
-        return self.current_line
-
-
-class Tokenizer(Builder):
+class Tokenizer:
     """
     lines: list[Line]
     ln, col: indices for line and column
@@ -38,33 +19,18 @@ class Tokenizer(Builder):
     fn_lv: int
     tokens: list[Token]
     def __init__(self, script: str):
-        super().__init__()
-
-        # initialize lines
-        # script_lines = script.split("\n")
-        # for i, line in enumerate(script_lines):
-        #     self.lines.append(Line(line, i+1))
-        # self.current_line: Line | None = self.lines[0]
-        # self.char = self.current_line.text[0] if self.current_line.text else None
-
         self.script = script
         self.idx = -1
         self.ln, self.col = 0, 0
         self.char = None
         self.next_line()
-        # self.char = script and script[0]
-        # self.indent = 0
         self.in_string = []
         self.fn_lv = 0
         self.tokens = self.read_tokens()
-        # add tokens to lines
-        # for line in self.lines:
-        #     line.tokens = self.read_tokens()
-        #     self.next_line()
 
     def __repr__(self):
         head = f"Tokenizer State:\n\t" \
-               f"head:({self.ln}, {self.col})\n\tcurrent_line:{self.current_line}\n\tchar:{self.char}\n"
+               f"head:({self.ln}, {self.col})\n\tcurrent_line:{self.ln}\n\tchar:{self.char}\n"
         lines = []
         ln = 0
         start = 0
@@ -183,6 +149,7 @@ class Tokenizer(Builder):
 
     def read_string(self, quote: str) -> str:
         str_text = ""
+        str_start = self.idx
         while self.next_char():
             if self.char == "\\":
                 str_text += self.char + (self.next_char() or "")
@@ -193,9 +160,10 @@ class Tokenizer(Builder):
                 return str_text
             str_text += self.char
         raise Env.SyntaxErr(f"Unterminated string at {{ln={self.ln + 1}, ch={self.col + 1}}}: "
-                            f"{self.current_line.text[self.col:]} "
+                            f"{self.script[str_start:self.idx]} "
                             f"{str_text}")
     def read_string_literal(self):
+        str_start = self.idx
         backticks = 1
         while self.next_char() and self.char == "`":
             backticks += 1
@@ -207,7 +175,7 @@ class Tokenizer(Builder):
                 return str_text
             self.next_char()
         raise Env.SyntaxErr(f"Unterminated string at {{ln={self.ln + 1}, ch={self.col + 1}}}: "
-                            f"{self.current_line.text[self.col:]} "
+                            f"{self.script[str_start:self.idx]} "
                             f"{str_text}")
 
     def read_word(self):
@@ -229,11 +197,9 @@ class Tokenizer(Builder):
         return None
 
 
-class AST(Builder):
+class AST:
     def __init__(self, toks: Tokenizer):
-        super().__init__()
-        # self.lines = toks.lines
-        # self.current_line = self.lines[0]
+        # super().__init__()
         self.tokens = toks.tokens
         self.idx = 0
         self.tok = self.tokens[0] if self.tokens else None
@@ -254,16 +220,8 @@ class AST(Builder):
         self.tok = self.tokens[self.idx]
         return self.tok
 
-    def next_line(self):
-        if super().next_line():
-            self.seek()
-            return self.current_line
-        else:
-            return None
-
     def read_block(self, indent: int) -> Block:
         executables: list[Statement] = []
-        next_line = self.current_line  # just for error checking
         while self.tok:
             statement = self.read_statement(TokenType.NewLine, TokenType.BlockEnd)
             if statement.nodes:
@@ -324,20 +282,7 @@ class AST(Builder):
                     if self.tok.source_text == 'debug':
                         pass
             self.seek()
-        else:
-            if end_of_statement:
-                raise Exception(f"End of line {self.ln+1}, expected: {' or '.join(map(repr, end_of_statement))}")
-
-        indent = self.current_line.indent
-        if self.next_line():
-            if nodes and self.current_line.indent > indent:
-                sub_block = self.read_block()
-                nodes.append(sub_block)
-                if self.tok and self.tok.source_text == 'else':
-                    # self.seek()
-                    nodes += self.read_statement(TokenType.NewLine).nodes
-
-        return Statement(nodes)
+        raise Env.SyntaxErr('EOF reached.  Expected ', end_of_statement)
 
     def read_list(self, end: TokenType) -> list[Statement]:
         white_space_tokens = TokenType.NewLine, TokenType.BlockStart, TokenType.BlockEnd
@@ -361,6 +306,7 @@ class AST(Builder):
 
     def read_string(self) -> StringNode:
         nodes = []
+        line = self.tok.pos[0]
         while self.seek():
             match self.tok.type:
                 case TokenType.StringPart:
@@ -371,8 +317,8 @@ class AST(Builder):
                 case TokenType.StringEnd:
                     return StringNode(nodes)
                 case _:
-                    raise Env.SyntaxErr(f"Found unexpected token in string on line {self.ln+1}")
-        raise Env.SyntaxErr(f"Unterminated string on line {self.ln+1}")
+                    raise Env.SyntaxErr(f"Found unexpected token in string on line {line}")
+        raise Env.SyntaxErr(f"Unterminated string on line {line}")
 
     def __repr__(self):
         return '\n'.join((repr(expr) if expr else '') for expr in self.block.statements)

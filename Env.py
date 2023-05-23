@@ -13,16 +13,13 @@ class Context:
     settings = {'base': 6}
 
     @staticmethod
-    def push(line, env, option):
+    def push(line, env, option=None):
         BuiltIns['root'] = env
-        # env.name = 'root'
-        from DataStructures import ListPatt, Parameter
-        # BuiltIns['pili'].add_option(ListPatt(Parameter('pili')), env)
         Context.push = Context._push
         Context.push(line, env, option)
 
     @staticmethod
-    def _push(line, env, option):
+    def _push(line, env, option=None):
         Context._env.append(env)
         Context.env = env
         Context.trace.append(Call(line, env, option))
@@ -41,13 +38,15 @@ class Context:
         return "\n".join(str(ct) for ct in Context.trace)
 
 class Call:
-    def __init__(self, line, fn, option):
+    def __init__(self, line, fn, option=None):
         self.line = line
         self.fn = fn
         self.option = option
 
     def __str__(self):
-        return f"> Line {self.line}:  {self.fn} -> {self.option.pattern}"
+        if self.option:
+            return f"> Line {self.line}:  {self.fn} -> {self.option.pattern}"
+        return f"> Line {self.line}:  {self.fn}"
 
 class RuntimeErr(Exception):
     def __str__(self):
