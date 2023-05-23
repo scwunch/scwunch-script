@@ -93,7 +93,7 @@ class Mathological(Expression):
                 min_precedence = op.binop
 
         if op_idx is None:
-            raise OperatorError('No operator found on line ' + str(Context.line))
+            raise OperatorError(f'Line {Context.line}: No operator found in expression: {nodes}')
         self.op_idx = op_idx
         self.lhs = nodes[:op_idx]
         self.rhs = nodes[op_idx+1:]
@@ -447,7 +447,9 @@ def read_option(nodes: list[Node], is_value=False) -> Option:
             param_list = [item.nodes for item in param_list.nodes]
         case [Token(source_text='.'), *fn_nodes]:
             param_list = []
-        case [*fn_nodes, _, List() as param_list]:
+        case [*fn_nodes, List() as param_list]:
+            if fn_nodes and fn_nodes[-1].source_text == '.':
+                fn_nodes.pop()
             param_list = [item.nodes for item in param_list.nodes]
         case [*fn_nodes, Token(source_text='.'), Token(type=TokenType.Name) as name_tok]:
             param_list = [[name_tok]]

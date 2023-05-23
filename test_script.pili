@@ -1,3 +1,11 @@
+pili[int n, int m, int b]: n + m + b
+
+print 1, 2
+print 1,
+print 3; 4
+exit
+
+
 test = []
 test[0]: 'test init success'
 print test[0]
@@ -241,7 +249,7 @@ print_test[55]
 
 
 joiner =
-	list ls, str sep:
+	[list ls, str sep]:
 		result = ''
 		for s in ls
 			result = result + s.string + sep

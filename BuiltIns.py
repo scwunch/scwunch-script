@@ -15,8 +15,10 @@ BuiltIns['float'] = Function(name='float', type=BuiltIns['num'])
 BuiltIns['ratio'] = Function(name='ratio', type=BuiltIns['num'])
 BuiltIns['int'] = Function(name='int', type=BuiltIns['ratio'])
 BuiltIns['bool'] = Function(name='bool', type=BuiltIns['int'])
-BuiltIns['str'] = Function(name='str', type=MetaType)
-BuiltIns['list'] = Function(name='list', type=MetaType)
+BuiltIns['iterable'] = Function(name='iterable', type=MetaType)
+BuiltIns['str'] = Function(name='str', type=BuiltIns['iterable'])
+BuiltIns['list'] = Function(name='list', type=BuiltIns['iterable'])
+BuiltIns['tuple'] = Function(name='tuple', type=BuiltIns['iterable'])
 BuiltIns['pattern'] = Function(name='pattern', type=MetaType)
 BuiltIns['value_pattern'] = Function(name='value_pattern', type=BuiltIns['pattern'])
 BuiltIns['union'] = Function(name='union', type=BuiltIns['pattern'])
@@ -31,6 +33,7 @@ TypeMap.update({
     float: BuiltIns['float'],
     str: BuiltIns['str'],
     list: BuiltIns['list'],
+    tuple: BuiltIns['tuple'],
     Pattern: BuiltIns['pattern'],
     ValuePattern: BuiltIns['value_pattern'],
     Prototype: BuiltIns['type_pattern'],
@@ -328,17 +331,20 @@ def augment_assign_fn(op: str):
 
 
 # Operator('=', binop=1, static=True, associativity='right')
-Operator(':', binop=1, static=True, associativity='right')
-Operator(':=', binop=1, static=True, associativity='right')
+Operator(';',
+         Function(AnyBinopPattern, lambda x, y: y),
+         binop=1)
+Operator(':', binop=2, static=True, associativity='right')
+Operator(':=', binop=2, static=True, associativity='right')
 Operator('=',
          Function(AnyBinopPattern, assign_var,
                   {ListPatt(AnyParam, AnyParam, AnyParam): lambda *args: BuiltIns['set'].call(list(args))}),
-         binop=1, associativity='right')
+         binop=2, associativity='right')
 Op['='].eval_args = eval_set_args
 for op in ('+', '-', '*', '/', '//', '**', '%'):
     Operator(op+'=', Function(AnyBinopPattern, augment_assign_fn(op),
                               {ListPatt(AnyParam, AnyParam, AnyParam): lambda *args: BuiltIns['set'].call(list(args))}),
-             binop=1, associativity='right')
+             binop=2, associativity='right')
     Op[op+'='].eval_args = eval_set_args
 
 def null_assign(key: Value, val: Function):
@@ -354,81 +360,85 @@ def null_assign(key: Value, val: Function):
 Operator('??=',
          Function(AnyBinopPattern, null_assign,
                   {ListPatt(AnyParam, AnyParam, AnyParam): lambda *args: BuiltIns['set'].call(list(args))}),
-         binop=1, associativity='right')
+         binop=2, associativity='right')
 Op['??='].eval_args = eval_set_args
+Operator(',',
+         Function(AnyBinopPattern, lambda x, y: Value((x,y)),
+                  {AnyParam: lambda x: Value((x,))}),
+         binop=2, postfix=2)
 Operator('if',
          Function(ListPatt(AnyParam), lambda x: x),
-         binop=2, static=True, ternary='else')
+         binop=3, static=True, ternary='else')
 Operator('??',
-         binop=3, static=True)
-Operator('or',
          binop=4, static=True)
-Operator('and',
+Operator('or',
          binop=5, static=True)
+Operator('and',
+         binop=6, static=True)
 Operator('not',
          Function(ListPatt(AnyParam), lambda a: Value(not BuiltIns['bool'].call([a]).value)),
-         prefix=6)
+         prefix=7)
 Operator('in',
          Function(AnyBinopPattern, lambda a, b: Value(a in (opt.value for opt in b.options if hasattr(opt, 'value'))),
                   {ListPatt(AnyParam, ListParam): lambda a, b: Value(a in b.value)}),
-         binop=7)
+         binop=8)
 Operator('==',
          Function(AnyBinopPattern, lambda a, b: Value(a == b)),
-         binop=8)
+         binop=9)
 Operator('!=',
          Function(AnyBinopPattern, lambda a, b: Value(not BuiltIns['=='].call([a, b]).value)),
-         binop=8)
+         binop=9)
 Operator('~',
          Function(AnyBinopPattern, lambda a, b: Value(bool(patternize(b).match_score(a)))),
-         binop=8, chainable=False)
+         binop=9, chainable=False)
 Operator('!~',
          Function(AnyBinopPattern, lambda a, b: Value(not patternize(b).match_score(a))),
-         binop=8, chainable=False)
+         binop=9, chainable=False)
 Operator('|',
          Function(AnyBinopPattern, lambda a, b: Value(Union(patternize(a), patternize(b)))),
-         binop=9)
+         binop=10)
 Operator('<',
          Function(NormalBinopPattern, lambda a, b: Value(a.value < b.value)),
-         binop=10, chainable=True)
+         binop=11, chainable=True)
 Operator('>',
          Function(NormalBinopPattern, lambda a, b: Value(a.value > b.value)),
-         binop=10, chainable=True)
+         binop=11, chainable=True)
 Operator('<=',
          Function(AnyBinopPattern,
                   lambda a, b: Value(BuiltIns['<'].call([a, b]).value or BuiltIns['=='].call([a, b]).value)),
-         binop=10, chainable=True)
+         binop=11, chainable=True)
 Operator('>=',
          Function(AnyBinopPattern,
                   lambda a, b: Value(BuiltIns['>'].call([a, b]).value or BuiltIns['=='].call([a, b]).value)),
-         binop=10, chainable=True)
+         binop=11, chainable=True)
 Operator('+',
          Function(NormalBinopPattern, lambda a, b: Value(a.value + b.value),
                   options={ListPatt(AnyParam): lambda a: BuiltIns['number'].call([a])}),
-         binop=11, prefix=13)
+         binop=12, prefix=14)
 Operator('-',
          Function(NormalBinopPattern, lambda a, b: Value(a.value - b.value),
                   options={ListPatt(AnyParam): lambda a: Value(-BuiltIns['number'].call([a]).value)}),
-         binop=11, chainable=False, prefix=13)
+         binop=12, chainable=False, prefix=14)
 Operator('*',
          Function(ListPatt(NumericParam, NumericParam), lambda a, b: Value(a.value * b.value),
                   options={ListPatt(StringParam, IntegralParam): lambda a, b: Value(a.value * b.value)}),
-         binop=12)
+         binop=13)
 Operator('/',
          Function(ListPatt(NumericParam, NumericParam), lambda a, b: Value(a.value / b.value),
                   options={ListPatt(RationalParam, RationalParam): lambda a, b:
                   Value(Fraction(a.value.numerator * b.value.denominator, a.value.denominator * b.value.numerator))}),
-         binop=12, chainable=False)
+         binop=13, chainable=False)
 Operator('//',
          Function(ListPatt(NumericParam, NumericParam), lambda a, b: Value(int(a.value // b.value))),
-         binop=12, chainable=False)
+         binop=13, chainable=False)
 Operator('%',
          Function(ListPatt(NumericParam, NumericParam), lambda a, b: Value(a.value % b.value)),
-         binop=12, chainable=False)
+         binop=13, chainable=False)
 Operator('**',
          Function(ListPatt(NumericParam, NumericParam), lambda a, b: Value(a.value ** b.value)),
-         binop=13, chainable=False, associativity='right')
+         binop=14, chainable=False, associativity='right')
 Operator('?',
-         postfix=14, static=True)
+         postfix=15, static=True)
 def has_option(fn: Function, arg: Function = None) -> Value:
     if arg is None:
         fn, arg = Context.env, fn
@@ -451,7 +461,7 @@ Operator('has',
          Function(ListPatt(AnyParam, ListParam), has_option,
                   {AnyBinopPattern: has_option,
                    ListPatt(NormalParam): has_option}),
-         binop=14, prefix=14)
+         binop=15, prefix=15)
 def add_guard_fn(fn: Function, guard: Function):
     patt = patternize(fn)
     patt.guard = guard
@@ -463,7 +473,7 @@ def add_guard_expr(fn: Function, expr: Expression):
 Operator('&',
          Function(ListPatt(AnyParam, AnyParam), add_guard_expr,
                   {ListPatt(FunctionParam, AnyParam): add_guard_expr}),
-         binop=14)
+         binop=15)
 # def eval_patt_guard_args(lhs: list[Node], rhs: list[Node]) -> [Function, Expression]:
 #     return [expressionize(lhs).evaluate(), expressionize(rhs)]
 Op['&'].eval_args = lambda lhs, rhs: [expressionize(lhs).evaluate(), expressionize(rhs)]
@@ -475,10 +485,12 @@ def eval_call_args(lhs: list[Node], rhs: list[Node]) -> list[Function]:
         right_arg = Value(rhs[0].source_text)
     else:
         right_arg = expressionize(rhs).evaluate()
+    if not lhs:
+        return [right_arg]
     if not right_arg.instanceof(BuiltIns['list']):
         return [expressionize(lhs).evaluate(), right_arg]
     args = right_arg
-    if len(lhs) > 2 and lhs[-1].type == TokenType.Name and lhs[-2].source_text in ('.', '..'):
+    if len(lhs) > 2 and lhs[-1].type == TokenType.Name and lhs[-2].source_text in ('.', '..', '.?'):
         name = lhs[-1].source_text
         a = expressionize(lhs[:-2]).evaluate()
         try:
@@ -513,16 +525,17 @@ def dot_fn(a: Function, b: Value):
 Operator('.',
          Function(ListPatt(AnyParam, ListParam), dot_fn,
                   {AnyBinopPattern: dot_fn,
-                   ListPatt(StringParam): lambda a: dot_fn(Context.env, a)}),
-         binop=15, prefix=15)
+                   StringParam: lambda a: dot_fn(Context.env, a),
+                   ListParam: lambda ls: dot_fn(Context.env, ls)}),
+         binop=16, prefix=16)
 Operator('.?',
          Function(AnyBinopPattern, lambda a, b: BuiltIns['.'].call([a,b]) if BuiltIns['has'].call([a, b]).value else Value(None),
                   {ListPatt(StringParam): lambda a: BuiltIns['.'].call([a]) if BuiltIns['has'].call([a]).value else Value(None),}),
-         binop=15, prefix=15)
+         binop=16, prefix=16)
 # map-dot / swizzle operator
 Operator('..',
          Function(ListPatt(ListParam, AnyParam), lambda ls, name: Value([dot_fn(el, name) for el in ls.value])),
-         binop=15, prefix=15)
+         binop=16, prefix=16)
 Op['.'].eval_args = Op['.?'].eval_args = Op['..'].eval_args = eval_call_args
 
 
