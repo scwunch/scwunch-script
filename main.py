@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import sys
+import timeit
 from Abstract_Syntax_Tree import Tokenizer, AST
 from BuiltIns import *
 from StaticOperators import *
@@ -14,6 +15,7 @@ else:
     script_path = "test_script.pili"
     # script_path = 'syntax_demo.pili'
     # script_path = "Dates.pili"
+    # script_path = 'fibonacci.pili'
     print('(test mode) running script', script_path)
 
 pili = Function(ListPatt(Parameter('main')), lambda: NotImplemented, name='pili')
@@ -59,9 +61,8 @@ if mode == 'shell':
             print("Exception: ", e, '\n***')
 
 
-if mode in ('test', 'script'):
-    # script_path = "test_script.pili"
-    with open(script_path) as f:
+def execute_script(path):
+    with open(path) as f:
         script_string = f.read()
 
     tokenizer = Tokenizer(script_string)
@@ -79,3 +80,10 @@ if mode in ('test', 'script'):
     # Context.root = root
     output = pili.deref('main')
     print(output)
+
+if mode in ('test', 'script'):
+    repeats = 1
+    t = timeit.timeit(lambda: execute_script(script_path), number=repeats) / repeats
+    print('\n\n***************************************\n')
+    print(t)
+    # execute_script(script_path)

@@ -125,7 +125,7 @@ class Tokenizer:
             if self.char == '\t':
                 self.indent += 1
             elif self.script[self.idx:self.idx+4] == '    ':
-                self.next_char(4)
+                self.next_char(3)
                 self.indent += 1
             elif self.char in '#\n':
                 return self.next_line()

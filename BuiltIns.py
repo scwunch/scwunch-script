@@ -3,7 +3,7 @@ from fractions import Fraction
 from Syntax import Node, Token, List, TokenType
 from Env import *
 from DataStructures import *
-from Expressions import expressionize, read_number, Expression
+from Expressions import expressionize, read_number, Expression, py_eval
 
 BuiltIns['_base_prototype'] = Function(name='base_prototype', type=True)  # noqa
 BuiltIns['_base_prototype'].type = None
@@ -40,6 +40,7 @@ TypeMap.update({
     Union: BuiltIns['union'],
     ListPatt: BuiltIns['parameters']
 })
+BuiltIns['python_object'] = Function(type=MetaType)
 BuiltIns['any'] = Value(None)
 BuiltIns['any'].value, BuiltIns['any'].type = Any, BuiltIns['pattern']
 TypeMap[AnyPattern] = BuiltIns['any']
@@ -273,6 +274,7 @@ def convert(name: str) -> Function:
         Value(py_fn(*(arg.value for arg in args))))
 
 BuiltIns['python'] = Function(ListPatt(StringParam), lambda n: convert(n.value))
+BuiltIns['py_eval'] = Function(StringParam, py_eval) # lambda x: Value(eval(x.value)))
 
 #############################################################################################
 def eval_set_args(lhs: list[Node], rhs: list[Node]) -> list[Function]:
@@ -459,9 +461,11 @@ def has_option(fn: Function, arg: Function = None) -> Value:
             return Value(fn.select_by_name(arg.value, ascend_env=ascend) is not None)
         elif arg.instanceof(BuiltIns['list']):
             # fn.select(arg.value, ascend_env=ascend)
-            fn.select_and_bind(arg.value, ascend_env=ascend)  # why ascend here?  that should only be for the prefix version
+            fn.select_and_bind(arg.value, ascend_env=ascend)
         else:
-            # fn.select([arg])
+            # this is convenient but slightly dangerous because of possibility of list args
+            # eg  if l is a list, and function foo has an option foo[l] = ...,
+            # `foo has l` will confusingly return False (but `foo has [l]` => True)
             fn.select_and_bind([arg])
         return Value(True)
     except NoMatchingOptionError:
@@ -523,6 +527,8 @@ def dot_fn(a: Function, b: Value):
             # assert isinstance(fn.value, Function)
             return fn.call([a])
         case list() | tuple() as args:
+            if a.type == BuiltIns['python_object']:
+                return a.value(*[arg.value for arg in args])
             return a.call(list(args))
         case _ as val:
             print("WARNING: Line {Context.line}: "

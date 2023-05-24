@@ -2,7 +2,7 @@ import math
 import types
 from fractions import Fraction
 from Env import *
-
+OPTION_HASHING = False
 """
 A Pattern is like a regex for types; it can match one very specific type, or even one specific value
 or it can match a type on certain conditions (eg int>0), or union of types
@@ -19,8 +19,6 @@ class Pattern:
         match self:
             case ValuePattern(value=value):
                 return int(arg == value)
-            case Prototype(prototype=prototype):
-                score = (arg == prototype) * 35/36 or arg.instanceof(prototype)
             case Union(patterns=patterns):
                 count = len(self)
                 for patt in patterns:
@@ -61,15 +59,18 @@ Any = AnyPattern()
 
 class Parameter:
     def __init__(self, pattern, name=None, quantifier="", inverse=False):
-        if isinstance(pattern, str):
-            self.name = pattern
-            self.pattern = ValuePattern(Value(pattern), pattern)
-        elif isinstance(pattern, Function):
-            self.pattern = Prototype(pattern)
-            self.name = name
-        else:
-            self.name = name or pattern.name
-            self.pattern = pattern
+        match pattern:
+            case str() | int():
+                self.name = pattern
+                self.pattern = ValuePattern(Value(pattern), pattern)
+            case Function():
+                self.pattern = Prototype(pattern)
+                self.name = name
+            case Pattern():
+                self.name = name or pattern.name
+                self.pattern = pattern
+            case _:
+                raise TypeErr(f"Line {Context.line}: Invalid pattern for parameter: {pattern}")
         self.quantifier = quantifier
         match quantifier:
             case "":  self.count = (1, 1)
@@ -341,12 +342,12 @@ class Option:
         match pattern:
             case ListPatt():
                 self.pattern = pattern
-            case str():
-                self.pattern = ListPatt(Parameter(pattern))
             case Parameter():
                 self.pattern = ListPatt(pattern)
-            case Pattern():
+            case str() | int() | Function() | Pattern():
                 self.pattern = ListPatt(Parameter(pattern))
+            case _:
+                raise TypeErr(f"Line {Context.line}: Invalid option pattern: {pattern}")
         if resolution is not None:
             self.assign(resolution)
     def is_null(self):
@@ -407,6 +408,7 @@ class Function:
         self.options = []
         self.args = []
         self.named_options = {}
+        self.hashed_options = {}
         if args:
             for patt, val in args.items():
                 self.args.append(self.add_option(patt, val))
@@ -434,6 +436,14 @@ class Function:
                     num = patt.value.value
             if num == len(self.value):
                 self.value.append(option)
+        if OPTION_HASHING and len(option.pattern) == 1:
+            patt = option.pattern.parameters[0].pattern
+            if isinstance(patt, ValuePattern):
+                try:
+                    self.hashed_options[patt.value] = option
+                    return option
+                except TypeError:
+                    print(f'Line {Context.line}: Could not not hash pattern: ', pattern)
         self.options.insert(0, option)
         # self.options.sort(key=lambda opt: opt.pattern.specificity, reverse=True)
         return option
@@ -453,11 +463,18 @@ class Function:
         return opt
 
     def select_and_bind(self, key: list, walk_prototype_chain=True, ascend_env=False):
-        if len(key) == 1 and key[0].instanceof(BuiltIns['str']):
-            try:
-                return self.select_by_name(key[0].value, ascend_env), {}
-            except NoMatchingOptionError:
-                pass
+        if len(key) == 1:
+            if OPTION_HASHING and key[0].hashable():
+                # return self.select_by_value(key[0], ascend_env), {}
+                try:
+                    return self.select_by_value(key[0], ascend_env), {}
+                except NoMatchingOptionError:
+                    pass
+            if key[0].instanceof(BuiltIns['str']):
+                try:
+                    return self.select_by_name(key[0].value, ascend_env), {}
+                except NoMatchingOptionError:
+                    pass
         option = bindings = saves = high_score = 0
         for opt in self.options:
             score, saves = opt.pattern.match_zip(key)
@@ -505,6 +522,24 @@ class Function:
                 pass
         raise NoMatchingOptionError(f"Line {Context.line}: '{name}' not found in current context")
 
+    def select_by_value(self, value, ascend_env=True):
+        fn = self
+        while fn:
+            try:
+                if fn.hashed_options:
+                    pass
+                return fn.hashed_options[value]
+            except KeyError:
+                fn = fn.type
+            except TypeError:
+                break
+        if ascend_env and self.env:
+            try:
+                return self.env.select_by_value(value, True)
+            except NoMatchingOptionError:
+                pass
+        raise NoMatchingOptionError(f"Line {Context.line}: {value} not found in {self}")
+
     def call(self, key, ascend=False):
         try:
             option, bindings = self.select_and_bind(key)
@@ -537,6 +572,12 @@ class Function:
                              opt.value.clone() if opt.value else opt.block or opt.fn)
         return fn
 
+    def hashable(self):
+        try:
+            hash(self)
+            return True
+        except TypeError:
+            return False
     def to_string(self):
         if hasattr(self, 'value') and self.value is not NotImplemented:
             if self.instanceof(BuiltIns['num']) and not self.type == BuiltIns['bool']:
@@ -554,19 +595,24 @@ class Function:
         return [val.value for val in self.value]
 
     def __eq__(self, other):
+        if OPTION_HASHING or 1:
+            try:
+                return hash(self) == hash(other)
+            except TypeError:
+                pass
         if self is other:
             return True
         if not isinstance(other, Function):
             return False
-        if self.type != other.type:
-            return False
         if getattr(self, "value", object()) == getattr(other, "value", object()) and self.value is not NotImplemented:
             return True
+        if self.type != other.type:
+            return False
         if self.env != other.env or self.name != other.name:
             return False
-        for opt in self.options:
-            if opt.resolution != getattr(other.select_by_pattern(opt.pattern), 'resolution', None):
-                return False
+        # for opt in self.options:
+        #     if opt.resolution != getattr(other.select_by_pattern(opt.pattern), 'resolution', None):
+        #         return False
         return True
 
     def __repr__(self):
@@ -588,7 +634,9 @@ class Value(Function):
             self.value = int(value)
         else:
             self.value = value
-        super().__init__(type=type_ or TypeMap[type(self.value)])
+        if type_ is None:
+            type_ = TypeMap.get(type(self.value), BuiltIns['python_object'])
+        super().__init__(type=type_)
 
     def set_value(self, new_value):
         if isinstance(new_value, Value):

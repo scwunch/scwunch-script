@@ -95,8 +95,11 @@ def read_number(text: str, base) -> int | float | Fraction:
             pow *= base
         return val
 
-def write_number(num: int|float|Fraction, base, precision=12, sep="_") -> str:
+def write_number(num: int|float|Fraction, base, precision=12, sep="_", grouping=4) -> str:
     """ take a number and convert to a string of digits, possibly separated by / or . """
+    if base == 10:
+        grouping = 3
+        # return str(num)
     if isinstance(num, Fraction):
         return write_number(num.numerator, base, sep=sep) + "/" + write_number(num.denominator, base, sep=sep)
     sign = "-" * (num < 0)
@@ -106,7 +109,7 @@ def write_number(num: int|float|Fraction, base, precision=12, sep="_") -> str:
 
     digits = get_digits(whole, base)
     if sep:
-        for i in range(len(digits)-4, 0, -4):
+        for i in range(len(digits)-grouping, 0, -grouping):
             digits.insert(i, sep)
     ls = sign + ''.join(digits)
     if isinstance(num, int):

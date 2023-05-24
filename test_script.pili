@@ -1,3 +1,7 @@
+import timeit
+start_time = py_eval['timeit.default_timer()']
+
+
 
 test = []
 test[0]: 'test init success'
@@ -436,6 +440,12 @@ test[123] *= not sum_dog_lengths has [ Dog['Al', 'labradoodle'] ]
 print_test[123]
 
 
+print test has 100
+test[test] = 54
+test[pili] = 'test-pili'
+print test has debug [test]
+print test has pili
+print test has 'pili'
 
 
 
@@ -449,9 +459,11 @@ if all_test_passed
 else
 	print "some tests failed :("
 
+end_time = py_eval['timeit.default_timer()']
+print 'Execution time: {end_time - start_time}'
+return end_time - start_time
 
 
-exit
 # ***********************
 
 

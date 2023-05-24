@@ -50,6 +50,7 @@ class Commands(Enum):
     Exit = 'exit'
     Debug = 'debug'
     Else = 'else'
+    Import = 'import'
 
 
 class OptionType(Enum):

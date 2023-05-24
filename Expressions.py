@@ -1,3 +1,4 @@
+import importlib
 from Syntax import *
 from DataStructures import *
 from Env import *
@@ -267,8 +268,17 @@ class Command(Expression):
                         raise RuntimeErr(f"Line {Context.line}: "
                                          f"break expression should evaluate to non-negative integer.  Found {result}.")
                 Context.continue_ += levels
+            case 'import':
+                module_name, _, var_name = self.expr.source.partition(' as ')
+                a = importlib.import_module(module_name)
+                globals()[var_name or module_name] = a
+                Context.env.assign_option(var_name or module_name, Value(a))
+                return Value(a)
             case _:
                 raise SyntaxErr(f"Line {Context.line}: Unhandled command {self.command}")
+
+def py_eval(code):
+    return Value(eval(code.value))
 
 class EmptyExpr(Expression):
     def __init__(self):
