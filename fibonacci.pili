@@ -1,0 +1,27 @@
+settings.set['base', "d"]
+import timeit
+
+fib [0 | 1]: 1
+mfib =  {
+    0: 1
+    1: 1
+}
+# mfib = [1,1]
+
+
+fib[int>1 n]:
+    if mfib has n
+        return mfib[n]
+    else
+        mfib[n] = fib[n-1] + fib[n-2]
+        # mfib.push[fib[n-1] + fib[n-2]]
+        return mfib[n]
+
+print 'start'
+start_time = python['timeit.default_timer()']
+
+for n in range[1000]
+    print fib[n]
+
+end_time = python['timeit.default_timer()']
+return '\nfinished in {end_time-start_time} seconds'
