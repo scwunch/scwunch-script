@@ -3,7 +3,7 @@ from fractions import Fraction
 from Syntax import Node, Token, List, TokenType
 from Env import *
 from DataStructures import *
-from Expressions import expressionize, read_number, Expression, py_eval
+from Expressions import expressionize, read_number, Expression, py_eval, piliize
 
 BuiltIns['_base_prototype'] = Function(name='base_prototype', type=True)  # noqa
 BuiltIns['_base_prototype'].type = None
@@ -529,8 +529,6 @@ def dot_fn(a: Function, b: Value):
             # assert isinstance(fn.value, Function)
             return fn.call([a])
         case list() | tuple() as args:
-            if a.type == BuiltIns['python_object']:
-                return Value(a.value(*[arg.value for arg in args]))
             return a.call(list(args))
         case _ as val:
             print("WARNING: Line {Context.line}: "
@@ -538,12 +536,19 @@ def dot_fn(a: Function, b: Value):
             return a.call([b])
     # raise OperatorError(f"Line {Context.line}: "
     #                     f"right-hand operand of dot operator should be string or list of arguments.  Found {b}.")
-
+def py_dot(a: Value, b: Value):
+    obj = a.value
+    match b.value:
+        case str() as name:
+            return piliize(getattr(obj, name))
+        case list() | tuple() as args:
+            return Value(a.value(*[arg.value for arg in args]))
 Operator('.',
          Function(ListPatt(AnyParam, ListParam), dot_fn,
                   {AnyBinopPattern: dot_fn,
                    StringParam: lambda a: dot_fn(Context.env, a),
-                   ListParam: lambda ls: dot_fn(Context.env, ls)}),
+                   ListParam: lambda ls: dot_fn(Context.env, ls),
+                   ListPatt(Parameter(Prototype(BuiltIns['python_object'])), AnyParam): py_dot}),
          binop=16, prefix=16)
 Operator('.?',
          Function(AnyBinopPattern, lambda a, b: BuiltIns['.'].call([a,b]) if BuiltIns['has'].call([a, b]).value else Value(None),
