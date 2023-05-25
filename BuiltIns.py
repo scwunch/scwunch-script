@@ -209,7 +209,9 @@ BuiltIns['trim'] = Function(StringParam, lambda text: Value(text.value.strip()),
                             {ListPatt(StringParam, StringParam): lambda t, c: Value(t.value.strip(c.value))})
 BuiltIns['upper'] = Function(StringParam, lambda text: Value(text.value.upper()))
 BuiltIns['lower'] = Function(StringParam, lambda text: Value(text.value.lower()))
-BuiltIns['self'] = lambda: Context.env
+def get_self():
+    pass
+BuiltIns['self'] = lambda: Context.env.type
 def Args(fn: Function):
     arg_list = Value([opt.value for opt in fn.args])
     arg_list.add_option(FunctionParam, lambda fn: Args(fn))
@@ -273,8 +275,8 @@ def convert(name: str) -> Function:
     return Function(AnyListPatt, lambda *args:
         Value(py_fn(*(arg.value for arg in args))))
 
-BuiltIns['python'] = Function(ListPatt(StringParam), lambda n: convert(n.value))
-BuiltIns['py_eval'] = Function(StringParam, py_eval) # lambda x: Value(eval(x.value)))
+# BuiltIns['python'] = Function(ListPatt(StringParam), lambda n: convert(n.value))
+BuiltIns['python'] = Function(StringParam, py_eval) # lambda x: Value(eval(x.value)))
 
 #############################################################################################
 def eval_set_args(lhs: list[Node], rhs: list[Node]) -> list[Function]:
@@ -528,7 +530,7 @@ def dot_fn(a: Function, b: Value):
             return fn.call([a])
         case list() | tuple() as args:
             if a.type == BuiltIns['python_object']:
-                return a.value(*[arg.value for arg in args])
+                return Value(a.value(*[arg.value for arg in args]))
             return a.call(list(args))
         case _ as val:
             print("WARNING: Line {Context.line}: "

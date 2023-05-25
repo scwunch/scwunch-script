@@ -278,6 +278,9 @@ class Command(Expression):
                 raise SyntaxErr(f"Line {Context.line}: Unhandled command {self.command}")
 
 def py_eval(code):
+    pyval = eval(code.value)
+    if isinstance(pyval, list) or isinstance(pyval, tuple):
+        pyval = type(pyval)(Value(v) for v in pyval)
     return Value(eval(code.value))
 
 class EmptyExpr(Expression):

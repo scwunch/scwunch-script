@@ -1,5 +1,5 @@
 import timeit
-start_time = py_eval['timeit.default_timer()']
+start_time = python['timeit.default_timer()']
 
 
 
@@ -443,11 +443,43 @@ print_test[123]
 print test has 100
 test[test] = 54
 test[pili] = 'test-pili'
-print test has debug [test]
+print test has [test]
 print test has pili
 print test has 'pili'
 
 
+
+Person[str name]:
+	print 'Person: {self}'
+	.get_name:
+		ret = "name='{self.name}'"
+		# debug self
+		return ret
+	.set_name[str new_name]:
+		debug self.name = new_name
+		return "name='{self.name}'"
+
+p = Person['Ryan']
+print p.get_name
+print p.set_name['Todd']
+print p.name
+
+Person =
+	print 'Person={self}'
+	str name:
+		1
+	.get_name:
+		ret = "name='{self.name}'"
+		# debug self
+		return ret
+	.set_name[str new_name]:
+		debug self.name = new_name
+		return "name='{self.name}'"
+
+p = Person['Ryan']
+print p.get_name
+print p.set_name['Todd']
+print p.name
 
 all_test_passed = true
 for t in test
@@ -459,7 +491,7 @@ if all_test_passed
 else
 	print "some tests failed :("
 
-end_time = py_eval['timeit.default_timer()']
+end_time = python['timeit.default_timer()']
 print 'Execution time: {end_time - start_time}'
 return end_time - start_time
 
