@@ -165,8 +165,12 @@ BuiltIns['min'] = Function(ListPatt(Parameter(Prototype(BuiltIns["num"]), quanti
                                 lambda *args: Value(min(*[arg.value for arg in args])),
                             ListParam: lambda ls: Value(min(*[arg.value for arg in ls.value]))})
 BuiltIns['abs'] = Function(NumericParam, lambda n: Value(abs(n.value)))
-BuiltIns['round'] = Function(NumericParam, lambda n: Value(round(n.value)))
-                             # {ListPatt(NumericParam, IntegralParam): lambda n, p: Value(round(n.value, p.value))})
+def pili_round(num, places):
+    num, places = num.value, places.value
+    power = Context.settings['base'] ** places
+    return Value(round(num * power) / power)
+BuiltIns['round'] = Function(NumericParam, lambda n: Value(round(n.value)),
+                             {ListPatt(NumericParam, IntegralParam): pili_round})
 
 def inclusive_range(*args: Value):
     step = 1
@@ -176,7 +180,7 @@ def inclusive_range(*args: Value):
         case 1:
             stop = args[0].value
             if stop == 0:
-                return Value([Value(0)])
+                return Value([])
             elif stop > 0:
                 start = 1
             else:
@@ -307,12 +311,18 @@ def assign_var(key: Value, val: Function):
     key_value = key.value
     if isinstance(key_value, str):
         name = key_value
-        try:
-            option = Context.env.select_by_name(name)
+        if name in Context.env.named_options:
+            option = Context.env.named_options[name]
             option.nullify()
             option.assign(val)
-        except NoMatchingOptionError:
+        else:
             option = Context.env.add_option(name, val)
+        # try:
+        #     option = Context.env.select_by_name(name, ascend_env=False)
+        #     option.nullify()
+        #     option.assign(val)
+        # except NoMatchingOptionError:
+        #     option = Context.env.add_option(name, val)
     elif isinstance(key_value, list):
         patt = ListPatt(*[Parameter(patternize(k)) for k in key_value])
         option = Context.env.select_by_pattern(patt)
@@ -342,7 +352,7 @@ Operator(':', binop=2, static=True, associativity='right')
 Operator(':=', binop=2, static=True, associativity='right')
 Operator('=',
          Function(AnyBinopPattern, assign_var,
-                  {ListPatt(AnyParam, AnyParam, AnyParam): lambda *args: BuiltIns['set'].call(list(args))}),
+                  {ListPatt(AnyParam, AnyParam, AnyParam): lambda *args: BuiltIns['set'].call(args)}),
          binop=2, associativity='right')
 Op['='].eval_args = eval_set_args
 for op in ('+', '-', '*', '/', '//', '**', '%'):
@@ -548,7 +558,9 @@ Operator('.',
                   {AnyBinopPattern: dot_fn,
                    StringParam: lambda a: dot_fn(Context.env, a),
                    ListParam: lambda ls: dot_fn(Context.env, ls),
-                   ListPatt(Parameter(Prototype(BuiltIns['python_object'])), AnyParam): py_dot}),
+                   ListPatt(Parameter(Prototype(BuiltIns['python_object'])),
+                            Parameter(Union(Prototype(BuiltIns['string']), Prototype(BuiltIns['list'])))):
+                       py_dot}),
          binop=16, prefix=16)
 Operator('.?',
          Function(AnyBinopPattern, lambda a, b: BuiltIns['.'].call([a,b]) if BuiltIns['has'].call([a, b]).value else Value(None),

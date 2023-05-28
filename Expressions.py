@@ -135,6 +135,8 @@ class ExprWithBlock(Expression):
                     raise SyntaxErr(f"Line {node.pos[0]}: "
                                     f"Expected 'else' block or 'else if' after if block.  Got \n\t{nodes[i+1:]}")
                 break
+        else:
+            raise SyntaxErr(f"Line {self.line}: no block found after {nodes[0].source_text} statement.")
 
 class Conditional(ExprWithBlock):
     condition: Expression
@@ -274,6 +276,8 @@ class Command(Expression):
                 globals()[var_name or module_name] = a
                 Context.env.assign_option(var_name or module_name, Value(a))
                 return Value(a)
+            case 'label':
+                Context.env.name = BuiltIns['string'].call([self.expr.evaluate()]).value
             case _:
                 raise SyntaxErr(f"Line {Context.line}: Unhandled command {self.command}")
 

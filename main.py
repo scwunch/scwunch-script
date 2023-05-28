@@ -5,6 +5,16 @@ from Abstract_Syntax_Tree import Tokenizer, AST
 from BuiltIns import *
 from StaticOperators import *
 
+# def factory(repeats: int):
+# 	def p(msg):
+# 		for i in range(repeats):
+# 			print(f"{i}: {msg}")
+# 	return p
+#
+# print3 = factory(3)
+# print3("hello")
+# exit()
+
 if len(sys.argv) == 1 and sys.executable == '/usr/bin/python3':  # test if running in console; pycharm executable is python3.10
     mode = 'shell'
 elif len(sys.argv) == 2:
@@ -14,8 +24,8 @@ else:
     mode = 'test'
     script_path = "test_script.pili"
     # script_path = 'syntax_demo.pili'
-    script_path = "Dates.pili"
-    script_path = 'fibonacci.pili'
+    # script_path = "Dates.pili"
+    # script_path = 'fibonacci.pili'
     print('(test mode) running script', script_path)
 
 pili = Function(ListPatt(Parameter('main')), lambda: NotImplemented, name='pili')
@@ -28,7 +38,7 @@ Context.root = pili
 # Context.push(0, pili, Option(Any))
 
 def execute_code(code: str) -> Function:
-    block = FuncBlock(AST(Tokenizer(code)).block)
+    block = FuncBlock(AST(Tokenizer(code+"\n")).block)
     if len(block.exprs) == 1:
         return block.exprs[0].evaluate()
     Context.env.assign_option(ListPatt(Parameter('main')), block)

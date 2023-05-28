@@ -1,8 +1,58 @@
 import timeit
-start_time = python['timeit.default_timer()']
+# settings.set['base', 'd']
+now: python['timeit.default_timer()']
+start_time = now
 
 
+factory[int repeats]:
+	p[any msg]:
+		for i in range[repeats]
+			print "{i}: {msg}"
+			return None
+	# p.repeats = repeats
+	return p
 
+print3 = factory[1]
+print3['hello']
+print3.repeats = 2
+print3['HELLO']
+# return
+
+stuff_count = 0
+
+stuff[]:
+	label 'stuff'
+	return x
+more_stuff:
+	label "more_stuff {stuff_count += 1}"
+    debug x = 334
+    return stuff[]
+# print more_stuff
+
+eks = "global x"
+level_six[]:
+    z = "outer z"
+    donky[]:
+        inner[any y]:
+            return eks, y, z
+
+        z = "donky z"
+        return inner
+
+    chonky[]:
+        eks = "chonky x"
+        f = donky[]
+        return f["y arg"]
+
+    return chonky[]
+
+print level_six[]
+
+
+return "Done"
+
+
+# return
 test = []
 test[0]: 'test init success'
 print test[0]
@@ -58,11 +108,14 @@ print 'test 15 passed' if test[15] else 'test 15 FAILED'
 Range[int start, int end, int step]:
 	index = start
 	.next:
-		return 'done' if index >= end else (index = index + step)
+		return 'done' if index >= end else (self.index = index + step)
 r = Range[0, 3, 1]
 # print r.index
 # print r.next
 # print r.next
+# print r.next
+# print r.next
+# return r.next
 test[20] = r.index == 0 and r.next == 1 and r.next == 2 and r.next == 3 and r.next == 'done'
 print 'test 20 passed' if test[20] else 'test 20 FAILED'
 
@@ -298,7 +351,7 @@ print_test[101]
 
 
 intize = python['int']
-test[102] = intize['36'] == 100 and intize[10.1] == 10
+test[102] = (debug intize['36']) == 100 and intize[10.1] == 10
 print_test[102]
 
 
@@ -491,9 +544,10 @@ if all_test_passed
 else
 	print "some tests failed :("
 
-end_time = python['timeit.default_timer()']
-print 'Execution time: {end_time - start_time}'
-return end_time - start_time
+end_time = now
+execution_time = end_time - start_time
+print 'Execution time (hms): {round[10000 * execution_time, 2]}'
+return "Execution time (decimal ms): {string[1000d * execution_time, 10d]}"
 
 
 # ***********************
@@ -503,35 +557,6 @@ return end_time - start_time
 
 
 
-# container =
-# 	data = {}
-# 	name = "I'm a container"
-# 	.len: len[data]
-# len[container]  # or container.len
-# > 0
-#
-# Duration[int hr, int min]:
-# 	is_afternoon: hr >= 12
-# 	is_morning: hr < 12
-# 	.["+"][other]:
-# 		new_hr = hr + other.hr
-# 		new_min = min + other.min
-# 		if new_min >= 60
-# 			new_min -= 60
-# 			new_hr += 1
-# 		return Duration[new_hr % 24, new_min]
-# dur = Duration[1, 59] + Duration[0, 15]
-# print str[dur.hr] + ":" str[dur.min]
-# # > "2:14"
-#
-#
-#
-#
-#
-#
-#
-#
-#
 # coolFunc[str input: "345", int n: 43]:
 #     0: "zero"
 #     "string_key": 5
@@ -570,7 +595,6 @@ return end_time - start_time
 # 		return "some default"
 #
 #
-
 #
 # 3.300000000000
 # False
