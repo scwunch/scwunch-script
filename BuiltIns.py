@@ -583,7 +583,7 @@ Operator('.',
                    StringParam: lambda a: dot_fn(Context.env, a),
                    ListParam: lambda ls: dot_fn(Context.env, ls),
                    ListPatt(Parameter(Prototype(BuiltIns['python_object'])),
-                            Parameter(Union(Prototype(BuiltIns['string']), Prototype(BuiltIns['list'])))):
+                            Parameter(Union(Prototype(BuiltIns['str']), Prototype(BuiltIns['list'])))):
                        py_dot}),
          binop=16, prefix=16)
 Operator('.?',

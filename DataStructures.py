@@ -2,7 +2,7 @@ import math
 import types
 from fractions import Fraction
 from Env import *
-OPTION_HASHING = False
+OPTION_HASHING = True
 """
 A Pattern is like a regex for types; it can match one very specific type, or even one specific value
 or it can match a type on certain conditions (eg int>0), or union of types
@@ -262,6 +262,14 @@ class ListPatt(Pattern):
             if param.quantifier in ("+", "*"):
                 return math.inf
         return len(self.parameters)
+
+    def hashable(self):
+        for param in self.parameters:
+            patt = param.pattern
+            if (not isinstance(patt, ValuePattern)) or patt.guard or not patt.value.hashable():
+                return False
+        return True
+
     def __len__(self):
         return len(self.parameters)
     def __getitem__(self, item):
@@ -349,8 +357,6 @@ class Option:
                 self.pattern = ListPatt(Parameter(pattern))
             case _:
                 raise TypeErr(f"Line {Context.line}: Invalid option pattern: {pattern}")
-        if isinstance(resolution, Option):
-            pass
         if resolution is not None:
             self.assign(resolution)
     def is_null(self):
@@ -449,15 +455,26 @@ class Function:
                     num = patt.value.value
             if num == len(self.value):
                 self.value.append(option)
-        if OPTION_HASHING and len(option.pattern) == 1:
-            patt = option.pattern.parameters[0].pattern
-            if isinstance(patt, ValuePattern):
-                try:
-                    self.hashed_options[patt.value] = option
-                    return option
-                except TypeError:
-                    print(f'Line {Context.line}: Could not not hash pattern: ', pattern)
-        self.options.insert(0, option)
+        if OPTION_HASHING:
+            key = []
+            for parameter in option.pattern.parameters:
+                patt = parameter.pattern
+                if (not isinstance(patt, ValuePattern)) or patt.guard or not patt.value.hashable():
+                    self.options.insert(0, option)
+                    break
+                key.append(patt.value)
+            else:
+                key = tuple(key)
+                self.hashed_options[key] = option
+            # patt = option.pattern.parameters[0].pattern
+            # if isinstance(patt, ValuePattern):
+            #     try:
+            #         self.hashed_options[patt.value] = option
+            #         return option
+            #     except TypeError:
+            #         print(f'Line {Context.line}: Could not not hash pattern: ', pattern)
+        if not OPTION_HASHING:
+            self.options.insert(0, option)
         # self.options.sort(key=lambda opt: opt.pattern.specificity, reverse=True)
         return option
 
@@ -476,8 +493,17 @@ class Function:
         return opt
 
     def select_and_bind(self, key: list, walk_prototype_chain=True, ascend_env=False):
+        if OPTION_HASHING and self.hashed_options:
+            for val in key:
+                if isinstance(val, Option) or not val.hashable():
+                    break
+            else:
+                try:
+                    return self.select_by_value(tuple(key), ascend_env), {}
+                except NoMatchingOptionError:
+                    pass
         if len(key) == 1:
-            if OPTION_HASHING and key[0].hashable():
+            if False and OPTION_HASHING and key[0].hashable():
                 # return self.select_by_value(key[0], ascend_env), {}
                 try:
                     return self.select_by_value(key[0], ascend_env), {}
@@ -535,23 +561,23 @@ class Function:
                 pass
         raise NoMatchingOptionError(f"Line {Context.line}: '{name}' not found in current context")
 
-    def select_by_value(self, value, ascend_env=True):
+    def select_by_value(self, values, ascend_env=True):
         fn = self
         while fn:
             try:
                 if fn.hashed_options:
                     pass
-                return fn.hashed_options[value]
+                return fn.hashed_options[values]
             except KeyError:
                 fn = fn.type
             except TypeError:
                 break
         if ascend_env and self.env:
             try:
-                return self.env.select_by_value(value, True)
+                return self.env.select_by_value(values, True)
             except NoMatchingOptionError:
                 pass
-        raise NoMatchingOptionError(f"Line {Context.line}: {value} not found in {self}")
+        raise NoMatchingOptionError(f"Line {Context.line}: {values} not found in {self}")
 
     def call(self, key, ascend=False):
         try:

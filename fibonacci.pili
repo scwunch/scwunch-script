@@ -2,9 +2,12 @@ settings.set['base', "d"]
 import timeit
 import math
 
-return math.pi + 1
+print math.pi + 1
 
 fib [0 | 1]: 1
+fib =
+    0: 1
+    1: 1
 mfib =  {
     0: 1
     1: 1
@@ -21,10 +24,15 @@ fib[int>1 n]:
         return mfib[n]
 
 print 'start'
-start_time = python['timeit.default_timer()']
-
+now: python['timeit.default_timer()']
+start_time = now
+t1 = now
 for n in range[1000]
-    print fib[n]
+    s = fib[n]
+    if not n % 100
+        t2 = now
+        print "{n}: {round[1000*(t2-t1)]}ms"
+        t1 = t2
 
-end_time = python['timeit.default_timer()']
+end_time = now
 return '\nfinished in {end_time-start_time} seconds'

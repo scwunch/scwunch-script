@@ -25,7 +25,7 @@ else:
     script_path = "test_script.pili"
     # script_path = 'syntax_demo.pili'
     # script_path = "Dates.pili"
-    # script_path = 'fibonacci.pili'
+    script_path = 'fibonacci.pili'
     print('(test mode) running script', script_path)
 
 pili = Function(ListPatt(Parameter('main')), lambda: NotImplemented, name='pili')
