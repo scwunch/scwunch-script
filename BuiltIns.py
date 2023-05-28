@@ -307,13 +307,35 @@ def eval_set_args(lhs: list[Node], rhs: list[Node]) -> list[Function]:
         return [key, value]
     return [fn, key, value]
 
+def eval_alias_args(lhs: list[Node], rhs: list[Node]) -> list[Function]:
+    left, right = eval_set_args(lhs, [])[:-1], eval_set_args(rhs, [])
+    right_key = right[-2]
+    if len(right) == 3:
+        right_fn = right[-3]
+        ascend = False
+    else:
+        right_fn = Context.env
+        ascend = True
+    # right_fn = right[-3] if len(right)==3 else Context.env
+    match right_key.value:
+        case str() as name:
+            option = right_fn.select_by_name(name, ascend)
+        case [Value(value=str() as name)]:
+            option = right_fn.select_by_name(name, ascend)
+        case list() as args:
+            option, _ = right_fn.select_and_bind(args, ascend_env=ascend)
+        case _:
+            raise TypeErr(f"Line {Context.line}: Sorry, I'm not sure how to alias {right_key}")
+    # option = right_fn.select_by_name(right_key.value, ascend)
+    return [*left, option]
+
 def assign_var(key: Value, val: Function):
     key_value = key.value
     if isinstance(key_value, str):
         name = key_value
         if name in Context.env.named_options:
             option = Context.env.named_options[name]
-            option.nullify()
+            # option.nullify()
             option.assign(val)
         else:
             option = Context.env.add_option(name, val)
@@ -329,7 +351,7 @@ def assign_var(key: Value, val: Function):
         if option is None:
             option = Context.env.add_option(patt, val)
         else:
-            option.nullify()
+            # option.nullify()
             option.assign(val)
     else:
         assert(0 == 1)
@@ -349,17 +371,19 @@ Operator(';',
          Function(AnyBinopPattern, lambda x, y: y),
          binop=1)
 Operator(':', binop=2, static=True, associativity='right')
-Operator(':=', binop=2, static=True, associativity='right')
+Operator(':=', binop=2, associativity='right')
 Operator('=',
          Function(AnyBinopPattern, assign_var,
                   {ListPatt(AnyParam, AnyParam, AnyParam): lambda *args: BuiltIns['set'].call(args)}),
          binop=2, associativity='right')
 Op['='].eval_args = eval_set_args
+Op[':='].fn = Op['='].fn
 for op in ('+', '-', '*', '/', '//', '**', '%'):
     Operator(op+'=', Function(AnyBinopPattern, augment_assign_fn(op),
                               {ListPatt(AnyParam, AnyParam, AnyParam): lambda *args: BuiltIns['set'].call(list(args))}),
              binop=2, associativity='right')
     Op[op+'='].eval_args = eval_set_args
+Op[':='].eval_args = eval_alias_args
 
 def null_assign(key: Value, val: Function):
     try:

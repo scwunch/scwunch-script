@@ -35,7 +35,7 @@ def assign_fn(lhs: list[Node], rhs: list[Node]) -> Value:
 
 
 # Op['='].static = assign_val
-Op[':='].static = assign_alias
+# Op[':='].static = assign_alias
 Op[':'].static = assign_fn
 
 # Op['+='].static = lambda a, _, b: assign_val(Op['+'].fn.call())

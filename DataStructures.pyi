@@ -186,6 +186,7 @@ class Option:
     value: Function
     block: FuncBlock
     fn: callable
+    alias: Option
     dot_option: bool
     def __init__(self, pattern: ListPatt | Pattern | Parameter | str, resolution: opt_resolution = None): ...
     def is_null(self) -> bool: ...

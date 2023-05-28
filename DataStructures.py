@@ -337,6 +337,7 @@ class Option:
     value = None
     block = None
     fn = None
+    alias = None
     dot_option = False
     def __init__(self, pattern, resolution=None):
         match pattern:
@@ -348,12 +349,14 @@ class Option:
                 self.pattern = ListPatt(Parameter(pattern))
             case _:
                 raise TypeErr(f"Line {Context.line}: Invalid option pattern: {pattern}")
+        if isinstance(resolution, Option):
+            pass
         if resolution is not None:
             self.assign(resolution)
     def is_null(self):
-        return (self.value and self.block and self.fn) is None
+        return (self.value and self.block and self.fn and self.alias) is None
     def not_null(self):
-        return (self.value or self.block or self.fn) is not None
+        return (self.value or self.block or self.fn or self.alias) is not None
     def nullify(self):
         self.resolution = None
         if self.value:
@@ -362,15 +365,23 @@ class Option:
             del self.block
         if self.fn:
             del self.fn
+        if self.alias:
+            del self.alias
     def assign(self, resolution):
+        if self.alias:
+            return self.alias.assign(resolution)
+        self.nullify()
         self.resolution = resolution
         match resolution:
             case Function(): self.value = resolution
             case FuncBlock(): self.block = resolution
             case types.FunctionType(): self.fn = resolution
+            case Option(): self.alias = resolution
             case _:
                 raise ValueError(f"Line {Context.line}: Could not assign resolution {resolution} to option {self}")
     def resolve(self, args, env=None, bindings=None):
+        if self.alias:
+            return self.alias.resolve(args, env, bindings)
         if self.value:
             return self.value
         if self.fn:
@@ -395,6 +406,8 @@ class Option:
             return f"{self.pattern}={self.value}"
         if self.block or self.fn:
             return f"{self.pattern}: {self.block or self.fn}"
+        if self.alias:
+            return f"{self.pattern} -> {self.alias}"
         return f"{self.pattern} -> null"
 
 

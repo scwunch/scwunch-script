@@ -14,7 +14,9 @@ factory[int repeats]:
 
 print3 = factory[1]
 print3['hello']
-print3.repeats = 2
+print3.repeats = -2
+reps := print3['repeats']
+reps = 3
 print3['HELLO']
 # return
 
@@ -47,6 +49,14 @@ level_six[]:
     return chonky[]
 
 print level_six[]
+print "*************"
+print eks
+debug a := eks
+print a, eks
+eks = 'new value'
+print a, eks
+a = 3
+print a, eks
 
 
 return "Done"
