@@ -10,7 +10,7 @@ class Context:
     trace = []
     break_loop = 0
     continue_ = 0
-    settings = {'base': 6}
+    settings = {'base': 10}
 
     @staticmethod
     def push(line, env, option=None):
