@@ -31,7 +31,7 @@ class Context:
             Context.env = Context._env[-1]
         else:
             Context.env = BuiltIns['pili']
-        Context.trace.pop()
+        Context.line = Context.trace.pop().line
 
     @staticmethod
     def get_trace():
