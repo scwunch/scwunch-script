@@ -96,8 +96,8 @@ class Mathological(Expression):
         self.rhs = nodes[op_idx+1:]
 
     def evaluate(self):
-        if self.op.static:
-            return self.op.static(self.lhs, self.rhs)
+        # if self.op.static:
+        #     return self.op.static(self.lhs, self.rhs)
         args = self.op.eval_args(self.lhs, self.rhs)
         return self.op.fn.call(args)
 
@@ -403,28 +403,29 @@ def make_param(param_nodes: list[Node]) -> Parameter:
         raise SyntaxErr(f"Expected function parameter on line {Context.line}; no nodes found.")
     quantifier = ""
     match param_nodes:
-        case [*_, Token(type=TokenType.Operator, source_text=op)] if op in ('?', '+', '*'):
+        case [*_, Token(type=TokenType.Operator, source_text=op)] if op in ('?', '+', '*', '??', '+?', '*?'):
                 quantifier = op
                 param_nodes = param_nodes[:-1]
         case [Token(type=TokenType.Name, source_text=dot_name)]:
             return Parameter(dot_name)
+        case []:
+            raise SyntaxErr(f"Expected function parameter on line {Context.line}; no nodes found.")
     name = None
     match param_nodes:
-        case []:
-            raise SyntaxErr(f"Expected function parameter on line {Context.line}; found only quantifier {quantifier}")
         case [node]:
             pattern_nodes = param_nodes
             # return Parameter(patternize(eval_node(node)), quantifier=quantifier)
-        case [*pattern_nodes, Token(type=TokenType.Name, source_text=str() as name)]:
-            last_op: Operator
+        case [*pattern_nodes, Token(type=TokenType.Name, source_text=name)]:
             last_op = Op.get(param_nodes[-2].source_text, None)
-            if last_op is None or last_op.postfix:
-                if last_op is not None and last_op.binop:
+            if last_op and last_op.binop:
+                if last_op.postfix:
                     print("WARNING: ambiguous pattern")
-            else:
-                pattern_nodes = param_nodes
+                else:
+                    pattern_nodes = param_nodes
         case [*pattern_nodes]:
             pass
+        case _:
+            raise SyntaxErr(f"Expected function parameter on line {Context.line}; found only quantifier {quantifier}")
     try:
         expr_val = expressionize(pattern_nodes).evaluate()
     except NoMatchingOptionError as e:
@@ -446,12 +447,14 @@ def split(nodes: list[Node], splitter: TokenType) -> list[list[Node]]:
     return groups
 
 
-def read_option(nodes: list[Node], is_value=False) -> Option:
+def read_option_OLD(nodes: list[Node], is_value=False) -> Option:
     dot_option = nodes[0].source_text == '.'
     match nodes:
+        # .[].[]
         case[Token(source_text='.'), List() as opt, Token(source_text='.'), List() as param_list]:
             fn_nodes = [Token('pili'), Token('.'), opt]
             param_list = [item.nodes for item in param_list.nodes]
+        # .fn_nodes.[]
         case [Token(source_text='.'), *fn_nodes, Token(source_text='.'), List() as param_list]:
             param_list = [item.nodes for item in param_list.nodes]
         case [Token(source_text='.'), *fn_nodes]:
@@ -466,12 +469,14 @@ def read_option(nodes: list[Node], is_value=False) -> Option:
             param_list = split(nodes, TokenType.Comma)
             fn_nodes = False
     if fn_nodes:
-        if len(fn_nodes) == 1 and fn_nodes[0] == 1:
-            pass
         try:
-            fn_val = expressionize(fn_nodes).evaluate()
-            if fn_val.type == BuiltIns['str']:
-                fn_val = Context.env.deref(fn_val.value)
+            if len(fn_nodes) == 1:
+                name = fn_nodes[0].source_text
+                fn_val = Context.env.deref(name, False)
+            else:
+                fn_val = expressionize(fn_nodes).evaluate()
+                if fn_val.type == BuiltIns['str']:
+                    fn_val = Context.env.deref(fn_val.value)
         except NoMatchingOptionError:
             if dot_option:
                 # raise NoMatchingOptionError(f"Line {Context.line}: "
@@ -509,6 +514,99 @@ def read_option(nodes: list[Node], is_value=False) -> Option:
     # except NoMatchingOptionError:
     #     option = fn.add_option(patt)
     option = fn.select_by_pattern(patt, ascend_env=True) or fn.add_option(patt)
+    option.dot_option = dot_option
+    return option
+
+def read_option(nodes: list[Node]) -> tuple[Function, ListPatt, bool]:
+    nodes = nodes[:]
+    dot_option = nodes[0].source_text == '.'
+    if dot_option:
+        if len(nodes) > 2 and not isinstance(nodes[1], List):
+            nodes.pop(0)
+        if not isinstance(nodes[-1], List):
+            nodes.append(Token('.'))
+            nodes.append(List([]))
+    # if len(nodes) > 1 and nodes[-2].source_text != '.':
+    #     option_node = List([Statement(nodes)])
+    #     nodes = []
+    # else:
+    option_node = nodes.pop()
+    # nodes.pop() if len(nodes) else None
+    if len(nodes):
+        penultimate = nodes.pop()
+        if penultimate.source_text != '.':
+            # read the whole lhs as a single parameter
+            option_node = List([Statement([*nodes, penultimate, option_node])])
+            nodes = []
+    match option_node:
+        case List(nodes=param_list):
+            param_list = [item.nodes for item in param_list]
+        case Token(type=TokenType.Name) as name_tok:
+            param_list = [[name_tok]]
+        case _:
+            # raise SyntaxErr(f"Line {Context.line}: Cannot read option {option_node}")
+            param_list = [[option_node]]
+    # if len(nodes):
+    #     dot = nodes.pop()
+    #     if dot.source_text != '.':
+    #         raise SyntaxErr(f"Line {Context.line}: Couldn't read option following {dot}; expected '.' or '['")
+    arg_list = name = None
+    match nodes:
+        # case [*context_nodes, Token(source_text='.'), List(nodes=arg_list)]:
+        #     pass
+        case [*context_nodes, Token(source_text='.'), Token(type=TokenType.Name, source_text=name)]:
+            pass
+        case [Token(type=TokenType.Name, source_text=name)]:
+            context_nodes = False
+        case _:
+            context_nodes = nodes
+    if context_nodes:
+        context_fn = expressionize(context_nodes).evaluate()
+        ascend = False
+    else:
+        context_fn = Context.env
+        ascend = True
+
+    if name:  # and not dot_option:
+        try:
+            fn = context_fn.deref(name, ascend)
+        except NoMatchingOptionError:
+            fn = Function(name=name)
+            if dot_option:
+                Context.root.add_option(name, fn)
+            else:
+                context_fn.add_option(name, fn)
+    else:
+        fn = context_fn
+
+
+    # if arg_list:
+    #     args = [expressionize(arg).evaluate() for arg in arg_list]
+    #     try:
+    #         opt, bindings = context_fn.select_and_bind(args, ascend)
+    #     except NoMatchingOptionError:
+    #         opt = bindings = None
+    #     if opt:
+    #         fn = opt.resolve(args, context_fn, bindings)
+    #     else:
+    #         fn = context_fn.add_option(patt, resolution).value
+    # elif name:
+    #     try:
+    #         fn = context_fn.deref(name, ascend)
+    #     except NoMatchingOptionError:
+    #         fn = context_fn.add_option(name, Function(name=name)).value
+    # else:
+    #     fn = context_fn
+
+    params = map(make_param, param_list)
+    if dot_option:
+        patt = ListPatt(Parameter(Prototype(Context.env)), *params)
+    else:
+        patt = ListPatt(*params)
+    return fn, patt, dot_option
+
+
+    option = fn.select_by_pattern(patt, ascend_env=ascend) or fn.add_option(patt)
     option.dot_option = dot_option
     return option
 
