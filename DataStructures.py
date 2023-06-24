@@ -301,14 +301,14 @@ def numbered_patt(index: int | Fraction) -> ListPatt:
 
 class FuncBlock:
     native = None
-    def __init__(self, block, env=None):
+    def __init__(self, block):
         if hasattr(block, 'statements'):
             self.exprs = list(map(Context.make_expr, block.statements))
         else:
             self.native = block
-        self.env = env or Context.env
-    def make_function(self, options, env=None):
-        return Function(args=options, type=env, env=env or self.env)
+        self.env = Context.env
+    def make_function(self, options, prototype, caller=None):
+        return Function(args=options, type=prototype, env=self.env, caller=caller)
     def execute(self, args=None, scope=None):
         if scope:
             def break_():
@@ -395,12 +395,14 @@ class Option:
         if self.block is None:
             raise NoMatchingOptionError("Could not resolve null option")
         if self.dot_option:
-            env = args[0]
+            caller = args[0]
+        else:
+            caller = env
             # btw: this is possibly the third time the env is getting overriden: it's first set when the FuncBlock is
             # defined, then overriden by the env argument passed to self.resolve, and finally here if it is a dot-option
             # ... I should consider making a multi-layer env, or using the prototype, or multiple-inheritance type-thing
         # fn = self.block.make_function(self.pattern.match_zip(args)[1], env)
-        fn = self.block.make_function(bindings or {}, env)
+        fn = self.block.make_function(bindings or {}, env, caller)
         Context.push(Context.line, fn, self)
         return self.block.execute(args, fn)
 
@@ -420,10 +422,11 @@ class Option:
 class Function:
     return_value = None
     value = NotImplemented
-    def __init__(self, opt_pattern=None, resolution=None, options=None, args=None, type=None, env=None, name=None):
+    def __init__(self, opt_pattern=None, resolution=None, options=None, args=None, type=None, env=None, caller=None, name=None):
         self.name = name
         self.type = type or BuiltIns['fn']
         self.env = env or Context.env
+        self.caller = caller
         self.options = []
         self.args = []
         self.named_options = {}
@@ -534,7 +537,7 @@ class Function:
                 return self.env.select_and_bind(key, walk_prototype_chain, True)
             except NoMatchingOptionError:
                 pass
-        raise NoMatchingOptionError(f"Line {Context.line}: key {key} not found in function {self}")
+        raise NoMatchingOptionError(f"Line {Context.line}: key {key} not found in {self.name or self}")
         # -> tuple[Option, dict[str, Function]]:
 
     def select_by_pattern(self, patt=None, default=None, ascend_env=False):
@@ -559,14 +562,12 @@ class Function:
                 return self.env.select_by_name(name, True)
             except NoMatchingOptionError:
                 pass
-        raise NoMatchingOptionError(f"Line {Context.line}: '{name}' not found in current context")
+        raise NoMatchingOptionError(f"Line {Context.line}: '{name}' not found in {self.name or self}")
 
     def select_by_value(self, values, ascend_env=True):
         fn = self
         while fn:
             try:
-                if fn.hashed_options:
-                    pass
                 return fn.hashed_options[values]
             except KeyError:
                 fn = fn.type
@@ -593,7 +594,10 @@ class Function:
 
     def deref(self, name: str, ascend_env=True):
         # option = self.select(name, ascend_env=ascend_env)
-        option = self.select_by_name(name, ascend_env)
+        if OPTION_HASHING:
+            option = self.select_by_value((Value(name),), ascend_env)
+        else:
+            option = self.select_by_name(name, ascend_env)
         return option.resolve([], self)
 
     def instanceof(self, prototype):

@@ -175,7 +175,7 @@ class FuncBlock:
     env: Function
     native: callable
     def __init__(self, block: Block | FunctionLiteral | callable, env: Function = None): ...
-    def make_function(self, options: dict[Pattern, opt_resolution], env: Function = None) -> Function: ...
+    def make_function(self, options: dict[Pattern, opt_resolution], type: Function, caller: Function = None) -> Function: ...
     def execute(self, args: list[Function] = None, scope: Function = None, dot_option: bool = False) -> Function: ...
 
 opt_resolution = Function | FuncBlock | callable | None
@@ -193,21 +193,21 @@ class Option:
     def not_null(self) -> bool: ...
     def nullify(self): ...
     def assign(self, val_or_block: opt_resolution): ...
-    def resolve(self, args: list[Function] = None, env: Function = None, bindings: dict[str|int, Function] = None) -> Function: ...
+    def resolve(self, args: list[Function] = None, caller: Function = None, bindings: dict[str|int, Function] = None) -> Function: ...
 class Function:
     name: str
     type: Function # class-like inheritance
+    env: Function
+    caller: Function | None  # self
     options: list[Option]
     named_options: dict[str, Option]
     hashed_options: dict[Value, Option]
     args: list[Option]
     block: Block
-    env: Function
     exec: any
     return_value: Function
     value: val_types
     is_null: bool
-    init: any
     def __init__(self, opt_pattern: Pattern | Parameter | str = None,
                      opt_value: opt_resolution = None,
                      options: dict[Pattern | Parameter | str, opt_resolution] = None,
