@@ -27,9 +27,9 @@ print 'start'
 now: python['timeit.default_timer()']
 start_time = now
 t1 = now
-for n in range[1000]
+for n in range[7000]
     s = fib[n]
-    if not n % 100
+    if not n % 500
         t2 = now
         print "{n}: {round[1000*(t2-t1)]}ms"
         t1 = t2

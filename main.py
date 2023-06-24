@@ -3,7 +3,8 @@ import sys
 import timeit
 from Abstract_Syntax_Tree import Tokenizer, AST
 from BuiltIns import *
-from StaticOperators import *
+import operators
+# import StaticOperators
 
 # def factory(repeats: int):
 # 	def p(msg):
@@ -25,7 +26,8 @@ else:
     script_path = "test_script.pili"
     # script_path = 'syntax_demo.pili'
     # script_path = "Dates.pili"
-    script_path = 'fibonacci.pili'
+    # script_path = 'fibonacci.pili'
+    # script_path = 'test.pili'
     print('(test mode) running script', script_path)
 
 pili = Function(ListPatt(Parameter('main')), lambda: NotImplemented, name='pili')
