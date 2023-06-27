@@ -24,7 +24,7 @@ elif len(sys.argv) == 2:
 else:
     mode = 'test'
     script_path = "test_script.pili"
-    # script_path = 'syntax_demo.pili'
+    script_path = 'syntax_demo.pili'
     # script_path = "Dates.pili"
     # script_path = 'fibonacci.pili'
     # script_path = 'test.pili'

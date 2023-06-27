@@ -1,8 +1,8 @@
-var = "hi"
-print self.var = "hello"
-print var
-print self.var
-exit
+# var = "hi"
+# print self.var = "hello"
+# print var
+# print self.var
+# exit
 
 
 # basic values are numbers and strings
@@ -12,12 +12,13 @@ print `or backticks`
 print ''
 
 # escape characters are recognized in single or double quoted strings, but in backtick strings are interpreted literally
-print "\tmulti\n\t\"line\"\n\tstring"
-print `not \n multi \n line`
+print "escape characters like \t(tab) and \n(newline) are recognized in"
+print 'both \'single quote\' and "double quote" strings'
+print `backquote strings have no escape characters; "\n" just becomes "\n"`
 print ``double-backticked strings can have `backticks` inside them``
 print ''
 
-print 'string interpolation using \{} also works'
+print `string interpolation using {expression} also works`
 print '1 + 2 = {1 + 2}'
 CAN = 'can'
 print 'Can you nest string interpolation? {'Yes, you {CAN}' if 1 == 1 else 'nope'}'
@@ -26,7 +27,7 @@ print ''
 # pili fluidly and automatically converts between booleans, integers, and rational numbers,
 # depending on what operators are applied to them
 # floats only appear if a function explicitly returns a float (like the float function) or float literals
-my_bool = 2 + 2 == 4
+my_bool = 'two' == 'two'
 my_int = my_bool * 10
 my_ratio = my_int / 4
 print '10/4 = {my_ratio} (type: {type[my_ratio]})'
@@ -85,7 +86,7 @@ print "greeting['Bob', -2] -> " + greeting['Bob', -2]
 print "greeting['Bob', 'Ryan'] -> " + greeting['Bob', 'Ryan']
 print ''
 
-# You just say the "has" operator above; it checks for the existence of an option (by name or pattern or by list of arguments)
+# You just saw the "has" operator above; it checks for the existence of an option (by name or pattern or by list of arguments)
 
 print 'greeting has ["any random name"] -> {greeting has ["any random name", 444]}'
 print 'greeting has "name" -> {greeting has "name"}'
@@ -112,6 +113,7 @@ print "\nPrototype Patterns"
 print '-33 ~ int => {-33 ~ int}'
 print '0.43 ~ float and 0.43 ~ num and -33 ~ num => {0.43 ~ float and 0.43 ~ num and -33 ~ num}'
 print '0.43 ~ str => {0.43 ~ str}'
+print '0.43 !~ str => {0.43 !~ str}'
 # union patterns match if any of the sub-patterns match
 print "'hello' ~ num|str => {'hello' ~ num|str}"
 neg_float_or_pos_int = float < 0 | int > 0
@@ -125,31 +127,46 @@ print 5 ~ float | int > 4
 print 5 ~ int > 4 | float
 
 
+# Some funky operators
+print "The `has` and `~` operators are just some of the funky operators in Pili."
+print "There is also `??`, `.?`, and `..`."
+print "some_null_value = none; some_null_value ?? 0 ?? 1 => {some_null_value = none; some_null_value ?? 0 ?? 1}"
+print greeting.one
+print greeting.?name ?? greeting.?nlljlasd ?? greeting.?[2451] ?? 'none of those optinos were found\n'
 
+# the swizzle operator `..` is fun.  It acts like a dot operator distributed over every element of an iterable
+print "my_list = {my_list = [-1, -2, 0 ,1 ,2]}"
+print "my_list..abs => {my_list..abs}"
 
-print ".., ??, ~, "
-print "***************************************"
+exit
+
+print "\n\n************************************************"
+print "Some funky operators include:  .., ??, ~, "
+print "next: demo classes/prototyping and dot-options"
+print "aliases... := ..."
+print "Pili also does closures similarly to python"
+# but not exactly the same; if a variable is undefined at runtime, it will be excluded from the closure
 x = "global x"
-level_six[]:
+closure_demo[]:
     z = "outer z"
     donky[]:
         inner[any y]:
-            return [x, y, z]
+            return x, y, z
 
-        z = "donky z"
+        if USE_DONKY_Z
+            z = "donky z"
         return inner
 
     chonky[]:
         x = "chonky x"
         f = donky[]
         return f
-        return f["y arg"]
 
     f = chonky[]
     return f["y arg"]
-    return chonky[]
 
-print level_six[]
+USE_DONKY_Z = true
+print closure_demo[]
 
 
 exit
