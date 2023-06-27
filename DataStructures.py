@@ -550,6 +550,8 @@ class Function:
         return default
 
     def select_by_name(self, name: str, ascend_env=True):
+        if OPTION_HASHING:
+            return self.select_by_value((Value(name),), ascend_env)
         if name in self.named_options:
             return self.named_options[name]
         fn = self.type
