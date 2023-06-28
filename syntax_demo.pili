@@ -138,6 +138,36 @@ print greeting.?name ?? greeting.?nlljlasd ?? greeting.?[2451] ?? 'none of those
 print "my_list = {my_list = [-1, -2, 0 ,1 ,2]}"
 print "my_list..abs => {my_list..abs}"
 
+
+# There are no classes in Pili, just prototypes.  Objects are called "Functions" and each function also acts as a prototype.
+# When a function lacks a return statement, it will return an "instance" of itself.
+# A newly created function has as it's prototype the function that was used to create it.
+# A function literal value has no prototype
+# There are two ways to create class-like inheritance
+
+Animal =
+    []:
+        none
+    species = none
+    Dog =
+        []:
+            none
+        bark: print "Bark!"
+        species = 'dog'
+
+a = Animal[]
+print a.species
+print a.type
+
+Dog = Animal.Dog
+
+d = Dog[]
+print d.species
+print d.type
+print d.type.type
+
+
+
 exit
 
 print "\n\n************************************************"
