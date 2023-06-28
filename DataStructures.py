@@ -82,7 +82,7 @@ class Parameter:
         self.inverse = inverse
     def specificity(self) -> int: ...
     def match_score(self, arg):
-        if arg.type == BuiltIns['str'] and arg.value == self.name:
+        if arg.instanceof(BuiltIns['str']) and arg.value == self.name:
             return 1
         return self.pattern.match_score(arg)
     def __eq__(self, other):
@@ -424,7 +424,7 @@ class Function:
     value = NotImplemented
     def __init__(self, opt_pattern=None, resolution=None, options=None, args=None, type=None, env=None, caller=None, name=None):
         self.name = name
-        self.type = type or BuiltIns['fn']
+        self.types = type if isinstance(type, tuple) else (type or BuiltIns['fn'],)
         self.env = env or Context.env
         self.caller = caller
         self.options = []
@@ -450,7 +450,7 @@ class Function:
             case ListPatt():  name = pattern[0].name if len(pattern) == 1 else None
             case Pattern():   name = pattern.name
         if name is not None:
-            self.named_options[name] = option
+            pass  # self.named_options[name] = option
         if hasattr(self, "value") and isinstance(self.value, list):
             if not num and len(option.pattern) == 1:
                 patt = option.pattern.parameters[0].pattern
@@ -527,11 +527,12 @@ class Function:
                 option, bindings = opt, saves
         if option:
             return option, bindings
-        if walk_prototype_chain and self.type:
-            try:
-                return self.type.select_and_bind(key, True, ascend_env)
-            except NoMatchingOptionError:
-                pass
+        if walk_prototype_chain and self.types:
+            for t in self.types:
+                try:
+                    return t.select_and_bind(key, True, ascend_env)
+                except NoMatchingOptionError:
+                    pass
         if ascend_env and self.env:
             try:
                 return self.env.select_and_bind(key, walk_prototype_chain, True)
@@ -552,29 +553,39 @@ class Function:
     def select_by_name(self, name: str, ascend_env=True):
         if OPTION_HASHING:
             return self.select_by_value((Value(name),), ascend_env)
-        if name in self.named_options:
-            return self.named_options[name]
-        fn = self.type
-        while fn:
-            if name in fn.named_options:
-                return fn.named_options[name]
-            fn = fn.type
-        if ascend_env and self.env:
-            try:
-                return self.env.select_by_name(name, True)
-            except NoMatchingOptionError:
-                pass
-        raise NoMatchingOptionError(f"Line {Context.line}: '{name}' not found in {self.name or self}")
+        # if name in self.named_options:
+        #     return self.named_options[name]
+        # fn = self.type
+        # while fn:
+        #     if name in fn.named_options:
+        #         return fn.named_options[name]
+        #     fn = fn.type
+        # if ascend_env and self.env:
+        #     try:
+        #         return self.env.select_by_name(name, True)
+        #     except NoMatchingOptionError:
+        #         pass
+        # raise NoMatchingOptionError(f"Line {Context.line}: '{name}' not found in {self.name or self}")
 
     def select_by_value(self, values, ascend_env=True):
-        fn = self
-        while fn:
-            try:
-                return fn.hashed_options[values]
-            except KeyError:
-                fn = fn.type
-            except TypeError:
-                break
+        try:
+            return self.hashed_options[values]
+        except KeyError:
+            for t in self.types:
+                try:
+                    return t.select_by_value(values, False)
+                except NoMatchingOptionError:
+                    continue
+        except TypeError:
+            pass
+        # fn = self
+        # while fn:
+        #     try:
+        #         return fn.hashed_options[values]
+        #     except KeyError:
+        #         fn = fn.type
+        #     except TypeError:
+        #         break
         if ascend_env and self.env:
             try:
                 return self.env.select_by_value(values, True)
@@ -603,15 +614,22 @@ class Function:
         return option.resolve([], self)
 
     def instanceof(self, prototype):
-        return int(self.type == prototype) or (self.type or 0) and self.type.instanceof(prototype)/2
+        if prototype in self.types:
+            return 1
+        for t in self.types:
+            k = t.instanceof(prototype)
+            if k:
+                return k / 2
+        return 0
+        # return len(self.types) and int(prototype in self.types) or self.type.instanceof(prototype)/2
 
     def clone(self):
         if hasattr(self, "value"):
             fn = Value(self.value)
-            fn.type = self.type
+            fn.types = self.types
             fn.env = self.env
         else:
-            fn = Function(type=self.type, env=self.env)
+            fn = Function(type=self.types, env=self.env)
         for opt in self.options:
             fn.assign_option(opt.pattern,
                              opt.value.clone() if opt.value else opt.block or opt.fn)
@@ -625,7 +643,7 @@ class Function:
             return False
     def to_string(self):
         if hasattr(self, 'value') and self.value is not NotImplemented:
-            if self.instanceof(BuiltIns['num']) and not self.type == BuiltIns['bool']:
+            if self.instanceof(BuiltIns['num']) and BuiltIns['bool'] not in self.types:
                 return Value(write_number(self.value, Context.settings['base']))
             if self.instanceof(BuiltIns['list']):
                 return Value(f"[{', '.join(v.to_string().value for v in self.value)}]")
@@ -651,7 +669,7 @@ class Function:
             return False
         if getattr(self, "value", object()) == getattr(other, "value", object()) and self.value is not NotImplemented:
             return True
-        if self.type != other.type:
+        if self.types != other.types:
             return False
         if self.env != other.env or self.name != other.name:
             return False
@@ -663,7 +681,7 @@ class Function:
     def __repr__(self):
         # if self is Context.root:
         #     return 'root'
-        if self.type is Context.root:
+        if self.types == (Context.root,):
             return 'root.main'
         if self.value is not NotImplemented:
             try:
@@ -686,10 +704,10 @@ class Value(Function):
     def set_value(self, new_value):
         if isinstance(new_value, Value):
             self.value = new_value.value
-            self.type = new_value.type
+            self.types = new_value.types
         else:
             self.value = new_value
-            self.type = TypeMap[type(new_value.value)]
+            self.types = TypeMap[type(new_value.value)],
         return self
 
     def is_null(self):
@@ -705,7 +723,7 @@ class Value(Function):
         return hasattr(other, 'value') and self.value == other.value
 
     def __hash__(self):
-        if self.type == BuiltIns['list']:
+        if self.types == (BuiltIns['list'],):
             return hash(tuple(self.value))
         return hash(self.value)
     def __str__(self):

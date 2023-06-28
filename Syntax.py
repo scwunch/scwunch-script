@@ -51,6 +51,7 @@ class Commands(Enum):
     Debug = 'debug'
     Else = 'else'
     Import = 'import'
+    Inherit = 'inherit'
     Label = 'label'
 
 

@@ -196,12 +196,12 @@ class Option:
     def resolve(self, args: list[Function] = None, caller: Function = None, bindings: dict[str|int, Function] = None) -> Function: ...
 class Function:
     name: str
-    type: Function # class-like inheritance
+    types: tuple[Function]  # class-like inheritance
     env: Function
     caller: Function | None  # self
     options: list[Option]
-    named_options: dict[str, Option]
-    hashed_options: dict[Value, Option]
+    # named_options: dict[str, Option]
+    hashed_options: dict[tuple[Value,], Option]
     args: list[Option]
     block: Block
     exec: any
@@ -212,11 +212,12 @@ class Function:
                      opt_value: opt_resolution = None,
                      options: dict[Pattern | Parameter | str, opt_resolution] = None,
                      args: dict[Pattern | Parameter | str, opt_resolution] = None,
-                     type: Function = None,
+                     type: Function | tuple[Function,] = None,
                      env: Function = None,
                      # value: Value = None,
                      # is_null=False,
-                    name: str = None
+                     caller: Function = None,
+                     name: str = None
                  ): ...
 
     def add_option(self, pattern: Pattern | Parameter | str, resolution: opt_resolution = None) -> Option: ...

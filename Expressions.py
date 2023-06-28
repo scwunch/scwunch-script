@@ -276,6 +276,11 @@ class Command(Expression):
                 globals()[var_name or module_name] = a
                 Context.env.assign_option(var_name or module_name, Value(a))
                 return Value(a)
+            case 'inherit':
+                result = self.expr.evaluate()
+                types = result.value if result.instanceof(BuiltIns['tuple']) else (result,)
+                Context.env.types += types
+                return Value(Context.env.types)
             case 'label':
                 Context.env.name = BuiltIns['string'].call([self.expr.evaluate()]).value
             case _:

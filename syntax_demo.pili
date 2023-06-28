@@ -149,17 +149,17 @@ Animal =
     []:
         none
     species = none
-    Dog =
-        []:
-            none
-        bark: print "Bark!"
-        species = 'dog'
 
 a = Animal[]
 print a.species
 print a.type
 
-Dog = Animal.Dog
+Dog =
+    inherit Animal
+    []:
+        none
+    bark: print "Bark!"
+    species = 'dog'
 
 d = Dog[]
 print d.species
