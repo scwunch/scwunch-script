@@ -149,6 +149,10 @@ Animal =
     []:
         none
     species = none
+    alive = "I'm alive."
+    make_sound: print self.sound
+    print_sound[]:
+        print self.sound
 
 a = Animal[]
 print a.species
@@ -159,12 +163,37 @@ Dog =
     []:
         none
     bark: print "Bark!"
-    species = 'dog'
+    sound = 'bark sound!'
+    species = 'canis lupus'
 
 d = Dog[]
 print d.species
+print d.alive
+d.make_sound
+# d.print_sound[],,
 print d.type
 print d.type.type
+
+
+print "\n\n************************************"
+Factory =
+    []:
+        Factory.factory_count += 1
+        Animal[str species]:
+            []:
+                Factory.species_count += 1
+            alive = "I'm alive."
+            greet:
+                return "Hi, I'm a {self.species}"
+    factory_count = 0
+    species_count = 0
+
+f = Factory[]
+print Factory.factory_count
+print f.factory_count
+off = f[]
+print type[off]
+
 
 
 

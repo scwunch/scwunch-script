@@ -249,7 +249,8 @@ Operator('>=',
          binop=11, chainable=True)
 Operator('+',
          Function(NormalBinopPattern, lambda a, b: Value(a.value + b.value),
-                  options={ListPatt(AnyParam): lambda a: BuiltIns['number'].call([a])}),
+                  options={ListPatt(AnyParam): lambda a: BuiltIns['number'].call([a]),
+                           ListPatt(ListParam, ListParam): lambda a, b: Value(a.value + b.value)}),
          binop=12, prefix=14)
 Operator('-',
          Function(NormalBinopPattern, lambda a, b: Value(a.value - b.value),

@@ -28,6 +28,7 @@ else:
     # script_path = "Dates.pili"
     # script_path = 'fibonacci.pili'
     # script_path = 'test.pili'
+    script_path = 'Tables.pili'
     print('(test mode) running script', script_path)
 
 pili = Function(ListPatt(Parameter('main')), lambda: NotImplemented, name='pili')
@@ -48,6 +49,7 @@ def execute_code(code: str) -> Function:
     # fn = block.make_function({}, root)
     # Context.push(Context.line, fn, Option(Any))
 
+Context.exec = execute_code
 
 if mode == 'shell':
     Context.push(0, pili)

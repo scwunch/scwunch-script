@@ -4,8 +4,8 @@ from fractions import Fraction
 from Env import *
 OPTION_HASHING = True
 """
-A Pattern is like a regex for types; it can match one very specific type, or even one specific value
-or it can match a type on certain conditions (eg int>0), or union of types
+A Pattern is like a regex for type; it can match one very specific type, or even one specific value
+or it can match a type on certain conditions (eg int>0), or union of type
 """
 class Pattern:
     def __init__(self, name: str = None, guard=None):
@@ -424,7 +424,8 @@ class Function:
     value = NotImplemented
     def __init__(self, opt_pattern=None, resolution=None, options=None, args=None, type=None, env=None, caller=None, name=None):
         self.name = name
-        self.types = type if isinstance(type, tuple) else (type or BuiltIns['fn'],)
+        self.type = type or BuiltIns['fn']  # if isinstance(type, tuple) else (type or BuiltIns['fn'],)
+        self.mro = (self, *self.type.mro)
         self.env = env or Context.env
         self.caller = caller
         self.options = []
@@ -527,8 +528,8 @@ class Function:
                 option, bindings = opt, saves
         if option:
             return option, bindings
-        if walk_prototype_chain and self.types:
-            for t in self.types:
+        if walk_prototype_chain and self.mro:
+            for t in self.mro[1:]:
                 try:
                     return t.select_and_bind(key, True, ascend_env)
                 except NoMatchingOptionError:
@@ -568,16 +569,21 @@ class Function:
         # raise NoMatchingOptionError(f"Line {Context.line}: '{name}' not found in {self.name or self}")
 
     def select_by_value(self, values, ascend_env=True):
-        try:
-            return self.hashed_options[values]
-        except KeyError:
-            for t in self.types:
-                try:
-                    return t.select_by_value(values, False)
-                except NoMatchingOptionError:
-                    continue
-        except TypeError:
-            pass
+        for t in self.mro:
+            try:
+                return t.hashed_options[values]
+            except KeyError:
+                continue
+        # try:
+        #     return self.hashed_options[values]
+        # except KeyError:
+        #     for t in self.mro:
+        #         try:
+        #             return t.select_by_value(values, False)
+        #         except NoMatchingOptionError:
+        #             continue
+        # except TypeError:
+        #     pass
         # fn = self
         # while fn:
         #     try:
@@ -614,22 +620,24 @@ class Function:
         return option.resolve([], self)
 
     def instanceof(self, prototype):
-        if prototype in self.types:
+        types = self.mro[1:]
+        if prototype in types:
             return 1
-        for t in self.types:
+        for t in types:
             k = t.instanceof(prototype)
             if k:
                 return k / 2
         return 0
-        # return len(self.types) and int(prototype in self.types) or self.type.instanceof(prototype)/2
+        # return len(self.type) and int(prototype in self.type) or self.type.instanceof(prototype)/2
 
     def clone(self):
         if hasattr(self, "value"):
             fn = Value(self.value)
-            fn.types = self.types
+            fn.type = self.type
+            fn.mro = self.mro
             fn.env = self.env
         else:
-            fn = Function(type=self.types, env=self.env)
+            fn = Function(type=self.type, env=self.env)
         for opt in self.options:
             fn.assign_option(opt.pattern,
                              opt.value.clone() if opt.value else opt.block or opt.fn)
@@ -643,7 +651,7 @@ class Function:
             return False
     def to_string(self):
         if hasattr(self, 'value') and self.value is not NotImplemented:
-            if self.instanceof(BuiltIns['num']) and BuiltIns['bool'] not in self.types:
+            if self.instanceof(BuiltIns['num']) and self.type is not BuiltIns['bool']:
                 return Value(write_number(self.value, Context.settings['base']))
             if self.instanceof(BuiltIns['list']):
                 return Value(f"[{', '.join(v.to_string().value for v in self.value)}]")
@@ -658,6 +666,9 @@ class Function:
         return [val.value for val in self.value]
 
     def __eq__(self, other):
+        if getattr(self, "value", object()) == getattr(other, "value", object()) and self.value is not NotImplemented:
+            return True
+        return self is other
         if OPTION_HASHING or 1:
             try:
                 return hash(self) == hash(other)
@@ -669,7 +680,7 @@ class Function:
             return False
         if getattr(self, "value", object()) == getattr(other, "value", object()) and self.value is not NotImplemented:
             return True
-        if self.types != other.types:
+        if self.type is not other.type:
             return False
         if self.env != other.env or self.name != other.name:
             return False
@@ -681,7 +692,7 @@ class Function:
     def __repr__(self):
         # if self is Context.root:
         #     return 'root'
-        if self.types == (Context.root,):
+        if self.type == Context.root:
             return 'root.main'
         if self.value is not NotImplemented:
             try:
@@ -704,10 +715,10 @@ class Value(Function):
     def set_value(self, new_value):
         if isinstance(new_value, Value):
             self.value = new_value.value
-            self.types = new_value.types
+            self.type = new_value.type
         else:
             self.value = new_value
-            self.types = TypeMap[type(new_value.value)],
+            self.type = TypeMap[type(new_value.value)]
         return self
 
     def is_null(self):
@@ -723,7 +734,7 @@ class Value(Function):
         return hasattr(other, 'value') and self.value == other.value
 
     def __hash__(self):
-        if self.types == (BuiltIns['list'],):
+        if self.type is BuiltIns['list']:
             return hash(tuple(self.value))
         return hash(self.value)
     def __str__(self):

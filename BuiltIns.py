@@ -5,7 +5,17 @@ from Env import *
 from DataStructures import *
 from Expressions import expressionize, read_number, Expression, py_eval, piliize
 
-BuiltIns['_base_prototype'] = Function(name='base_prototype', type=())  # noqa
+class BasePrototype(Function):
+    def __init__(self):
+        self.name = 'base_prototype'
+        self.type = None
+        self.mro = ()
+        self.env = Context.env
+        self.options = []
+        self.args = []
+        self.hashed_options = {}
+
+BuiltIns['_base_prototype'] = BasePrototype()  # Function(name='base_prototype', type={'mro':()})  # noqa
 # BuiltIns['_base_prototype'].type = None
 MetaType = Function(name="Type", type=BuiltIns['_base_prototype'])
 BuiltIns['BasicType'] = MetaType
@@ -42,7 +52,7 @@ TypeMap.update({
 })
 BuiltIns['python_object'] = Function(type=MetaType)
 BuiltIns['any'] = Value(None)
-BuiltIns['any'].value, BuiltIns['any'].types = Any, (BuiltIns['pattern'],)
+BuiltIns['any'].value, BuiltIns['any'].type = Any, BuiltIns['pattern']
 TypeMap[AnyPattern] = BuiltIns['any']
 
 NoneParam = Parameter(Prototype(BuiltIns["none"]))
@@ -134,7 +144,7 @@ BuiltIns['string'].add_option(ListPatt(NumericParam, IntegralParam), lambda n, b
 #                                               base(abs(n.value), 10, 6, string=True, recurring=False)))
 # BuiltIns['string'].add_option(ListPatt(Parameter(Prototype(BuiltIns["Type"]))), lambda t: Value(t.value.name))
 
-BuiltIns['type'] = Function(ListPatt(AnyParam), lambda v: Value(v.types))
+BuiltIns['type'] = Function(ListPatt(AnyParam), lambda v: v.type)
 
 BuiltIns['len'] = Function(ListPatt(StringParam), lambda s: Value(len(s.value)))
 BuiltIns['len'].add_option(ListPatt(FunctionParam), lambda f: Value(len(f.options)))
@@ -222,7 +232,7 @@ def Args(fn: Function):
 BuiltIns['args'] = lambda: Args(Context.env)
 
 def list_get(scope: Function, *args: Value):
-    fn = scope.types[0]
+    fn = scope.type
     if len(args) == 1:
         length = BuiltIns['len'].call([fn])
         index = args[0].value
@@ -241,7 +251,7 @@ def list_set(ls: Value, index: Value, val: Function):
         ls.value[i] = val
     return val
 def list_slice(ls: Value, start: Value, stop: Value):
-    ls = ls.types[0].value  # I don't know why this works, but it does... I need to fix the prototyping and context handling
+    ls = ls.type.value  # I don't know why this works, but it does... I need to fix the prototyping and context handling
     start, stop = start.value,  stop.value
     if start == 0:
         start = None

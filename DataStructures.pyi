@@ -39,8 +39,8 @@ Guard = Function | callable
 
 class Pattern:
     """
-    A Pattern is like a regex for types and parameters; it can match one very specific type, or even
-    one specific value, or it can match a type on certain conditions (e.g. int>0), or union of types
+    A Pattern is like a regex for type and parameters; it can match one very specific type, or even
+    one specific value, or it can match a type on certain conditions (e.g. int>0), or union of type
     """
     name: str | None
     guard: Guard
@@ -196,7 +196,8 @@ class Option:
     def resolve(self, args: list[Function] = None, caller: Function = None, bindings: dict[str|int, Function] = None) -> Function: ...
 class Function:
     name: str
-    types: tuple[Function]  # class-like inheritance
+    type: Function  # class-like inheritance
+    mro: tuple[Function, ...]
     env: Function
     caller: Function | None  # self
     options: list[Option]
@@ -212,7 +213,7 @@ class Function:
                      opt_value: opt_resolution = None,
                      options: dict[Pattern | Parameter | str, opt_resolution] = None,
                      args: dict[Pattern | Parameter | str, opt_resolution] = None,
-                     type: Function | tuple[Function,] = None,
+                     type: Function = None,
                      env: Function = None,
                      # value: Value = None,
                      # is_null=False,

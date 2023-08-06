@@ -197,6 +197,8 @@ class ForLoop(ExprWithBlock):
                 Context.continue_ -= 1
                 if Context.continue_:
                     break
+            elif Context.env.return_value:
+                break
         return Value(None)
 
 class WhileLoop(ExprWithBlock):
@@ -279,8 +281,8 @@ class Command(Expression):
             case 'inherit':
                 result = self.expr.evaluate()
                 types = result.value if result.instanceof(BuiltIns['tuple']) else (result,)
-                Context.env.types += types
-                return Value(Context.env.types)
+                Context.env.mro += types
+                return Value(Context.env.mro)
             case 'label':
                 Context.env.name = BuiltIns['string'].call([self.expr.evaluate()]).value
             case _:
@@ -480,7 +482,7 @@ def read_option_OLD(nodes: list[Node], is_value=False) -> Option:
                 fn_val = Context.env.deref(name, False)
             else:
                 fn_val = expressionize(fn_nodes).evaluate()
-                if fn_val.type == BuiltIns['str']:
+                if fn_val.type is BuiltIns['str']:
                     fn_val = Context.env.deref(fn_val.value)
         except NoMatchingOptionError:
             if dot_option:
