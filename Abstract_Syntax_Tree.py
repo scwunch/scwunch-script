@@ -156,7 +156,7 @@ class Tokenizer:
             if self.char == "\\":
                 str_text += self.char + (self.next_char() or "")
                 if self.char is None:
-                    raise NotImplemented("Should detect newline at line ", self.ln + 1)
+                    raise NotImplementedError("Should detect newline at line ", self.ln + 1)
                 continue
             if self.char in ("{", quote):
                 return str_text

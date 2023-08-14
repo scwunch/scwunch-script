@@ -230,3 +230,29 @@ print closure_demo[]
 
 exit
 # the exit command is not necessary, but without it, the script will return the running function, which is awkwardly printed as root.main
+
+
+table Dog:
+    # slot field
+    slot name:
+        str
+        ""
+
+    # formula field
+    formula bark[]:
+        print "Helo, my name is {self.name}!"
+
+    # dot-option
+    .eat[Food food]:
+        del food
+        self.full = True
+
+
+
+
+
+
+
+
+
+

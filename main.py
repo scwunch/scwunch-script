@@ -31,12 +31,12 @@ else:
     script_path = 'Tables.pili'
     print('(test mode) running script', script_path)
 
-pili = Function(ListPatt(Parameter('main')), lambda: NotImplemented, name='pili')
+pili = Function({Pattern(Parameter('main')): lambda: NotImplemented}, name='pili')
 BuiltIns['pili'] = pili
 for key, builtin in BuiltIns.items():
     if not getattr(builtin, 'name', False):
         builtin.name = key
-    pili.add_option(ListPatt(Parameter(key)), builtin)
+    pili.add_option(Pattern(Parameter(key)), builtin)
 Context.root = pili
 # Context.push(0, pili, Option(Any))
 
@@ -96,6 +96,9 @@ def execute_script(path):
     print(output)
 
 if mode in ('test', 'script'):
+    print('go YEAH')
+
+    exit()
     repeats = 1
     t = timeit.timeit(lambda: execute_script(script_path), number=repeats) / repeats
     print('\n\n***************************************\n')

@@ -1,6 +1,7 @@
 import importlib
 from Syntax import *
-from DataStructures import *
+# from DataStructures import *
+from tables import *
 from Env import *
 
 
@@ -42,7 +43,7 @@ class Expression:
         self.source = source
 
     def evaluate(self):
-        raise NotImplemented
+        raise NotImplementedError
 
     def __len__(self):
         return len(self.nodes) if self.nodes else 0
@@ -180,13 +181,13 @@ class ForLoop(ExprWithBlock):
         if len(self.var) == 1:
             var_node = self.var[0]
             if var_node.type == TokenType.Name:
-                var_val = Value(var_node.source_text)
+                var_val = py_value(var_node.source_text)
             else:
                 var_val = eval_node(var_node)
         else:
             var_val = expressionize(self.var).evaluate()
-        patt = ListPatt(Parameter(patternize(var_val)))
-        variable = Context.env.assign_option(patt, Value(None))
+        patt = patternize(var_val)
+        variable = Context.env.assign_option(patt, py_value(None))
         for val in iterator.value:
             variable.assign(val)
             self.block.execute()
@@ -199,7 +200,7 @@ class ForLoop(ExprWithBlock):
                     break
             elif Context.env.return_value:
                 break
-        return Value(None)
+        return py_value(None)
 
 class WhileLoop(ExprWithBlock):
     condition: Expression
@@ -210,11 +211,11 @@ class WhileLoop(ExprWithBlock):
         self.block = FuncBlock(nodes[self.block_index])
 
     def evaluate(self):
-        result = Value(None)
+        result = py_value(None)
         for i in range(6 ** 6):
             if Context.break_loop:
                 Context.break_loop -= 1
-                return Value(None)
+                return py_value(None)
             condition_value = self.condition.evaluate()
             if BuiltIns['bool'].call([condition_value]).value:
                 result = self.block.execute()
@@ -222,7 +223,7 @@ class WhileLoop(ExprWithBlock):
                 return result
             if Context.break_loop:
                 Context.break_loop -= 1
-                return Value(None)
+                return py_value(None)
         raise RuntimeErr(f"Line {self.line or Context.line}: Loop exceeded limit of 46656 executions.")
 
 class Command(Expression):
@@ -249,7 +250,7 @@ class Command(Expression):
             case 'print':
                 # print('!@>', BuiltIns['string'].call([self.expr.evaluate()]).value)
                 print(BuiltIns['string'].call([self.expr.evaluate()]).value)
-                return Value(None)
+                return py_value(None)
             case 'break':
                 result = self.expr.evaluate()
                 match result.value:
@@ -276,13 +277,13 @@ class Command(Expression):
                 module_name, _, var_name = self.expr.source.partition(' as ')
                 a = importlib.import_module(module_name)
                 globals()[var_name or module_name] = a
-                Context.env.assign_option(var_name or module_name, Value(a))
-                return Value(a)
+                Context.env.assign_option(var_name or module_name, py_value(a))
+                return py_value(a)
             case 'inherit':
                 result = self.expr.evaluate()
                 types = result.value if result.instanceof(BuiltIns['tuple']) else (result,)
                 Context.env.mro += types
-                return Value(Context.env.mro)
+                return py_value(Context.env.mro)
             case 'label':
                 Context.env.name = BuiltIns['string'].call([self.expr.evaluate()]).value
             case _:
@@ -290,8 +291,8 @@ class Command(Expression):
 
 def piliize(pyval):
     if isinstance(pyval, list) or isinstance(pyval, tuple):
-        pyval = type(pyval)(Value(v) for v in pyval)
-    return Value(pyval)
+        pyval = type(pyval)(py_value(v) for v in pyval)
+    return py_value(pyval)
 
 def py_eval(code):
     return piliize(eval(code.value))
@@ -300,7 +301,7 @@ class EmptyExpr(Expression):
     def __init__(self):
         pass
     def evaluate(self):
-        return Value(None)
+        return py_value(None)
 
 class SingleNode(Expression):
     def __init__(self, node: Node, line: int | None, source: str):
@@ -309,19 +310,19 @@ class SingleNode(Expression):
     def evaluate(self):
         return eval_node(self.node)
 
-def eval_node(node: Node) -> Function:
+def eval_node(node: Node) -> Record:
     match node:
         case Statement() as statement:
             return expressionize(statement).evaluate()
         case Token() as tok:
             return eval_token(tok)
         case Block() | FunctionLiteral() as block:
-            opt = Option(ListPatt(), FuncBlock(block))
+            opt = Option(Pattern(), FuncBlock(block))
             return opt.resolve([])
         case List(nodes=nodes):
-            return Value(list(map(eval_node, nodes)))
+            return py_value(list(map(eval_node, nodes)))
         case StringNode(nodes=nodes):
-            return Value(''.join(map(eval_string_part, nodes)))
+            return py_value(''.join(map(eval_string_part, nodes)))
     raise ValueError(f'Could not evaluate node {node} at line: {node.pos}')
 
 def eval_string_part(node: Node) -> str:
@@ -332,7 +333,7 @@ def eval_string_part(node: Node) -> str:
     raise ValueError('invalid string part')
 
 
-def precook_args(op: Operator, lhs, rhs) -> list[Value]:
+def precook_args(op: Operator, lhs, rhs) -> list[Record]:
     if op.binop and lhs and rhs:
         args = [expressionize(lhs).evaluate(), expressionize(rhs).evaluate()]
     elif op.prefix and rhs or op.postfix and lhs:
@@ -345,15 +346,15 @@ def precook_args(op: Operator, lhs, rhs) -> list[Value]:
 Operator.eval_args = precook_args
 
 
-def eval_token(tok: Token) -> Function:
+def eval_token(tok: Token) -> Record:
     s = tok.source_text
     match tok.type:
         case TokenType.Singleton:
-            return Value(singletons[s])
+            return py_value(singletons[s])
         case TokenType.Number:
-            return Value(read_number(s, Context.settings['base']))
+            return py_value(read_number(s, Context.settings['base']))
         case TokenType.StringLiteral:
-            return Value(s.strip("`"))
+            return py_value(s.strip("`"))
         case TokenType.Name:
             return Context.env.deref(s)
         case _:
@@ -385,7 +386,7 @@ def eval_string(text: str):
     return value
 
 
-def is_iterable(val: Function):
+def is_iterable(val: Record):
     if hasattr(val, 'value') and type(val.value) in (list, tuple):
         return True
     return False
@@ -397,12 +398,12 @@ def make_value_param(param_nodes: list[Node]) -> Parameter:
         case []:
             raise SyntaxErr(f"Expected function parameter on line {Context.line}.")
         case [Token(type=TokenType.Name, source_text=name)]:
-            value = Value(name)
+            value = py_value(name)
         case [Token(type=TokenType.Name, source_text=name)]:
-            value = Value(name)
+            value = py_value(name)
         case _:
             value = expressionize(param_nodes).evaluate()
-    return Parameter(ValuePattern(value), name)
+    return Parameter(ValueMatcher(value), name)
 
 
 def make_param(param_nodes: list[Node]) -> Parameter:
@@ -511,9 +512,9 @@ def read_option_OLD(nodes: list[Node], is_value=False) -> Option:
         definite_env = not is_value
     params = map(make_param if not is_value else make_value_param, param_list)
     if dot_option:
-        patt = ListPatt(Parameter(Prototype(Context.env)), *params)
+        patt = Pattern(Parameter(TableMatcher(Context.env)), *params)
     else:
-        patt = ListPatt(*params)
+        patt = Pattern(*params)
     # try:
     #     # option = fn.select(patt, walk_prototype_chain=False, ascend_env=not definite_env)
     #     option = fn.select_by_pattern(patt, walk_prototype_chain=False, ascend_env=not definite_env)
@@ -524,7 +525,7 @@ def read_option_OLD(nodes: list[Node], is_value=False) -> Option:
     option.dot_option = dot_option
     return option
 
-def read_option(nodes: list[Node]) -> tuple[Function, ListPatt, bool]:
+def read_option(nodes: list[Node]) -> tuple[Function, Pattern, bool]:
     nodes = nodes[:]
     dot_option = nodes[0].source_text == '.'
     if dot_option:
@@ -607,9 +608,9 @@ def read_option(nodes: list[Node]) -> tuple[Function, ListPatt, bool]:
 
     params = map(make_param, param_list)
     if dot_option:
-        patt = ListPatt(Parameter(Prototype(Context.env)), *params)
+        patt = Pattern(Parameter(TableMatcher(Context.env)), *params)
     else:
-        patt = ListPatt(*params)
+        patt = Pattern(*params)
     return fn, patt, dot_option
 
 
@@ -619,12 +620,12 @@ def read_option(nodes: list[Node]) -> tuple[Function, ListPatt, bool]:
 
 
 if __name__ == "__main__":
-    n = read_number("40000.555555555555555")
+    n = read_number("40000.555555555555555", 6)
     while True:
-        strinput = input()
-        n = read_number(strinput)
+        strinput = input("Input number: ")
+        n = read_number(strinput, 6)
         # n = 999999999/100000000
         print("decimal: " + str(n))
         print("senary: " + write_number(n, 6, 25))
-        print("via bc:", base(str(n), 10, 6, 15, True, True))
+        # print("via bc:", base(str(n), 10, 6, 15, True, True))
 
