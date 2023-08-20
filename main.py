@@ -29,23 +29,30 @@ else:
     # script_path = 'fibonacci.pili'
     # script_path = 'test.pili'
     script_path = 'Tables.pili'
-    print('(test mode) running script', script_path)
+    print('(test mode) running script', script_path, '...')
 
-pili = Function({Pattern(Parameter('main')): lambda: NotImplemented}, name='pili')
-BuiltIns['pili'] = pili
-for key, builtin in BuiltIns.items():
-    if not getattr(builtin, 'name', False):
-        builtin.name = key
-    pili.add_option(Pattern(Parameter(key)), builtin)
-Context.root = pili
+# pili = Function({Pattern(): lambda: NotImplemented}, name='pili')
+# BuiltIns['pili'] = pili
+# for key, builtin in BuiltIns.items():
+#     if not getattr(builtin, 'name', False):
+#         builtin.name = key
+#     pili.names[key] = builtin
+#     # pili.add_option(Pattern(Parameter(Matcher(key))), builtin)
+# Context.root = pili
 # Context.push(0, pili, Option(Any))
 
+top_closure = TopNamespace(BuiltIns)  # Closure(Syntax.Block([]), bindings=BuiltIns)
+Context.root = top_closure
+Context.push(0, top_closure)
+
 def execute_code(code: str) -> Function:
-    block = FuncBlock(AST(Tokenizer(code+"\n")).block)
-    if len(block.exprs) == 1:
-        return block.exprs[0].evaluate()
-    Context.env.assign_option(ListPatt(Parameter('main')), block)
-    return Context.env.deref('main')
+    block = CodeBlock(AST(Tokenizer(code+"\n")).block)
+    block.scope = top_closure
+    return block.execute(())
+    # if len(block.exprs) == 1:
+    #     return block.exprs[0].evaluate()
+    # Context.env.assign_option(Pattern(Parameter('main')), block)
+    # return Context.deref('main')
     # fn = block.make_function({}, root)
     # Context.push(Context.line, fn, Option(Any))
 
@@ -64,7 +71,7 @@ if mode == 'shell':
             code = next_line
         try:
             output = execute_code(code)
-            if output != Value(None):
+            if output != py_value(None):
                 if output.instanceof(BuiltIns['str']):
                     print(output.value)
                 else:
@@ -85,20 +92,20 @@ def execute_script(path):
     ast = AST(tokenizer)
     # print(ast)
     # print('**********************************')
-    pili.assign_option(ListPatt(Parameter('main')), FuncBlock(ast.block))
+    # pili.assign_option(Pattern(), CodeBlock(ast.block))
+    main_block = CodeBlock(ast.block)
     # BuiltIns['pili'] = root
     # for key, builtin in BuiltIns.items():
     #     if not builtin.name:
     #         builtin.name = key
     #     root.add_option(ListPatt(Parameter(key)), builtin)
     # Context.root = root
-    output = pili.deref('main')
-    print(output)
+    output = main_block.execute(())
+    # output = pili.deref('main')
+    print('Script finished with output: ', output)
+
 
 if mode in ('test', 'script'):
-    print('go YEAH')
-
-    exit()
     repeats = 1
     t = timeit.timeit(lambda: execute_script(script_path), number=repeats) / repeats
     print('\n\n***************************************\n')

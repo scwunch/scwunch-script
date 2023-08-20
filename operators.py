@@ -59,34 +59,35 @@ def assign_var(key: PyValue, val: Record):
     key_value = key.value
     if isinstance(key_value, str):
         name = key_value
-        if name in Context.env.named_options:
-            option = Context.env.named_options[name]
-            # option.nullify()
-            option.assign(val)
-        else:
-            option = Context.env.add_option(name, val)
-        # try:
-        #     option = Context.env.select_by_name(name, ascend_env=False)
-        #     option.nullify()
-        #     option.assign(val)
-        # except NoMatchingOptionError:
-        #     option = Context.env.add_option(name, val)
-    elif isinstance(key_value, list):
-        patt = Pattern(*[Parameter(patternize(k)) for k in key_value])  # noqa
-        option = Context.env.select_by_pattern(patt)
-        if option is None:
-            option = Context.env.add_option(patt, val)
-        else:
-            # option.nullify()
-            option.assign(val)
+        Context.env.names[name] = val
+    #     if name in Context.env.named_options:
+    #         option = Context.env.named_options[name]
+    #         # option.nullify()
+    #         option.assign(val)
+    #     else:
+    #         option = Context.env.add_option(name, val)
+    #     # try:
+    #     #     option = Context.env.select_by_name(name, ascend_env=False)
+    #     #     option.nullify()
+    #     #     option.assign(val)
+    #     # except NoMatchingOptionError:
+    #     #     option = Context.env.add_option(name, val)
+    # elif isinstance(key_value, list):
+    #     patt = Pattern(*[Parameter(patternize(k)) for k in key_value])  # noqa
+    #     option = Context.env.select_by_pattern(patt)
+    #     if option is None:
+    #         option = Context.env.add_option(patt, val)
+    #     else:
+    #         # option.nullify()
+    #         option.assign(val)
     else:
         assert(0 == 1)
-    return option.value
+    return val
 
 
 def augment_assign_fn(op: str):
     def aug_assign(key: PyValue, val: Record):
-        initial = Context.env.deref(key.value)
+        initial = Context.deref(key.value)
         new = BuiltIns[op].call([initial, val])
         return assign_var(key, new)
     return aug_assign
@@ -96,7 +97,7 @@ def augment_assign_fn(op: str):
 Operator(';',
          Function({AnyBinopPattern: lambda x, y: y}),
          binop=1)
-def assign_fn(fn: Record, patt: PyValue, block: FuncBlock, dot_option: PyValue[bool]) -> PyValue:
+def assign_fn(fn: Record, patt: PyValue, block: CodeBlock, dot_option: PyValue[bool]) -> PyValue:
     patt = patt.value
     option = fn.select_by_pattern(patt) or fn.add_option(patt)
     option.assign(block)
@@ -113,7 +114,7 @@ def eval_assign_fn_args(lhs: list[Node], rhs: list[Node]) -> list[Record]:
         return_statement = Statement([Token('return')] + rhs)  # noqa
         block = Block([return_statement])
     fn, patt, dot_option = read_option(lhs)
-    return [fn, patt, FuncBlock(block), dot_option]
+    return [fn, patt, CodeBlock(block), dot_option]
 Op[':'].eval_args = eval_assign_fn_args
 
 Operator(':=', binop=2, associativity='right')
@@ -132,7 +133,7 @@ Op[':='].eval_args = eval_alias_args
 
 def null_assign(key: PyValue, val: Record):
     try:
-        initial = Context.env.deref(key.value)
+        initial = Context.deref(key.value)
         if initial.value is not None:
             return initial
     # WARNING: if the initial value calls a function in it's dereference, and that function contains
@@ -233,8 +234,38 @@ Operator('~',
 Operator('!~',
          Function({AnyBinopPattern: lambda a, b: py_value(not patternize(b).match_score(a))}),
          binop=9, chainable=False)
+# def union_patterns(*values_or_patterns: Record):
+#     patts = map(patternize, values_or_patterns)
+#     params = (param for patt in patts for param in patt.try_get_params())
+#     try:
+#         matchers = (m for p in params for m in p.try_get_matchers())
+#         return Pattern(Parameter(Union(*matchers)))
+#     except TypeError:
+#         return Pattern(UnionParam(*params))
+def union_patterns(*values_or_patterns: Record):
+    patterns = map(patternize, values_or_patterns)
+    params = []
+    for patt in patterns:
+        if len(patt.parameters) != 1:
+            raise TypeErr(f"Line {Context.line}: Cannot get union of patterns with multiple parameters.")
+        param = patt.parameters[0]
+        if isinstance(param, UnionParam):
+            params.extend(param.parameters)
+        else:
+            params.append(param)
+    matchers = []
+    for param in params:
+        if param.quantifier or param.name is not None:
+            return Pattern(UnionParam(*params))
+        if isinstance(param.matcher, Union):
+            matchers.extend(param.matcher.matchers)
+        else:
+            matchers.append(param.matcher)
+    return Pattern(Parameter(Union(*matchers)))
+
+
 Operator('|',
-         Function({AnyBinopPattern: lambda a, b: Union(patternize(a), patternize(b))}),
+         Function({AnyBinopPattern: union_patterns}),
          binop=10)
 Operator('<',
          Function({NormalBinopPattern: lambda a, b: py_value(a.value < b.value)}),
@@ -338,7 +369,7 @@ def eval_call_args(lhs: list[Node], rhs: list[Node]) -> list[Record]:
         try:
             fn = a.deref(name, ascend_env=False)
         except NoMatchingOptionError:
-            fn = Context.env.deref(name)
+            fn = Context.deref(name)
             args = piliize([a] + args.value)
     else:
         fn = expressionize(lhs).evaluate()
@@ -347,10 +378,11 @@ def dot_fn(a: Record, b: PyValue):
     match b.value:
         case str() as name:
             try:
-                return a.deref(name, ascend_env=False)
-            except NoMatchingOptionError:
+                # return a.deref(name, ascend_env=False)
+                return a.get(name)
+            except SlotErr as e:
                 pass
-            fn = Context.env.deref(name)
+            fn = Context.deref(name)
             # if not fn.instanceof(BuiltIns['fn']):
             #     raise OperatorError(f"Line {Context.line}: '{name}' is not an option or function.")
             # assert isinstance(fn.value, Record)
@@ -363,18 +395,18 @@ def dot_fn(a: Record, b: PyValue):
             return a.call(b)
     # raise OperatorError(f"Line {Context.line}: "
     #                     f"right-hand operand of dot operator should be string or list of arguments.  Found {b}.")
-def py_dot(a: PyValue, b: PyValue):
-    obj = a.value
+def py_dot(a: PyObj, b: PyValue):
+    obj = a.obj
     match b.value:
         case str() as name:
             return piliize(getattr(obj, name))
         case list() | tuple() as args:
-            return piliize(a.value(*[arg.value for arg in args]))
+            return piliize(a.obj(*[arg.value for arg in args]))
 Operator('.',
          Function({Pattern(AnyParam, ListParam): dot_fn,
                    AnyBinopPattern: dot_fn,
-                   StringParam: lambda a: Context.env.deref(a.value),
-                   ListParam: lambda ls: Context.env.call(ls.value, ascend=True),
+                   StringParam: lambda a: Context.deref(a.value),
+                   # ListParam: lambda ls: Context.env.call(ls.value, ascend=True),  # this is meant to execute options of self without the self keyword... I'll probably delte this
                    Pattern(Parameter(TableMatcher(BuiltIns['python_object'])),
                             Parameter(Union(TableMatcher(BuiltIns['str']), TableMatcher(BuiltIns['Table'])))):
                        py_dot}),
@@ -396,6 +428,7 @@ def make_lambda_guard(type_name: str):
         return lambda a, b: Pattern(Parameter(TableMatcher(BuiltIns[type_name], guard=lambda x: py_value(a.value <= len(x.value) <= b.value))))
     else:
         return lambda a, b: Pattern(Parameter(TableMatcher(BuiltIns[type_name], guard=lambda x: py_value(a.value <= x.value <= b.value))))
+
 
 for type_name in ('num', 'ratio', 'float', 'int', 'str'):
     if type_name == 'int':

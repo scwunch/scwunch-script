@@ -35,7 +35,7 @@
 # # score is out 7560, this number is 3*2520 (the smallest int divisible by all integers up to 10)
 # def match_score(val: Function, param: Parameter) -> int: ...
 #
-# Guard = Function | callable
+# Guard = Function | PyFunction
 #
 # class Pattern:
 #     """
@@ -173,19 +173,19 @@
 # class FuncBlock:
 #     exprs: list[Expression]
 #     env: Function
-#     native: callable
-#     def __init__(self, block: Block | FunctionLiteral | callable, env: Function = None): ...
+#     native: PyFunction
+#     def __init__(self, block: Block | FunctionLiteral | PyFunction, env: Function = None): ...
 #     def make_function(self, options: dict[Pattern, opt_resolution], type: Function, caller: Function = None) -> Function: ...
 #     def execute(self, args: list[Function] = None, scope: Function = None, dot_option: bool = False) -> Function: ...
 #
-# opt_resolution = Function | FuncBlock | callable | None
+# opt_resolution = Function | FuncBlock | PyFunction | None
 #
 # class Option:
 #     pattern: ListPatt
 #     resolution: opt_resolution
 #     value: Function
 #     block: FuncBlock
-#     fn: callable
+#     fn: PyFunction
 #     alias: Option
 #     dot_option: bool
 #     def __init__(self, pattern: ListPatt | Pattern | Parameter | str, resolution: opt_resolution = None): ...
@@ -247,7 +247,7 @@
 #     associativity: str
 #     fn: Function
 #     chainable: bool
-#     static: bool | callable
+#     static: bool | PyFunction
 #     def __init__(self, text, fn:Function=None, prefix:int=None, postfix:int=None, binop:int=None,
 #                  ternary:str=None, associativity='left', chainable:bool=False, static=False): ...
 #     def eval_args(self, lhs, rhs) -> list[Function]: ...

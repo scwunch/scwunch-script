@@ -381,7 +381,7 @@
 #         match resolution:
 #             case Function(): self.value = resolution
 #             case FuncBlock(): self.block = resolution
-#             case types.FunctionType(): self.fn = resolution
+#             case PyFunction(): self.fn = resolution
 #             case Option(): self.alias = resolution
 #             case _:
 #                 raise ValueError(f"Line {Context.line}: Could not assign resolution {resolution} to option {self}")

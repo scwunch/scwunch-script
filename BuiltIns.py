@@ -58,7 +58,7 @@ BuiltIns['python_object'] = ListTable()
 
 print("DONE ADDING BUILTIN TABLES.")
 
-BuiltIns['int'] = Slice(BuiltIns['ratio'], lambda n: n.value.denominator == 1)
+BuiltIns['int'] = FilterSlice(BuiltIns['ratio'], lambda n: n.value.denominator == 1)
 BuiltIns['num'] = Pattern(Parameter(Union(TableMatcher(BuiltIns['float']), TableMatcher(BuiltIns['ratio']))))
 
 
@@ -119,7 +119,7 @@ FloatParam = Parameter(TableMatcher(BuiltIns["float"]))
 RationalParam = Parameter(TableMatcher(BuiltIns["ratio"]))
 NumericParam = Parameter(BuiltIns["num"])
 StringParam = Parameter(TableMatcher(BuiltIns["str"]))
-NormalParam = Parameter(Union(BuiltIns["num"], TableMatcher(BuiltIns['str'])))
+NormalParam = Parameter(Union(TableMatcher(BuiltIns['bool']), TableMatcher(BuiltIns['ratio']), TableMatcher(BuiltIns['float']), TableMatcher(BuiltIns['str'])))
 ListParam = Param = Parameter(TableMatcher(BuiltIns["Table"]))
 # TypeParam = Parameter(TableMatcher(BuiltIns["Type"]))
 PatternParam = Parameter(TableMatcher(BuiltIns["Pattern"]))
@@ -134,14 +134,14 @@ PositiveIntParam = Parameter(TableMatcher(BuiltIns["int"], guard=lambda x: py_va
 NegativeIntParam = Parameter(TableMatcher(BuiltIns["int"], guard=lambda x: py_value(x.value < 0)))
 NonZeroIntParam = Parameter(TableMatcher(BuiltIns["int"], guard=lambda x: py_value(x.value != 0)))
 OneIndexList = Parameter(TableMatcher(BuiltIns['Table'],
-                                    guard=lambda x: py_value(len(x.value) == 1 and
-                                                             NonZeroIntParam.match_score(x.value[0]))))
+                                      guard=lambda x: py_value(len(x.value) == 1 and
+                                                               NonZeroIntParam.match_score(x.value[0]))))
 bases = {'b': 2, 't': 3, 'q': 4, 'p': 5, 'h': 6, 's': 7, 'o': 8, 'n': 9, 'd': 10}
 def setting_set(prop: PyValue, val: PyValue):
     prop = prop.value
     val = val.value
     if prop == 'base' and isinstance(val, str):
-        if not val in bases:
+        if val not in bases:
             raise ValueError('Invalid setting for base.  See manual for available settings.')
         val = bases[val[0]]
     Context.settings[prop] = val
@@ -194,8 +194,10 @@ BuiltIns['integer'] = Function({Pattern(NormalParam): lambda x: py_value(int(Bui
 BuiltIns['rational'] = Function({Pattern(NormalParam): lambda x: py_value(Fraction(BuiltIns['number'].call([x]).value))},
                                 name='rational')
 # BuiltIns['float'] = Function({Pattern(NormalParam), lambda x: py_value(float(BuiltIns['number'].call([x]).value)))
-BuiltIns['string'] = Function({Pattern(AnyParam): lambda x: x.to_string()}, name='string')
-BuiltIns['string'].add_option(Pattern(NumericParam, IntegralParam), lambda n, b: py_value(write_number(n.value, b.value)))
+BuiltIns['string'] = Function({Pattern(AnyParam): lambda x: x.to_string(),
+                              Pattern(NumericParam, IntegralParam):
+                                  lambda n, b: py_value(write_number(n.value, b.value))},
+                              name='string',)
 # BuiltIns['string'].add_option(Pattern(ListParam), lambda l: py_value(str(l.value[1:])))
 # BuiltIns['string'].add_option(Pattern(NumberParam),
 #                               lambda n: py_value('-' * (n.value < 0) +
@@ -356,3 +358,8 @@ def convert(name: str) -> Function:
 # BuiltIns['python'] = Function({Pattern(StringParam): lambda n: convert(n.value))
 BuiltIns['python'] = Function({StringParam: py_eval})  # lambda x: py_value(eval(x.value)))
 
+for k, v in BuiltIns.items():
+    match v:
+        case Table() | Function():
+            if v.name is None:
+                v.name = k

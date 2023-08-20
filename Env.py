@@ -27,15 +27,26 @@ class Context:
     @staticmethod
     def pop():
         Context._env.pop()
-        if Context._env:
-            Context.env = Context._env[-1]
-        else:
-            Context.env = BuiltIns['pili']
+        Context.env = Context._env[-1]
+        # if Context._env:
+        #     Context.env = Context._env[-1]
+        # else:
+        #     Context.env = None  # BuiltIns['pili']
         Context.line = Context.trace.pop().line
 
     @staticmethod
     def get_trace():
         return "\n".join(str(ct) for ct in Context.trace)
+
+    @staticmethod
+    def deref(name: str):
+        scope = Context.env
+        while scope:
+            try:
+                return scope.names[name]
+            except KeyError:
+                scope = scope.scope
+        raise MissingNameErr(f"Line {Context.line}: Cannot find name '{name}' in current scope.")
 
 class Call:
     def __init__(self, line, fn, option=None):
@@ -53,11 +64,17 @@ class RuntimeErr(Exception):
         return f"\n\nContext.Trace:\n{Context.get_trace()}\n> {super().__str__()}"
 class SyntaxErr(Exception):
     pass
-class NoMatchingOptionError(RuntimeErr):
+class KeyErr(RuntimeErr):
+    pass
+class NoMatchingOptionError(KeyErr):
+    pass
+class MissingNameErr(KeyErr):
     pass
 class OperatorError(SyntaxErr):
     pass
 class TypeErr(RuntimeErr):
+    pass
+class SlotErr(TypeErr):
     pass
 
 

@@ -106,8 +106,8 @@ class Mathological(Expression):
 class ExprWithBlock(Expression):
     block_index: int
     header: list[Node]
-    block: FuncBlock
-    alt: list[Node] | FuncBlock
+    block: CodeBlock
+    alt: list[Node] | CodeBlock
     def __init__(self, nodes: list[Node], line: int | None, source: str):
         super().__init__(line, source)
         for i, node in enumerate(nodes):
@@ -117,7 +117,7 @@ class ExprWithBlock(Expression):
                                     f"Pili does not use colons for control blocks like if and for.")
                 self.block_index = i
                 self.header = nodes[:i]
-                self.block = FuncBlock(node)
+                self.block = CodeBlock(node)
                 if i+1 == len(nodes):
                     self.alt = []
                     break
@@ -126,7 +126,7 @@ class ExprWithBlock(Expression):
 
                 node = nodes[i+2]
                 if isinstance(node, Block):
-                    self.alt = FuncBlock(node)
+                    self.alt = CodeBlock(node)
                 elif node.source_text == 'if':
                     self.alt = nodes[i+2:]
                 elif node.source_text == ':':
@@ -141,19 +141,19 @@ class ExprWithBlock(Expression):
 
 class Conditional(ExprWithBlock):
     condition: Expression
-    consequent: FuncBlock
-    alt: list[Node] | FuncBlock
+    consequent: CodeBlock
+    alt: list[Node] | CodeBlock
     def __init__(self, nodes: list[Node], line: int | None, source: str):
         super().__init__(nodes, line, source)
         self.condition = expressionize(nodes[1:self.block_index])
-        self.consequent = FuncBlock(nodes[self.block_index])
+        self.consequent = CodeBlock(nodes[self.block_index])
 
     def evaluate(self):
         condition = self.condition.evaluate()
         condition = BuiltIns['bool'].call([condition]).value
         if condition:
             return self.consequent.execute()
-        elif isinstance(self.alt, FuncBlock):
+        elif isinstance(self.alt, CodeBlock):
             return self.alt.execute()
         else:
             return expressionize(self.alt).evaluate()
@@ -162,10 +162,10 @@ class Conditional(ExprWithBlock):
 class ForLoop(ExprWithBlock):
     var: list[Node]
     iterable: Expression
-    block: FuncBlock
+    block: CodeBlock
     def __init__(self, nodes: list[Node], line: int | None, source: str):
         super().__init__(nodes, line, source)
-        self.block = FuncBlock(nodes[self.block_index])
+        self.block = CodeBlock(nodes[self.block_index])
         for i, node in enumerate(nodes):
             if i == self.block_index:
                 raise SyntaxErr("For loop expression expected 'in' keyword.")
@@ -181,15 +181,20 @@ class ForLoop(ExprWithBlock):
         if len(self.var) == 1:
             var_node = self.var[0]
             if var_node.type == TokenType.Name:
-                var_val = py_value(var_node.source_text)
+                var_name = var_node.source_text
+                # var_val = py_value(var_node.source_text)
             else:
-                var_val = eval_node(var_node)
+                # var_val = eval_node(var_node)
+                raise NotImplementedError
         else:
-            var_val = expressionize(self.var).evaluate()
-        patt = patternize(var_val)
-        variable = Context.env.assign_option(patt, py_value(None))
+            raise NotImplementedError
+            # var_val = expressionize(self.var).evaluate()
+        # patt = patternize(var_val)
+        # variable = Context.env.assign_option(patt, py_value(None))
+        # variable = Option
         for val in iterator.value:
-            variable.assign(val)
+            # variable.assign(val)
+            Context.env.names[var_name] = val
             self.block.execute()
             if Context.break_loop:
                 Context.break_loop -= 1
@@ -204,11 +209,11 @@ class ForLoop(ExprWithBlock):
 
 class WhileLoop(ExprWithBlock):
     condition: Expression
-    block: FuncBlock
+    block: CodeBlock
     def __init__(self, nodes: list[Node], line: int | None, source: str):
         super().__init__(nodes, line, source)
         self.condition = expressionize(nodes[1:self.block_index])
-        self.block = FuncBlock(nodes[self.block_index])
+        self.block = CodeBlock(nodes[self.block_index])
 
     def evaluate(self):
         result = py_value(None)
@@ -277,13 +282,14 @@ class Command(Expression):
                 module_name, _, var_name = self.expr.source.partition(' as ')
                 a = importlib.import_module(module_name)
                 globals()[var_name or module_name] = a
-                Context.env.assign_option(var_name or module_name, py_value(a))
-                return py_value(a)
-            case 'inherit':
-                result = self.expr.evaluate()
-                types = result.value if result.instanceof(BuiltIns['tuple']) else (result,)
-                Context.env.mro += types
-                return py_value(Context.env.mro)
+                # Context.env.assign_option(var_name or module_name, piliize(a))
+                Context.env.names[var_name or module_name] = piliize(a)
+                return piliize(a)
+            # case 'inherit':
+            #     result = self.expr.evaluate()
+            #     types = result.value if result.instanceof(BuiltIns['tuple']) else (result,)
+            #     Context.env.mro += types
+            #     return py_value(Context.env.mro)
             case 'label':
                 Context.env.name = BuiltIns['string'].call([self.expr.evaluate()]).value
             case _:
@@ -317,10 +323,11 @@ def eval_node(node: Node) -> Record:
         case Token() as tok:
             return eval_token(tok)
         case Block() | FunctionLiteral() as block:
-            opt = Option(Pattern(), FuncBlock(block))
-            return opt.resolve([])
+            return CodeBlock(block).execute(())
+            # opt = Option(Pattern(), CodeBlock(block))
+            # return opt.resolve(())
         case List(nodes=nodes):
-            return py_value(list(map(eval_node, nodes)))
+            return piliize(list(map(eval_node, nodes)))
         case StringNode(nodes=nodes):
             return py_value(''.join(map(eval_string_part, nodes)))
     raise ValueError(f'Could not evaluate node {node} at line: {node.pos}')
@@ -356,7 +363,7 @@ def eval_token(tok: Token) -> Record:
         case TokenType.StringLiteral:
             return py_value(s.strip("`"))
         case TokenType.Name:
-            return Context.env.deref(s)
+            return Context.deref(s)
         case _:
             raise Exception("Could not evaluate token", tok)
 
@@ -387,8 +394,13 @@ def eval_string(text: str):
 
 
 def is_iterable(val: Record):
-    if hasattr(val, 'value') and type(val.value) in (list, tuple):
-        return True
+    match val:
+        case PyValue(value=tuple() | frozenset() | str()):
+            return True
+        case VirtTable():
+            return False
+        case Table():
+            return True
     return False
 
 
@@ -439,8 +451,10 @@ def make_param(param_nodes: list[Node]) -> Parameter:
     except NoMatchingOptionError as e:
         print(f"Line {Context.line}: Warning: did you try to assign a bare function name without defining a type?")
         raise e
-    pattern = patternize(expr_val)
-    return Parameter(pattern, name, quantifier)
+    param = patternize(expr_val).parameters[0]
+    param.name = name
+    param.quantifier = quantifier
+    return param
 
 
 def split(nodes: list[Node], splitter: TokenType) -> list[list[Node]]:
@@ -480,11 +494,11 @@ def read_option_OLD(nodes: list[Node], is_value=False) -> Option:
         try:
             if len(fn_nodes) == 1:
                 name = fn_nodes[0].source_text
-                fn_val = Context.env.deref(name, False)
+                fn_val = Context.deref(name, False)
             else:
                 fn_val = expressionize(fn_nodes).evaluate()
                 if fn_val.type is BuiltIns['str']:
-                    fn_val = Context.env.deref(fn_val.value)
+                    fn_val = Context.deref(fn_val.value)
         except NoMatchingOptionError:
             if dot_option:
                 # raise NoMatchingOptionError(f"Line {Context.line}: "
@@ -614,9 +628,9 @@ def read_option(nodes: list[Node]) -> tuple[Function, Pattern, bool]:
     return fn, patt, dot_option
 
 
-    option = fn.select_by_pattern(patt, ascend_env=ascend) or fn.add_option(patt)
-    option.dot_option = dot_option
-    return option
+    # option = fn.select_by_pattern(patt, ascend_env=ascend) or fn.add_option(patt)
+    # option.dot_option = dot_option
+    # return option
 
 
 if __name__ == "__main__":
