@@ -268,10 +268,10 @@ class AST:
                             (TokenType.Name, TokenType.GroupEnd, TokenType.ListEnd, TokenType.FnEnd):
                         nodes.append(Token('.', self.tok.pos))
                     self.seek()
-                    nodes.append(List(self.read_list(TokenType.ListEnd)))
+                    nodes.append(ListNode(self.read_list(TokenType.ListEnd), ListType.List))
                 case TokenType.FnStart:
                     self.seek()
-                    nodes.append(FunctionLiteral(self.read_list(TokenType.FnEnd)))
+                    nodes.append(ListNode(self.read_list(TokenType.FnEnd), ListType.Function))
                 case TokenType.StringStart:
                     nodes.append(self.read_string())
                 case TokenType.Comma:

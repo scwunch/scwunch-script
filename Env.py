@@ -10,7 +10,7 @@ class Context:
     trace = []
     break_loop = 0
     continue_ = 0
-    settings = {'base': 10}
+    settings = {'base': 10, 'sort_options': True}
 
     @staticmethod
     def push(line, env, option=None):
@@ -39,13 +39,15 @@ class Context:
         return "\n".join(str(ct) for ct in Context.trace)
 
     @staticmethod
-    def deref(name: str):
+    def deref(name: str, *default):
         scope = Context.env
         while scope:
             try:
                 return scope.names[name]
             except KeyError:
                 scope = scope.scope
+        if default:
+            return default[0]
         raise MissingNameErr(f"Line {Context.line}: Cannot find name '{name}' in current scope.")
 
 class Call:

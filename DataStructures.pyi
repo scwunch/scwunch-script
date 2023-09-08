@@ -17,7 +17,7 @@
 #     def clone(self) -> Value: ...
 #
 # class Parameter:
-#     inverse: bool = False
+#     invert: bool = False
 #     pattern: Pattern
 #     name: str | None
 #     quantifier: str   #  "+" | "*" | "?" | ""
@@ -28,7 +28,7 @@
 #                  pattern: Pattern | Function | str | int,
 #                  name: str = None,
 #                  quantifier: str = "",
-#                  inverse = False): ...
+#                  invert = False): ...
 #     def specificity(self) -> int: ...
 #     def match_score(self, value: Function) -> int | float: ...
 #

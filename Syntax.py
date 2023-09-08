@@ -53,7 +53,12 @@ class Commands(Enum):
     Import = 'import'
     Inherit = 'inherit'
     Label = 'label'
-
+    Table = 'table'
+    # Slice = 'slice'
+    Trait = 'trait'
+    Slot = 'slot'
+    Formula = 'formula'
+    Setter = 'setter'
 
 class OptionType(Enum):
     Function = ":"
@@ -125,21 +130,12 @@ def match_pattern_type_mapper(item: str) -> MatchPatternType:
 
 
 class Node:
-    """
-    Constituent parts of statement
-    One of: Token, List, Statement, Block
-    """
     pos: tuple[int, int]
     type = TokenType.Unknown
     source_text: str
 
 
 class Token(Node):
-    """
-    source: str
-    type: TokenType
-    """
-
     def __init__(self, text: str, pos: tuple[int, int] = (-1, -1), type: TokenType = None):
         self.pos = pos[0], pos[1]
         self.type = type
@@ -174,6 +170,7 @@ class Token(Node):
 
 
 class NonTerminal(Node):
+    nodes: list[Node]
     def __init__(self, nodes: list[Node]):
         self.nodes = nodes
         for n in nodes:
@@ -182,24 +179,17 @@ class NonTerminal(Node):
                 break
         else:
             self.pos = (-1, -1)
-        self.source_text = ' '.join(n.source_text for n in nodes)
+
+    @property
+    def source_text(self):
+        return ' '.join(n.source_text for n in self.nodes)
 
 
 class StringNode(NonTerminal):
     def __repr__(self):
-        return ''.join(map(repr,self.nodes))
+        return ''.join(map(repr, self.nodes))
 
 class Statement(NonTerminal):
-    """
-    The parts that make up a block, executed in order
-    Consists of:
-    - Expressions
-    - Blocks
-    - match-statements
-    """
-    # nodes: list[MatchSet | _Expression | Block]
-    nodes: list[Node]
-
     def __init__(self, nodes: list[Node]):
         super().__init__(nodes)
 
@@ -227,26 +217,36 @@ class Block(NonTerminal):
             return f"[{len(self.statements)} statements]"
 
 
-class List(NonTerminal):
+class ListType(Enum):
+    List = '[list]'
+    Tuple = '(tuple)'
+    Function = "{function}"
+    Args = '[args]'
+    Params = '[params]'
+
+class ListNode(NonTerminal):
     """
-    [parameter set, or arg set]
+    [list], (tuple), {function}, or argument-tuple
     """
-    nodes: list[Statement]
-    def __init__(self, items: list[Statement]):
+    items: list[Statement]
+    list_type: ListType
+    def __init__(self, items: list[Statement], list_type: ListType):
+        self.items = items
+        self.list_type = list_type
         super().__init__(items)
 
     def __repr__(self):
         return repr(self.nodes)  # f"[{', '.join(repr(node) for node in self.nodes)}]"
 
 
-class FunctionLiteral(NonTerminal):
-    statements: list[Statement]
-    def __init__(self, items: list[Statement]):
-        super().__init__(items)
-        self.statements = items
-
-    def __repr__(self):
-        return f"{{{' '.join(map(repr, self.statements))}}}"
+# class FunctionLiteral(NonTerminal):
+#     statements: list[Statement]
+#     def __init__(self, items: list[Statement]):
+#         super().__init__(items)
+#         self.statements = items
+#
+#     def __repr__(self):
+#         return f"{{{' '.join(map(repr, self.statements))}}}"
 
 
 if __name__ == "__main__":

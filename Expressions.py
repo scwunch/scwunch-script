@@ -5,7 +5,7 @@ from tables import *
 from Env import *
 
 
-def expressionize(nodes: list[Node] | Statement):
+def expressionize_OLD(nodes: list[Node] | Statement):
     if isinstance(nodes, Statement):
         line = nodes.pos[0]
         src = nodes.source_text
@@ -31,6 +31,34 @@ def expressionize(nodes: list[Node] | Statement):
 
     return Mathological(nodes, line, src)
 
+def expressionize(nodes: list[Node] | Statement):
+    if isinstance(nodes, Statement):
+        line = nodes.pos[0]
+        src = nodes.source_text
+        nodes = nodes.nodes
+    else:
+        line = None
+        src = " ".join(n.source_text for n in nodes)
+
+    match nodes:
+        case []:
+            return EmptyExpr()
+        case [Token(type=TokenType.Command, source_text=key_word), *other_nodes]:
+            return expressions.get(key_word, Command)(key_word, other_nodes, line, src)
+            # return Command(cmd, other_nodes, line, src)
+        case [node]:
+            return SingleNode(node, line, src)
+        case [Token(type=TokenType.Keyword, source_text=key_word), *_]:
+            return expressions[key_word](key_word, nodes, line, src)
+            # match word:
+            #     case 'if':
+            #         return Conditional(nodes, line, src)
+            #     case 'for':
+            #         return ForLoop(nodes, line, src)
+            #     case 'while':
+            #         return WhileLoop(nodes, line, src)
+        case _:
+            return Mathological(nodes, line, src)
 
 Context.make_expr = expressionize
 
@@ -100,44 +128,64 @@ class Mathological(Expression):
         # if self.op.static:
         #     return self.op.static(self.lhs, self.rhs)
         args = self.op.eval_args(self.lhs, self.rhs)
-        return self.op.fn.call(args)
+        return self.op.fn.call(*args)
 
 
 class ExprWithBlock(Expression):
-    block_index: int
     header: list[Node]
-    block: CodeBlock
+    block: Block
     alt: list[Node] | CodeBlock
+    # def __init__OLD(self, nodes: list[Node], line: int | None, source: str):
+    #     super().__init__(line, source)
+    #     for i, node in enumerate(nodes):
+    #         if isinstance(node, Block):
+    #             if nodes[i-1].source_text == ':':
+    #                 raise SyntaxErr(f"Line ({self.line}): "
+    #                                 f"Pili does not use colons for control blocks like if and for.")
+    #             self.block_index = i
+    #             self.header = nodes[:i]
+    #             self.block = Block(node)
+    #             if i+1 == len(nodes):
+    #                 self.alt = []
+    #                 break
+    #             if not (nodes[i + 1].source_text == 'else' and i+2 < len(nodes)):
+    #                 raise SyntaxErr(f"Line {nodes[i+1].pos[0]}: Expected else followed by block.  Got {nodes[i+1]}")
+    #
+    #             node = nodes[i+2]
+    #             if isinstance(node, Block):
+    #                 self.alt = CodeBlock(node)
+    #             elif node.source_text == 'if':
+    #                 self.alt = nodes[i+2:]
+    #             elif node.source_text == ':':
+    #                 raise SyntaxErr(f"Line ({node.pos[0]}): "
+    #                                 f"Pili does not use colons for control blocks like if and for.")
+    #             else:
+    #                 raise SyntaxErr(f"Line {node.pos[0]}: "
+    #                                 f"Expected 'else' block or 'else if' after if block.  Got \n\t{nodes[i+1:]}")
+    #             break
+    #     else:
+    #         raise SyntaxErr(f"Line {self.line}: no block found after {nodes[0].source_text} statement.")
+
     def __init__(self, nodes: list[Node], line: int | None, source: str):
         super().__init__(line, source)
-        for i, node in enumerate(nodes):
-            if isinstance(node, Block):
-                if nodes[i-1].source_text == ':':
-                    raise SyntaxErr(f"Line ({self.line}): "
-                                    f"Pili does not use colons for control blocks like if and for.")
-                self.block_index = i
-                self.header = nodes[:i]
-                self.block = CodeBlock(node)
-                if i+1 == len(nodes):
-                    self.alt = []
-                    break
-                if not (nodes[i + 1].source_text == 'else' and i+2 < len(nodes)):
-                    raise SyntaxErr(f"Line {nodes[i+1].pos[0]}: Expected else followed by block.  Got {nodes[i+1]}")
+        try:
+            i = next(i for i, node in enumerate(nodes) if isinstance(node, Block))
+        except StopIteration:
+            raise SyntaxErr(f"Line {self.line}: missing block after {nodes[0].source_text} statement.")
+        if nodes[i - 1].source_text == ':':
+            raise SyntaxErr(f"Line ({self.line}): "
+                            f"Pili does not use colons for control blocks like if and for.")
+        self.header = nodes[1:i]
+        self.block = nodes[i]  # noqa  nodes[i]: Block
+        match nodes[i+1:]:
+            case []:
+                self.alt = []
+            case [Token(source_text='else'), *other_nodes]:
+                self.alt = other_nodes
+            case _:
+                raise SyntaxErr(f"Line {nodes[i+1].pos[0]}: "
+                                f"Expected else followed by statement or block.  Got {nodes[i+1:]}")
 
-                node = nodes[i+2]
-                if isinstance(node, Block):
-                    self.alt = CodeBlock(node)
-                elif node.source_text == 'if':
-                    self.alt = nodes[i+2:]
-                elif node.source_text == ':':
-                    raise SyntaxErr(f"Line ({node.pos[0]}): "
-                                    f"Pili does not use colons for control blocks like if and for.")
-                else:
-                    raise SyntaxErr(f"Line {node.pos[0]}: "
-                                    f"Expected 'else' block or 'else if' after if block.  Got \n\t{nodes[i+1:]}")
-                break
-        else:
-            raise SyntaxErr(f"Line {self.line}: no block found after {nodes[0].source_text} statement.")
 
 class Conditional(ExprWithBlock):
     condition: Expression
@@ -145,12 +193,12 @@ class Conditional(ExprWithBlock):
     alt: list[Node] | CodeBlock
     def __init__(self, nodes: list[Node], line: int | None, source: str):
         super().__init__(nodes, line, source)
-        self.condition = expressionize(nodes[1:self.block_index])
-        self.consequent = CodeBlock(nodes[self.block_index])
+        self.condition = expressionize(self.header)
+        self.consequent = CodeBlock(self.block)
 
     def evaluate(self):
         condition = self.condition.evaluate()
-        condition = BuiltIns['bool'].call([condition]).value
+        condition = BuiltIns['bool'].call(condition).value
         if condition:
             return self.consequent.execute()
         elif isinstance(self.alt, CodeBlock):
@@ -165,14 +213,14 @@ class ForLoop(ExprWithBlock):
     block: CodeBlock
     def __init__(self, nodes: list[Node], line: int | None, source: str):
         super().__init__(nodes, line, source)
-        self.block = CodeBlock(nodes[self.block_index])
-        for i, node in enumerate(nodes):
-            if i == self.block_index:
-                raise SyntaxErr("For loop expression expected 'in' keyword.")
+        self.block = CodeBlock(self.block)
+        for i, node in enumerate(self.header):
             if node.source_text == 'in':
-                self.var = nodes[1:i]
-                self.iterable = expressionize(nodes[i+1:self.block_index])
+                self.var = self.header[:i]
+                self.iterable = expressionize(self.header[i+1:])
                 break
+        else:
+            raise SyntaxErr(f"Line {self.line}: For loop expression expected 'in' keyword.")
 
     def evaluate(self):
         iterator = self.iterable.evaluate()
@@ -212,8 +260,8 @@ class WhileLoop(ExprWithBlock):
     block: CodeBlock
     def __init__(self, nodes: list[Node], line: int | None, source: str):
         super().__init__(nodes, line, source)
-        self.condition = expressionize(nodes[1:self.block_index])
-        self.block = CodeBlock(nodes[self.block_index])
+        self.condition = expressionize(self.header)
+        self.block = CodeBlock(self.block)
 
     def evaluate(self):
         result = py_value(None)
@@ -222,7 +270,7 @@ class WhileLoop(ExprWithBlock):
                 Context.break_loop -= 1
                 return py_value(None)
             condition_value = self.condition.evaluate()
-            if BuiltIns['bool'].call([condition_value]).value:
+            if BuiltIns['bool'].call(condition_value).value:
                 result = self.block.execute()
             else:
                 return result
@@ -253,8 +301,8 @@ class Command(Expression):
                 Context.env.return_value = result
                 return result
             case 'print':
-                # print('!@>', BuiltIns['string'].call([self.expr.evaluate()]).value)
-                print(BuiltIns['string'].call([self.expr.evaluate()]).value)
+                # print('!@>', BuiltIns['string'].call(self.expr.evaluate()).value)
+                print(BuiltIns['string'].call(self.expr.evaluate()).value)
                 return py_value(None)
             case 'break':
                 result = self.expr.evaluate()
@@ -291,14 +339,34 @@ class Command(Expression):
             #     Context.env.mro += types
             #     return py_value(Context.env.mro)
             case 'label':
-                Context.env.name = BuiltIns['string'].call([self.expr.evaluate()]).value
+                Context.env.name = BuiltIns['string'].call(self.expr.evaluate()).value
             case _:
                 raise SyntaxErr(f"Line {Context.line}: Unhandled command {self.command}")
 
-def piliize(pyval):
-    if isinstance(pyval, list) or isinstance(pyval, tuple):
-        pyval = type(pyval)(py_value(v) for v in pyval)
-    return py_value(pyval)
+class TraitExpr(Command):
+    pass
+
+class TableExpr(Command):
+    pass
+
+class SlotExpr(Command):
+    pass
+
+class FormulaExpr(Command):
+    pass
+
+class SetterExpr(Command):
+    pass
+
+def piliize(val):
+    if isinstance(val, list | tuple):
+        # gen = (py_value(v) for v in val)
+        records = map(py_value, val)
+        if isinstance(val, tuple):
+            return py_value(tuple(records))
+        if isinstance(val, list):
+            return List(records)
+    return py_value(val)
 
 def py_eval(code):
     return piliize(eval(code.value))
@@ -316,18 +384,30 @@ class SingleNode(Expression):
     def evaluate(self):
         return eval_node(self.node)
 
+
+expressions = {
+    'if': Conditional,
+    'for': ForLoop,
+    'while': WhileLoop,
+    'trait': TraitExpr,
+    'table': TableExpr,
+    'slot': SlotExpr,
+    'formula': FormulaExpr,
+    'setter': SetterExpr
+}
+
 def eval_node(node: Node) -> Record:
     match node:
         case Statement() as statement:
             return expressionize(statement).evaluate()
         case Token() as tok:
             return eval_token(tok)
-        case Block() | FunctionLiteral() as block:
+        case Block() | ListNode(list_type=ListType.Function) as block:
             return CodeBlock(block).execute(())
             # opt = Option(Pattern(), CodeBlock(block))
             # return opt.resolve(())
-        case List(nodes=nodes):
-            return piliize(list(map(eval_node, nodes)))
+        case ListNode(nodes=nodes):
+            return List(list(map(eval_node, nodes)))
         case StringNode(nodes=nodes):
             return py_value(''.join(map(eval_string_part, nodes)))
     raise ValueError(f'Could not evaluate node {node} at line: {node.pos}')
@@ -336,7 +416,7 @@ def eval_string_part(node: Node) -> str:
     if node.type == TokenType.StringPart:
         return eval_string(node.source_text)
     if isinstance(node, Statement):
-        return BuiltIns['string'].call([expressionize(node).evaluate()]).value
+        return BuiltIns['string'].call(expressionize(node).evaluate()).value
     raise ValueError('invalid string part')
 
 
@@ -473,15 +553,15 @@ def read_option_OLD(nodes: list[Node], is_value=False) -> Option:
     dot_option = nodes[0].source_text == '.'
     match nodes:
         # .[].[]
-        case[Token(source_text='.'), List() as opt, Token(source_text='.'), List() as param_list]:
+        case[Token(source_text='.'), ListNode() as opt, Token(source_text='.'), ListNode() as param_list]:
             fn_nodes = [Token('pili'), Token('.'), opt]
             param_list = [item.nodes for item in param_list.nodes]
         # .fn_nodes.[]
-        case [Token(source_text='.'), *fn_nodes, Token(source_text='.'), List() as param_list]:
+        case [Token(source_text='.'), *fn_nodes, Token(source_text='.'), ListNode() as param_list]:
             param_list = [item.nodes for item in param_list.nodes]
         case [Token(source_text='.'), *fn_nodes]:
             param_list = []
-        case [*fn_nodes, List() as param_list]:
+        case [*fn_nodes, ListNode() as param_list]:
             if fn_nodes and fn_nodes[-1].source_text == '.':
                 fn_nodes.pop()
             param_list = [item.nodes for item in param_list.nodes]
@@ -539,15 +619,15 @@ def read_option_OLD(nodes: list[Node], is_value=False) -> Option:
     option.dot_option = dot_option
     return option
 
-def read_option(nodes: list[Node]) -> tuple[Function, Pattern, bool]:
+def read_option2(nodes: list[Node]) -> tuple[Function, Pattern, bool]:
     nodes = nodes[:]
     dot_option = nodes[0].source_text == '.'
     if dot_option:
-        if len(nodes) > 2 and not isinstance(nodes[1], List):
+        if len(nodes) > 2 and not isinstance(nodes[1], ListNode):
             nodes.pop(0)
-        if not isinstance(nodes[-1], List):
+        if not isinstance(nodes[-1], ListNode):
             nodes.append(Token('.'))
-            nodes.append(List([]))
+            nodes.append(ListNode([]))
     # if len(nodes) > 1 and nodes[-2].source_text != '.':
     #     option_node = List([Statement(nodes)])
     #     nodes = []
@@ -558,10 +638,10 @@ def read_option(nodes: list[Node]) -> tuple[Function, Pattern, bool]:
         penultimate = nodes.pop()
         if penultimate.source_text != '.':
             # read the whole lhs as a single parameter
-            option_node = List([Statement([*nodes, penultimate, option_node])])
+            option_node = ListNode([Statement([*nodes, penultimate, option_node])])
             nodes = []
     match option_node:
-        case List(nodes=param_list):
+        case ListNode(nodes=param_list):
             param_list = [item.nodes for item in param_list]
         case Token(type=TokenType.Name) as name_tok:
             param_list = [[name_tok]]
@@ -628,9 +708,59 @@ def read_option(nodes: list[Node]) -> tuple[Function, Pattern, bool]:
     return fn, patt, dot_option
 
 
-    # option = fn.select_by_pattern(patt, ascend_env=ascend) or fn.add_option(patt)
-    # option.dot_option = dot_option
-    # return option
+def read_option(nodes: list[Node]) -> tuple[Function, Pattern, bool]:
+    nodes = nodes[:]
+    dot_option = nodes[0].source_text == '.'
+    if dot_option:
+        if len(nodes) > 2 and not isinstance(nodes[1], ListNode):
+            # why don't we unconditionally pop the dot?
+            nodes.pop(0)
+        if not isinstance(nodes[-1], ListNode):
+            # append implicit empty-param-set after dot-option
+            nodes.append(Token('.'))
+            nodes.append(ListNode([], ListType.Params))
+
+    option_node = nodes.pop()
+    if len(nodes):
+        penultimate = nodes.pop()
+        if penultimate.source_text != '.':
+            # read the whole lhs as a single parameter
+            option_node = ListNode([Statement([*nodes, penultimate, option_node])], ListType.Params)
+            nodes = []
+
+    param_list: list[list[Node]]
+    match option_node:
+        case ListNode(nodes=param_list_nodes):
+            param_list = [item.nodes for item in param_list_nodes]
+        case Token(type=TokenType.Name) as name_tok:
+            # not sure if I want to allow this anymore
+            param_list = [[name_tok]]
+        case _:
+            # raise SyntaxErr(f"Line {Context.line}: Cannot read option {option_node}")
+            param_list = [[option_node]]
+
+    # at this point, we should have three options: nodes is empty, nodes is one name, or nodes is an expression
+    # which should evaluate to the function where we assign the option
+    match nodes:
+        case []:
+            context_fn: Function = Context.function
+        case [Token(type=TokenType.Name, source_text=name)]:
+            context_fn = Context.deref(name, None)
+            if context_fn is None:
+                context_fn = Function(name=name)
+                if dot_option:
+                    Context.root.names[name] = context_fn
+                else:
+                    Context.env.names[name] = context_fn
+        case _:
+            context_fn = expressionize(nodes).evaluate()
+
+    params = map(make_param, param_list)
+    if dot_option:
+        patt = Pattern(Parameter(TableMatcher(Context.function)), *params)
+    else:
+        patt = Pattern(*params)
+    return context_fn, patt, dot_option
 
 
 if __name__ == "__main__":

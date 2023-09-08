@@ -24,6 +24,7 @@ CAN = 'can'
 print 'Can you nest string interpolation? {'Yes, you {CAN}' if 1 == 1 else 'nope'}'
 print ''
 
+settings.set['base', 'h']
 # pili fluidly and automatically converts between booleans, integers, and rational numbers,
 # depending on what operators are applied to them
 # floats only appear if a function explicitly returns a float (like the float function) or float literals
@@ -35,16 +36,17 @@ print "10/4 * 2 = {my_ratio*2} (type: {type[my_ratio*2]})"
 my_float = 0.55400
 print my_float
 
-# by the way, all numbers in pili are heximal (base-six).  To input decimal numbers, use a 'd' suffix.  To output decimal numbers, convert using the string function
+# by the way, all numbers in pili used to be heximal (base-six).  To input decimal numbers, use a 'd' suffix.  To output decimal numbers, convert using the string function
 print '9d = {9d}'
 print 'string[20, 10d] = {string[20, 10d]}'
 print ''
 
 # the default base is stored in the pili.settings module
-print "current base: " + pili.settings.get['base']
+print "current base: " + settings.get['base']
 print "the base is a letter representing (from binary to decimal): 'btqphsond'"
+# ... but then it was decided that heximal was too wierd, and so we switched back to decimal
 # set the default base like this:
-pili.settings.set['base', 'd']
+settings.set['base', 'd']
 print 9
 print ''
 
@@ -72,18 +74,20 @@ print "greeting['Bob'] -> " + greeting['Bob']
 print "greeting['Bob', 3] -> " + greeting['Bob', 3]
 
 
-# patterns can get pretty complicated if you need them to.  And parameters can have quantifers like regex
-greeting[str name, int<0 times]: "Goodbye {name}. " * -times
-greeting[str names+, int times?]:
+# patterns can get pretty sophisticated if you need them to.  And parameters can have quantifers like regex
+greeting[str name, int<0 times]:
+    return "Goodbye {name}. " * -times
+greeting[str names+]:
     greets = []
     for name in names
-        greets.push['Hi {name}']
+        push[greets, 'Hi {name}']
+        # greets.push['Hi {name}']
     if not has 'times'
         times = 1
     return greets.join[', '] * times
 
-print "greeting['Bob', -2] -> " + greeting['Bob', -2]
-print "greeting['Bob', 'Ryan'] -> " + greeting['Bob', 'Ryan']
+print "greeting['Fred', -2] -> " + greeting['Fred', -2]
+print "greeting['Larry', 'Matilda'] -> " + greeting['Larry', 'Matilda']
 print ''
 
 # You just saw the "has" operator above; it checks for the existence of an option (by name or pattern or by list of arguments)
@@ -139,11 +143,35 @@ print "my_list = {my_list = [-1, -2, 0 ,1 ,2]}"
 print "my_list..abs => {my_list..abs}"
 
 
+# Tables
+# table Animal
+#     species <str> = "human"
+#     alive <bool> = True
+#     _slices
+#     slices <set[Slice]>:
+#         filters = self.get_filter_slices
+#         return filters + self._slices
+#     [str species?] -> Animal:
+#         return Animal[species]
+#     .len:
+#         return len[slices]
+#
+#
+# slice Dog of Animal
+#     species <"dog"> = "dog"
+#     .bark:
+#         print "bowowow"
+
+
+
+
+print "\n\n**************************"
 # There are no classes in Pili, just prototypes.  Objects are called "Functions" and each function also acts as a prototype.
 # When a function lacks a return statement, it will return an "instance" of itself.
 # A newly created function has as it's prototype the function that was used to create it.
 # A function literal value has no prototype
 # There are two ways to create class-like inheritance
+
 
 Animal =
     []:
@@ -230,22 +258,120 @@ print closure_demo[]
 
 exit
 # the exit command is not necessary, but without it, the script will return the running function, which is awkwardly printed as root.main
+Animal =
+    []:
+        none
+    species = none
+    alive = "I'm alive."
+    make_sound: print self.sound
+    print_sound[]:
+        print self.sound
+
+table Animal :
+    slot species <str?>
+    slot alive <bool> = true
+    slot sound <str> = ""
+    formula make_sound <blank> :
+        print self.sound
 
 
-table Dog:
-    # slot field
-    slot name:
-        str
-        ""
-
-    # formula field
+table Dog @Animal :
+    slot name <str> = ""
     formula bark[]:
         print "Helo, my name is {self.name}!"
+
+    [str name, int length]:
+        return Dog.new[name, length]
+
+    .call =
+        [int n]:
+            return self.array[n]
+        [int i, int j]
+            return self.array[i, j]
+
+    .call[]:
+        return
+
+    .str[]:
+        return
+
+    .bool[]:
+        return
+
+    .'+'[]:
+        return
+
+    .'.'[]:
+        return
+
+    .module.add[]:
+        return
+
+    module.add[Dog d1, Dog d2]:
+        return
 
     # dot-option
     .eat[Food food]:
         del food
         self.full = True
+
+
+rover = Dog['Rover', 137]
+
+rover[3]
+
+rover.call[3]
+
+
+trait Details :
+    formula description <str>:
+        return "{self.title}, released in {self.release_year}, is a {self.genre} movie directed by {self.director}."
+    formula years_since_release <int>:
+        return 2020 - self.release_year
+
+table Movie @Details:
+    slot title str = ""
+    slot director str = ""
+    slot release_year <int>0>
+    slot genre <str>
+    [str title, str director, int release_year, str genre]:
+        return Movie.new[title, director, release_year, genre]
+
+    setter description[any val]:
+        self.genre = str[val]
+
+table TokenType
+    slot name str
+
+table TokenTypeEnum
+    slot Unkown TokenType = TokenType['?']
+    slot Operator TokenType = TokenType['op']
+
+TokenType = TokenTypeEnum[]
+
+
+trait Node :
+    slot pos tuple(int, int) = (-1, -1)
+    slot type TokenType = TokenType.Unknown
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

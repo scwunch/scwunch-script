@@ -3,27 +3,159 @@ from fractions import Fraction
 from Env import *
 from typing import TypeVar, Generic
 
-PyFunction = type(lambda : None)
+PyFunction = type(lambda: None)
 
 
-class FunctionRecordPrototype:
-    return_value = None
-    name: str = None
-    # mro = ()
-    env = None
-    caller = None  # self
-    block = None
-    return_type = None
-    is_null = True
-    options = None
-    hashed_options = None
-    def __init__(self):
-        # self.mro = (self, )
-        self.env = Context.env
-        if self.options is None:
-            self.options = []
-        if self.hashed_options is None:
-            self.hashed_options = {}
+# class FunctionRecordPrototype:
+#     return_value = None
+#     name: str = None
+#     # mro = ()
+#     env = None
+#     caller = None  # self
+#     block = None
+#     return_type = None
+#     is_null = True
+#     options = None
+#     hashed_options = None
+#     def __init__(self):
+#         # self.mro = (self, )
+#         self.env = Context.env
+#         if self.options is None:
+#             self.options = []
+#         if self.hashed_options is None:
+#             self.hashed_options = {}
+#
+#     def add_option(self, pattern, resolution=None):
+#         option = Option(pattern, resolution)
+#
+#         # try to hash option
+#         key: list[Record] = []
+#         for parameter in option.pattern.parameters:
+#             t = parameter.matcher
+#             if isinstance(t, ValueMatcher) and t.guard is None and not t.invert and t.value.hashable():
+#                 key.append(t.value)
+#             else:
+#                 self.options.insert(0, option)
+#                 break
+#         else:
+#             self.hashed_options[tuple(key)] = option
+#
+#         return option
+#
+#     def remove_option(self, pattern):
+#         opt = self.select_by_pattern(pattern)
+#         if opt is None:
+#             raise NoMatchingOptionError(f'cannot find option "{pattern}" to remove')
+#         opt.nullify()
+#
+#     def assign_option(self, pattern, resolution=None):
+#         opt = self.select_by_pattern(pattern)
+#         if opt is None:
+#             return self.add_option(pattern, resolution)
+#         opt.nullify()
+#         opt.assign(resolution)
+#         return opt
+#
+#     @property
+#     def mro(self):
+#         self: Record
+#         return self, *(s.prototype for s in self.slices), self.table.prototype
+#
+#     def select_and_bind(self, key: list, walk_prototype_chain=True, ascend_env=False):
+#         try:
+#             return self.hashed_options[tuple(key)], {}
+#         except (TypeError, KeyError):
+#             pass
+#         option = bindings = high_score = 0
+#         for opt in self.options:
+#             score, saves = opt.pattern.match_zip(key)
+#             if score == 1:
+#                 return opt, saves
+#             if score > high_score:
+#                 high_score = score
+#                 option, bindings = opt, saves
+#         if option:
+#             return option, bindings
+#         if walk_prototype_chain and self.mro:
+#             for t in self.mro[1:]:
+#                 try:
+#                     return t.select_and_bind(key, False, ascend_env)
+#                 except NoMatchingOptionError:
+#                     pass
+#         if ascend_env and self.env:
+#             try:
+#                 return self.env.select_and_bind(key, walk_prototype_chain, True)
+#             except NoMatchingOptionError:
+#                 pass
+#         raise NoMatchingOptionError(f"Line {Context.line}: key {key} not found in {self.name or self}")
+#         # -> tuple[Option, dict[str, Function]]:
+#
+#     def select_by_pattern(self, patt=None, default=None, ascend_env=False):
+#         # return [*[opt for opt in self.options if opt.pattern == patt], None][0]
+#         for opt in self.options:
+#             if opt.pattern == patt:
+#                 return opt
+#         if ascend_env and self.env:
+#             return self.env.select_by_pattern(patt, default)
+#         return default
+#
+#     def select_by_name(self, name: str, ascend_env=True):
+#         return self.select_by_value((py_value(name),), ascend_env)
+#
+#     def select_by_value(self, values, ascend_env=True):
+#         # try self first
+#         for fn in self.mro:
+#             try:
+#                 return fn.hashed_options[values]
+#             except KeyError:
+#                 continue
+#
+#         if ascend_env and self.env:
+#             try:
+#                 return self.env.select_by_value(values, True)
+#             except NoMatchingOptionError:
+#                 pass
+#         raise NoMatchingOptionError(f"Line {Context.line}: {values} not found in {self}")
+#
+#     def call(self, *key, ascend=False):
+#         if key and isinstance(key[0], list | tuple):
+#             pass
+#         try:
+#             option, bindings = self.select_and_bind(key, ascend_env=ascend)
+#         except NoMatchingOptionError as e:
+#             # if ascend and self.env:
+#             #     try:
+#             #         return self.env.call(*key, ascend=True)
+#             #     except NoMatchingOptionError:
+#             #         pass
+#             raise e
+#         return option.resolve(key, self, bindings)
+#
+#     def deref(self, name: str, ascend_env=True):
+#         option = self.select_by_value((py_value(name),), ascend_env)
+#         return option.resolve((), self)
+#
+#     def instanceof(self, type):
+#         self: Record
+#         return type == self.table or type in self.slices
+#         # types = self.mro[1:]
+#         # if prototype in types:
+#         #     return 1
+#         # for t in types:
+#         #     k = t.instanceof(prototype)
+#         #     if k:
+#         #         return k / 2
+#         # return 0
+#         # # return len(self.type) and int(prototype in self.type) or self.type.instanceof(prototype)/2
+
+class OptionMap:
+    """ essentially just container to hold the options of tables, a proxy for methods """
+    def __init__(self, options=None):
+        self.options = []
+        self.hashed_options = {}
+        if options:
+            for patt, val in options.items():
+                self.add_option(patt, val)
 
     def add_option(self, pattern, resolution=None):
         option = Option(pattern, resolution)
@@ -32,10 +164,21 @@ class FunctionRecordPrototype:
         key: list[Record] = []
         for parameter in option.pattern.parameters:
             t = parameter.matcher
-            if isinstance(t, ValueMatcher) and t.guard is None and t.value.hashable():
+            if isinstance(t, ValueMatcher) and t.guard is None and not t.invert and t.value.hashable():
                 key.append(t.value)
             else:
-                self.options.insert(0, option)
+                if Context.settings['sort_options']:
+                    for i, opt in enumerate(self.options):
+                        if option.pattern <= opt.pattern:
+                            self.options.insert(i, option)
+                            break
+                        elif option.pattern == opt.pattern:
+                            self.options[i] = option
+                            break
+                    else:
+                        self.options.append(option)
+                else:
+                    self.options.append(option)
                 break
         else:
             self.hashed_options[tuple(key)] = option
@@ -56,17 +199,12 @@ class FunctionRecordPrototype:
         opt.assign(resolution)
         return opt
 
-    @property
-    def mro(self):
-        self: Record
-        return self, *(s.prototype for s in self.slices), self.table.prototype
+    def select_and_bind(self, key: tuple):
+        if key in self.hashed_options:
+            return self.hashed_options[key], {}
 
-    def select_and_bind(self, key: list, walk_prototype_chain=True, ascend_env=False):
-        try:
-            return self.hashed_options[tuple(key)], {}
-        except (TypeError, KeyError):
-            pass
-        option = bindings = high_score = 0
+        option = bindings = None
+        high_score = 0
         for opt in self.options:
             score, saves = opt.pattern.match_zip(key)
             if score == 1:
@@ -74,102 +212,40 @@ class FunctionRecordPrototype:
             if score > high_score:
                 high_score = score
                 option, bindings = opt, saves
-        if option:
-            return option, bindings
-        if walk_prototype_chain and self.mro:
-            for t in self.mro[1:]:
-                try:
-                    return t.select_and_bind(key, False, ascend_env)
-                except NoMatchingOptionError:
-                    pass
-        if ascend_env and self.env:
-            try:
-                return self.env.select_and_bind(key, walk_prototype_chain, True)
-            except NoMatchingOptionError:
-                pass
-        raise NoMatchingOptionError(f"Line {Context.line}: key {key} not found in {self.name or self}")
-        # -> tuple[Option, dict[str, Function]]:
+        return option, bindings
 
-    def select_by_pattern(self, patt=None, default=None, ascend_env=False):
+    def select_by_pattern(self, patt, default=None):
         # return [*[opt for opt in self.options if opt.pattern == patt], None][0]
         for opt in self.options:
             if opt.pattern == patt:
                 return opt
-        if ascend_env and self.env:
-            return self.env.select_by_pattern(patt, default)
         return default
 
-    def select_by_name(self, name: str, ascend_env=True):
-        return self.select_by_value((py_value(name),), ascend_env)
-
-    def select_by_value(self, values, ascend_env=True):
-        # try self first
-        for fn in self.mro:
-            try:
-                return fn.hashed_options[values]
-            except KeyError:
-                continue
-
-        if ascend_env and self.env:
-            try:
-                return self.env.select_by_value(values, True)
-            except NoMatchingOptionError:
-                pass
-        raise NoMatchingOptionError(f"Line {Context.line}: {values} not found in {self}")
-
-    def call(self, key, ascend=False):
-        try:
-            option, bindings = self.select_and_bind(key, ascend_env=ascend)
-        except NoMatchingOptionError as e:
-            # if ascend and self.env:
-            #     try:
-            #         return self.env.call(*key, ascend=True)
-            #     except NoMatchingOptionError:
-            #         pass
-            raise e
-        return option.resolve(key, self, bindings)
-
-    def deref(self, name: str, ascend_env=True):
-        option = self.select_by_value((py_value(name),), ascend_env)
-        return option.resolve((), self)
-
-    def instanceof(self, type):
-        self: Record
-        return type == self.table or type in self.slices
-        # types = self.mro[1:]
-        # if prototype in types:
-        #     return 1
-        # for t in types:
-        #     k = t.instanceof(prototype)
-        #     if k:
-        #         return k / 2
-        # return 0
-        # # return len(self.type) and int(prototype in self.type) or self.type.instanceof(prototype)/2
-
-class Prototype(FunctionRecordPrototype):
-    """ essentially just container to hold the options of tables, a proxy for methods """
-    def __init__(self, table):
-        self.table = table
-        super().__init__()
-
-    @property
-    def mro(self):
-        return (self,)
-
     def __repr__(self):
-        return f"Prototype({self.table})"
+        match self.options, self.hashed_options:
+            case [], {}:
+                return "OptionMap()"
+            case [opt], {}:
+                return f"OptionMap({opt})"
+            case [], dict() as d if len(d) == 1:
+                return f"OptionMap({tuple(d.values())[0]})"
+            case list() as opts, dict() as hopts:
+                return f"OptionMap({len(opts) + len(hopts)})"
+        # return f"OptionMap({self.table})"
 
-class Record(FunctionRecordPrototype):
+
+class Record:
     # table: Table
-    _filter_slices: set | None = None
-    # slices: set[Slice]
+    _filters: set | None = None
+    # filters: set[FilterSlice]
+    # slices: list[Slice]
     # data: dict[int, Record]
     # key: Record
     truthy = True
-    def __init__(self, table, **data):
+    def __init__(self, table, *slices, **data):
         super().__init__()
         self.table = table
-        self._non_filter_slices = set(())
+        self.slices = list(slices)
         self.data = [py_value(None)] * len(self.table.fields)  # if len(self.table.fields) else []
         for i, field in enumerate(self.table.fields):
             match field:
@@ -184,6 +260,9 @@ class Record(FunctionRecordPrototype):
                     pass  # self.data[i] = py_value(None)
         table.add_record(self)
 
+    @property
+    def mro(self):
+        return (self.table.prototype, )
     # key property
     def get_key(self):
         match self.table:
@@ -207,31 +286,30 @@ class Record(FunctionRecordPrototype):
     key = property(get_key, set_key)
 
     @property
-    def slices(self):
-        if isinstance(self, Table):
-            pass  # this shouldn't happen... Table class has its own slices property
-        if self._filter_slices is None:
+    def filters(self):
+        if self._filters is None:
             self.update_slices()
-        return self._filter_slices.union(self._non_filter_slices)
+        return self._filters
 
     def update_slices(self, *slices):
-        if self._filter_slices is None or not slices:
-            self._filter_slices = set(filter(lambda s: s.filter.call(self).truthy,
+        if self._filters is None or not slices:
+            self._filters = set(filter(lambda s: s.filter.call(self).truthy,
                                              self.table.slices))
         else:
             for s in slices:
                 if s.filter.call(self).truthy:
-                    self._filter_slices.add(s)
+                    self._filters.add(s)
 
-    NO_DEFAULT = object()
-    def get(self, name: str, default=NO_DEFAULT):
+    def get(self, name: str, *default):
         try:
             index = self.table.field_ids[name]
         except KeyError:
-            raise SlotErr(f"Line {Context.line}: no field found with name '{name}'.")
+            if not default:
+                raise SlotErr(f"Line {Context.line}: no field found with name '{name}'.")
+            return default[0]
         return self.get_by_index(index)
 
-    def get_by_index(self, index: int, default=NO_DEFAULT):
+    def get_by_index(self, index: int):
         field = self.table.fields[index]
         match field:
             case Slot():
@@ -257,6 +335,13 @@ class Record(FunctionRecordPrototype):
                 raise TypeError(f"Invalid Field subtype: {type(field)}")
         self._filter_slices = None
 
+    def call(self, *key):
+        for t in self.mro:
+            option, bindings = t.select_and_bind(key)
+            if option:
+                return option.resolve(key, self, bindings)
+        raise NoMatchingOptionError(f"Line {Context.line}: key {key} not found in {self.name or self}")
+
     def hashable(self):
         try:
             return isinstance(hash(self), int)
@@ -273,6 +358,16 @@ class Record(FunctionRecordPrototype):
         # if self.instanceof(BuiltIns['BasicType']):
         #     return Value(self.name)
         return py_value(str(self))
+
+    def __eq__(self, other):
+        if not isinstance(other, Record):
+            return False
+        if isinstance(self.table, VirtTable) or isinstance(other.table, VirtTable):
+            return id(self) == id(other)
+        return (self.table, self.key) == (other.table, other.key)
+
+    def __hash__(self):
+        return id(self)
 
     def __repr__(self):
         return f"Record<{self.table}>({self.data})"
@@ -299,16 +394,26 @@ class Record(FunctionRecordPrototype):
 T = TypeVar('T', None, bool, int, Fraction, float, str, tuple, frozenset)
 A = TypeVar('A')
 class PyValue(Record, Generic[T]):
-    def __init__(self, table, value: T):
+    def __init__(self, table, value: T, *slices):
         self.value = value
-        super().__init__(table, key=self)
+        super().__init__(table, *slices, key=self)
 
     def to_string(self):
-        if self.instanceof(BuiltIns['num']) and self.table is not BuiltIns['bool']:
+        if self.table in (BuiltIns['ratio'], BuiltIns['float']):
             return py_value(write_number(self.value, Context.settings['base']))
         # if self.instanceof(BuiltIns['list']):
         #     return py_value(f"[{', '.join(v.to_string().value for v in self.value)}]")
+        if isinstance(self.value, frozenset):
+            return py_value(str(set(self.value)))
         return py_value(str(self.value))
+
+    def __index__(self) -> int:
+        if not isinstance(self.value, int | bool):
+            raise TypeErr(f"Line {Context.line}: Index must be integer, not {self.table}")
+        if not self.value:
+            # return None
+            raise ValueError("Pili lists are one-based, not zero-based.")
+        return self.value - (self.value > 0)
 
     @property
     def truthy(self):
@@ -319,30 +424,39 @@ class PyValue(Record, Generic[T]):
     def __eq__(self, other):
         return isinstance(other, PyValue) and self.value == other.value or self.value == other
     def __repr__(self):
-        return repr(self.value)  # f"Record({self.value})"
+        match self.value:
+            case frozenset() as f:
+                return repr(set(f))
+            case Fraction(numerator=n, denominator=d):
+                return f"{n}/{d}"
+            case v:
+                return repr(v)
+        # return f"Record({self.value})"
 
-def py_value(value: None | bool | int | Fraction | float | str | tuple | frozenset):
-    match type(value).__name__:
-        case 'NoneType':
-            return BuiltIns['blank']
+def py_value(value: T):
+    slices = []
+    if value is None:
+        return BuiltIns['blank']
+    t = type(value)
+    match t.__name__:
         case 'bool':
             return BuiltIns[str(value).lower()]
         case 'Fraction' | 'int':
             table = BuiltIns['ratio']
             if value.denominator == 1:
                 value = int(value)
-        case 'float' | 'str' as t:
-            table = BuiltIns[t]
-            return PyValue[type(value)](table, value)
-        case 'tuple' | 'frozenset' as t:
-            table = BuiltIns[t.title()]
-            value = type(value)(piliize(v) for v in value)
+                slices.append(BuiltIns['int'])
+        case 'float' | 'str' as tn:
+            table = BuiltIns[tn]
+            return PyValue[t](table, value)
+        case 'tuple' | 'frozenset' as tn:
+            table = BuiltIns[tn.title()]
+            value = t(piliize(v) for v in value)
         case unknown_type:
             raise TypeErr(f"Unhandled python type for PyValue: {unknown_type} {value}")
     if isinstance(table, SetTable):
-        return PyValue[type(value)](table, value)
-    return table[value] or PyValue[type(value)](table, value)
-
+        return PyValue[t](table, value, *slices)
+    return table[value] or PyValue[type(value)](table, value, *slices)
 
 class PyObj(Record, Generic[A]):
     def __init__(self, obj):
@@ -350,14 +464,48 @@ class PyObj(Record, Generic[A]):
         super().__init__(BuiltIns['PyObj'])
 
 
+class List(Record):
+    records: list
+    _type = None
+    def __init__(self, initial_list: list = None, type=None):
+        if initial_list is not None and not isinstance(initial_list, list):
+            pass
+        self.records = initial_list or []
+        if type is not None:
+            self._type = type
+        super().__init__(BuiltIns['List'])
+
+    def __getitem__(self, index: PyValue[int]) -> Record:
+        return self.records[index]
+
+    def __setitem__(self, index: PyValue[int], value: Record):
+        if not self._type.match_score(value):
+            raise TypeErr(f"Line {Context.line}: invalid type for assigning to this list.")
+        self.records[index] = value
+
+    def insert(self, index: PyValue[int], value: Record):
+        if not self._type.match_score(value):
+            raise TypeErr(f"Line {Context.line}: invalid type for assigning to this list.")
+        self.records.insert(index, value)
+
+    def slice(self, i: PyValue[int], j: PyValue[int]):
+        if i.value in (None, 0, False):
+            i = None
+        else:
+            i = i.__index__()
+        if j.value in (None, 0, False):
+            j = None
+        else:
+            j = i.__index__()
+        return self.records[i:j + 1]
+
+
 def piliize(value: any):
     match value:
         case None | bool() | int() | Fraction() | float() | str() | tuple() | frozenset():
             return py_value(value)
         case list():
-            ls = ListTable()
-            ls.records = [piliize(v) for v in value]
-            return ls
+            return List([piliize(v) for v in value])
         case set():
             s = SetTable()
             s.records = {piliize(v) for v in value}
@@ -376,24 +524,46 @@ def piliize(value: any):
         case _:
             return PyObj(value)
 
+class Function(Record):
+    option_map: OptionMap
+    def __init__(self, options=None, *, name=None):
+        self.name = name
+        self.option_map = OptionMap(options)
+        super().__init__(BuiltIns[__class__.__name__])
 
-class Table(Record):
+    @property
+    def mro(self):
+        return self.option_map, *super().mro
+
+    def add_option(self, *args):
+        return self.option_map.add_option(*args)
+
+    def assign_option(self, *args):
+        return self.option_map.assign_option(*args)
+
+    def __repr__(self):
+        if self is Context.root:
+            return 'root'
+        return f"Function({self.name or ''})"
+
+
+class Table(Function):
     name = None
     fields: list
     field_ids: dict[str, int]
     # records: list[Record] | dict[Record, Record] | set[Record] | None
-    def __init__(self, *field_tuple, **fields):
+    def __init__(self, *fields, name=None):
+        self.name = name
         self.fields = []
         self.field_ids = {}
         self.option_field = None
-        self._slices = set([])
-        for field in field_tuple:
+        self.sub_slices = set([])
+        for field in fields:
             self.upsert_field(field)
-        for name, monad in fields.items():
-            self.upsert_field(Slot(name, monad))
-        self.prototype = Prototype(self)
-        super().__init__(BuiltIns['Table'])
-        #
+        self.prototype = OptionMap()
+        self.option_map = OptionMap()
+        Record.__init__(self, BuiltIns[__class__.__name__])
+
         # match fields:
         #     case list() | tuple():
         #         self.fields += list(field_tuple)
@@ -416,10 +586,6 @@ class Table(Record):
 
     def __contains__(self, item):
         return item.table == self
-
-    @property
-    def slices(self):
-        return self._slices
 
     def truthy(self):
         return bool(self.records)
@@ -454,13 +620,13 @@ class Table(Record):
 
 class ListTable(Table):
     records: list[Record]
-    def __init__(self, *field_tuple, **fields):
-        super().__init__(*field_tuple, **fields)
+    def __init__(self, *fields, name=None):
+        super().__init__(*fields, name=name)
         self.records = []
 
     def __getitem__(self, key: PyValue[int]):
         try:
-            return self.records[key.value]
+            return self.records[key.__index__()]
         except (TypeError, AttributeError):
             raise RuntimeErr(f"Index must be integer in range for ListTable.")
         except IndexError:
@@ -469,37 +635,40 @@ class ListTable(Table):
 
 class MetaTable(ListTable):
     def __init__(self):
+        self.name = 'MetaTable'
         self.fields = []
         self.field_ids = {}
         self.records = [self]
         self.table = self
         self.data = []
         self.index = 0
+        self.prototype = OptionMap()
+        self.option_map = OptionMap()
 
 
 class DictTable(Table):
     records: dict[Record, Record]
     key_field: int
-    def __init__(self, key_field: int = 0, *field_tuple, **fields):
+    def __init__(self, key_field: int = 0, *fields, name=None):
         self.key_field = key_field
-        super().__init__(*field_tuple, **fields)
+        super().__init__(*fields, name=name)
         self.records = {}
     def __getitem__(self, key: Record):
         return self.records.get(key)
 
 class SetTable(Table):
     records: set[Record]
-    def __init__(self, *field_tuple, **fields):
-        super().__init__(*field_tuple, **fields)
+    def __init__(self, *fields, name=None):
+        super().__init__(*fields, name=name)
         self.records = set([])
     def __getitem__(self, key: Record):
         return key
 
 class VirtTable(SetTable):
     records = None
-    def __init__(self, *field_tuple, **fields):
+    def __init__(self, *fields, name=None):
         self.records = None
-        Table.__init__(self, *field_tuple, **fields)
+        Table.__init__(self, *fields, name=name)
 
     @property
     def truthy(self):
@@ -525,7 +694,7 @@ class Slice(Table):
     """
     def __init__(self, parent):
         self.parent = parent
-        parent.slices.add(self)
+        parent.sub_slices.add(self)
         super().__init__()
 
     def __contains__(self, item: Record):
@@ -548,6 +717,11 @@ class FilterSlice(Slice, VirtTable):
     def __contains__(self, item: Record):
         item.update_slices(self)
         return self in item.slices
+
+class VirtSlice(Slice, VirtTable):
+    def __init__(self, parent):
+        VirtTable.__init__(self)
+        super().__init__(parent)
 
 
 class ListSlice(Slice, ListTable):
@@ -605,13 +779,28 @@ class Formula(Field):
 
 class Matcher:
     name: str | None
-    inverse: bool = False
+    invert: int = 0
     guard = None
 
-    def __init__(self, name=None, guard=None, inverse=False):
+    def __init__(self, name=None, guard=None, invert=False):
         self.name = name
         self.guard = guard
-        self.inverse = inverse
+        if isinstance(guard, PyFunction):
+            guard.call = guard
+        self.invert = int(invert)
+
+    def match_score(self, arg: Record) -> bool | float:
+        score = self.basic_score(arg)
+        if self.invert:
+            score = not score
+        if score and self.guard:
+            result = self.guard.call(arg)
+            return score * BuiltIns['bool'].call(result).value
+        return score
+
+    def basic_score(self, arg):
+        # implemented by subclasses
+        raise NotImplementedError
 
     def call_guard(self, arg: Record) -> bool:
         if self.guard:
@@ -622,20 +811,37 @@ class Matcher:
     def get_matchers(self):
         return frozenset([self])
 
+    def get_rank(self):
+        rank = self.rank
+        if self.invert:
+            rank = tuple(100 - n for n in rank)
+        if self.guard:
+            rank = (rank[0], rank[1] - 1, *rank[1:])
+        return rank
+
+    def __lt__(self, other):
+        return self.get_rank() < other.get_rank()
+
+    def __le__(self, other):
+        return self.get_rank() <= other.get_rank()
+
+    # def __eq__(self, other):
+    #     return self.get_rank() == other.get_rank()
+
 class TableMatcher(Matcher):
     table: Table
+    rank = 5, 0
 
     def __init__(self, table, name=None, guard=None, inverse=False):
+        assert not isinstance(table, Slice)
         self.table = table
         super().__init__(name, guard, inverse)
 
-    def match_score(self, arg: Record) -> int | float:
-        if arg.table == self.table:
-            return int(self.call_guard(arg))
-        return 0
+    def basic_score(self, arg: Record) -> bool:
+        return arg.table == self.table
 
     def __repr__(self):
-        return f"TableMatcher({'!'*self.inverse}{self.table}{' as '+self.name if self.name else ''})"
+        return f"TableMatcher({'!'*self.invert}{self.table}{' as '+self.name if self.name else ''})"
 
 class SliceMatcher(Matcher):
     slices: tuple[Slice, ...]
@@ -643,31 +849,95 @@ class SliceMatcher(Matcher):
         self.slices = slices
         super().__init__(name, guard, inverse)
 
-    def match_score(self, arg: Record) -> int | float:
+    def basic_score(self, arg: Record) -> bool:
         for s in self.slices:
             if arg not in s:
-                return 0
-        return self.call_guard(arg)
+                return False
+        return True
+
+    @property
+    def rank(self):
+        return 4, 0, len(self.slices)
+
+    # def __lt__(self, other):
+    #     match other:
+    #         case Intersection():
+    #             return self < min(other.matchers)
+    #         case Union():
+    #             return self < max(other.matchers)
+    #         case SliceMatcher():
+    #             return len(self.slices) < len(other.slices)
+    #         case TableMatcher() | AnyMatcher():
+    #             return True
+    #         case Matcher():
+    #             return False
+    #         case _:
+    #             return NotImplemented
 
     def __repr__(self):
-        return f"SliceMatcher({'!'*self.inverse}{self.slices}{' as '+self.name if self.name else ''})"
+        return f"SliceMatcher({'!'*self.invert}{self.slices[0] if len(self.slices) == 1 else self.slices}{' as '+self.name if self.name else ''})"
 
 class ValueMatcher(Matcher):
     value: Record
+    rank = 1, 0
 
     def __init__(self, value, name=None, guard=None, inverse=False):
         self.value = value
         super().__init__(name, guard, inverse)
 
-    def match_score(self, arg: Record) -> int | float:
-        if arg == self.value:
-            return int(self.call_guard(arg))
-        return 0
+    def basic_score(self, arg: Record) -> bool:
+        return arg == self.value
+
+    # def __lt__(self, other):
+    #     match other:
+    #         case Intersection():
+    #             return self < min(other.matchers)
+    #         case Union():
+    #             return self < max(other.matchers)
+    #         case ValueMatcher():
+    #             return False
+    #         case Matcher():
+    #             return True
+    #         case _:
+    #             return NotImplemented
 
     def __repr__(self):
-        return f"ValueMatcher({'!'*self.inverse}{self.value}{' as '+self.name if self.name else ''})"
+        return f"ValueMatcher({'!'*self.invert}{self.value}{' as '+self.name if self.name else ''})"
 
-class Union(Matcher):
+class FieldMatcher(Matcher):
+    fields: dict[str, Matcher]
+
+    def __init__(self, fields: dict[str, Matcher], name=None, guard=None, inverse=False):
+        self.fields = fields
+        super().__init__(name, guard, inverse)
+
+    def basic_score(self, arg):
+        for prop_name, matcher in self.fields:
+            val = arg.get(prop_name, None)
+            if val is None or not matcher.match_score(val):
+                return False
+        return True
+
+    @property
+    def rank(self):
+        return 2, 0, len(self.fields)
+
+    # def __lt__(self, other):
+    #     match other:
+    #         case Intersection():
+    #             return self < min(other.matchers)
+    #         case Union():
+    #             return self < max(other.matchers)
+    #         case FieldMatcher(fields=fields):
+    #             return len(self.fields) < len(fields)
+    #         case ValueMatcher():
+    #             return False
+    #         case Matcher():
+    #             return True
+    #         case _:
+    #             return NotImplemented
+
+class UnionMatcher(Matcher):
     matchers: frozenset[Matcher]
     # params: set[Parameter]  # this would make it more powerful, but not worth it for the added complexity
     # examples;
@@ -681,19 +951,32 @@ class Union(Matcher):
         self.matchers = frozenset(matchers)
         super().__init__(name, guard, inverse)
 
-    def match_score(self, arg: Record) -> int | float:
+    def basic_score(self, arg: Record) -> bool | float:
         for type in self.matchers:
             m_score = type.match_score(arg)
             if m_score:
                 score = m_score / len(self.matchers)
-                return score * self.call_guard(arg)
+                return score
         return 0
 
-    def get_matchers(self):
-        return self.matchers
+    @property
+    def rank(self):
+        m = max(self.matchers).rank
+        return m[0], m[1]+1, *m[2:]
+
+    # def __lt__(self, other):
+    #     match other:
+    #         case Intersection():
+    #             return max(self.matchers) < min(other.matchers)
+    #         case Union():
+    #             return max(self.matchers) < max(other.matchers)
+    #         case Matcher():
+    #             return max(self.matchers) < other
+    #         case _:
+    #             return NotImplemented
 
     def __repr__(self):
-        return f"UnionMatcher({'!'*self.inverse}{self.matchers}{' as '+self.name if self.name else ''})"
+        return f"UnionMatcher({'!'*self.invert}{set(self.matchers)}{' as '+self.name if self.name else ''})"
 
 class Intersection(Matcher):
     matchers: frozenset[Matcher]
@@ -702,34 +985,102 @@ class Intersection(Matcher):
         self.matchers = frozenset(matchers)
         super().__init__(name, guard, inverse)
 
-    def match_score(self, arg: Record) -> int | float:
+    def basic_score(self, arg: Record) -> bool:
         for type in self.matchers:
             if type.match_score(arg) == 0:
-                return 0
-        return int(self.call_guard(arg))
+                return False
+        return True
+
+    @property
+    def rank(self):
+        m = min(self.matchers).rank
+        return m[0], m[1]-1, *m[2:]
+
+    # def __lt__(self, other):
+    #     match other:
+    #         case Intersection():
+    #             return min(self.matchers) < min(other.matchers)
+    #         case Union():
+    #             return min(self.matchers) <= max(other.matchers)
+    #         case Matcher():
+    #             return min(self.matchers) <= other
+    #         case _:
+    #             return NotImplemented
 
     def __repr__(self):
-        return f"IntersectionMatcher({'!'*self.inverse}{self.matchers}{' as ' + self.name if self.name else ''})"
+        return f"IntersectionMatcher({'!'*self.invert}{self.matchers}{' as ' + self.name if self.name else ''})"
 
 class AnyMatcher(Matcher):
-    def match_score(self, arg: Record) -> int | float:
-        return int(self.call_guard(arg))
+    rank = 100, 0
+    def basic_score(self, arg: Record) -> True:
+        return True
+
+    # def __lt__(self, other):
+    #     if not isinstance(other, Matcher):
+    #         return NotImplemented
+    #     return False
 
     def __repr__(self):
-        return f"AnyMatcher({'!'*self.inverse}{' as '+self.name if self.name else ''})"
+        return f"AnyMatcher({'!'*self.invert}{' as '+self.name if self.name else ''})"
+
+class EmptyMatcher(Matcher):
+    rank = 3, 0
+    def basic_score(self, arg: Record) -> bool:
+        match arg:
+            case VirtTable():
+                return False
+            case PyValue(value=str() | tuple() | frozenset() as v) | Table(records=v):
+                return len(v) == 0
+            case Function(option_map=OptionMap(options=options, hashed_options=hashed_options)):
+                return bool(len(options) + len(hashed_options))
+            case _:
+                return False
+
+    # def __lt__(self, other):
+    #     match other:
+    #         case ValueMatcher() | EmptyMatcher():
+    #             return False
+    #         case Intersection(matchers=matchers):
+    #             return all(m > self for m in matchers)
+    #         case Union(matchers=matchers):
+    #             return any(m >= self for m in matchers)
+    #         case Matcher():
+    #             return True
+    #         case _:
+    #             return NotImplemented
+
+    # def __eq__(self, other):
+    #     return isinstance(other, EmptyMatcher) and \
+    #             (self.name, self.invert, self.guard) == (other.name, other.invert, other.guard)
+
+    def __repr__(self):
+        return f"EmptyMatcher({'!'*self.invert}{' as '+self.name if self.name else ''})"
 
 class Parameter:
     name: str | None
     matcher: Matcher | None
-    quantifier: str  # "+" | "*" | "?" | ""
+    quantifier: str  # "+" | "*" | "?" | "!" | ""
     count: tuple[int, int | float]
     optional: bool
     multi: bool
 
     def __init__(self, matcher, name=None, quantifier=""):
         self.name = name
-        self.matcher = matcher
+        match matcher:
+            case Pattern(parameters=(Parameter(matcher=m, name=None, quantifier=""),)):
+                self.matcher = m
+            case Parameter(matcher=m, name=None, quantifier=""):
+                self.matcher = m
+            case Matcher():
+                self.matcher = matcher
+            case _:
+                raise TypeError(f"Failed to create Parameter of matcher: {matcher}")
         self.quantifier = quantifier
+
+    def _get_quantifier(self) -> str:
+        return self._quantifier
+    def _set_quantifier(self, quantifier: str):
+        self._quantifier = quantifier
         match quantifier:
             case "":
                 self.count = (1, 1)
@@ -739,20 +1090,73 @@ class Parameter:
                 self.count = (1, math.inf)
             case "*":
                 self.count = (0, math.inf)
+            case "!":
+                self.count = (1, 1)
+                # union matcher with `nonempty` pattern
         self.optional = quantifier in ("?", "*")
         self.multi = quantifier in ("+", "*")
+    quantifier = property(_get_quantifier, _set_quantifier)
 
     def match_score(self, value) -> int | float: ...
 
-    def try_get_matchers(self):
-        if self.quantifier or self.name is not None:
-            raise TypeError
-        if isinstance(self.matcher, Union):
-            return self.matcher.matchers
-        return (self.matcher,)
+    def compare_quantifier(self, other):
+        return "_?+*".find(self.quantifier) - "_?+*".find(other.quantifier)
+
+    def __lt__(self, other):
+        match other:
+            case UnionParam():
+                return self <= max(other.parameters)
+            case Parameter():
+                q = self.compare_quantifier(other)
+                return q < 0 or q == 0 and self.matcher < other.matcher
+        return NotImplemented
+
+    def __le__(self, other):
+        match other:
+            case UnionParam():
+                return self <= max(other.parameters)
+            case Parameter():
+                q = self.compare_quantifier(other)
+                return q < 0 or q == 0 and self.matcher <= other.matcher
+        return NotImplemented
+
+    def __eq__(self, other):
+        match other:
+            case UnionParam(parameters=(param, )):
+                pass
+            case Parameter() as param:
+                pass
+            case Matcher():
+                param = Parameter(other)
+            case Pattern(parameters=(param, )):
+                pass
+            case _:
+                return False
+        return (self.name, self.matcher, self.quantifier) == (param.name, param.matcher, param.quantifier)
+
+    def __hash__(self):
+        return hash((self.name, self.matcher, self.quantifier))
+
+    def __gt__(self, other):
+        match other:
+            case UnionParam():
+                return self > max(other.parameters)
+            case Parameter():
+                q = self.compare_quantifier(other)
+                return q < 0 or q == 0 and self.matcher > other.matcher
+        return NotImplemented
+
+    def __ge__(self, other):
+        match other:
+            case UnionParam():
+                return self > max(other.parameters)
+            case Parameter():
+                q = self.compare_quantifier(other)
+                return q < 0 or q == 0 and self.matcher >= other.matcher
+        return NotImplemented
 
     def __repr__(self):
-        return f"Parameter({self.matcher} {self.name}{self.quantifier})"
+        return f"Parameter({self.matcher} {self.name if self.name else ''}{self.quantifier})"
 
 class UnionParam(Parameter):
     parameters: tuple[Parameter, ...]
@@ -760,32 +1164,34 @@ class UnionParam(Parameter):
         self.parameters = parameters
         super().__init__(None, name, quantifier)
 
-    def try_get_matchers(self):
-        if self.quantifier or self.name is not None:
-            raise TypeError
-        matchers = []
-        for param in self.parameters:
-            matchers.extend(param.try_get_matchers())
-        return matchers
+    def __lt__(self, other):
+        return max(self.parameters) < other
+
+    def __le__(self, other):
+        if isinstance(other, UnionParam):
+            return self.parameters <= other.parameters
+        return max(self.parameters) < other
+
+    def __eq__(self, other):
+        match other:
+            case UnionParam(parameters=params):
+                return self.parameters == params
+            case Parameter():
+                return len(self.parameters) == 1 and self.parameters[0] == other
+            case _:
+                return False
+
+    def __gt__(self, other):
+        return max(self.parameters) >= other
+
+    def __ge__(self, other):
+        if isinstance(other, UnionParam):
+            return self.parameters >= other.parameters
+        return max(self.parameters) >= other
 
     def __repr__(self):
         return f"Union({self.parameters} {self.name}{self.quantifier})"
 
-
-class AnyParam(Parameter):
-    def __repr__(self):
-        return f"AnyParam({self.name}{self.quantifier})"
-
-
-def copy_bindings(saves):
-    new_saves = {}
-    for key, value in saves.items():
-        if hasattr(value, "value") and isinstance(value.value, list):
-            raise NotImplementedError
-            # new_saves[key] = py_value(value.value.copy())
-        else:
-            new_saves[key] = value
-    return new_saves
 
 def memoize(fn):
     memory = {}
@@ -847,8 +1253,11 @@ class Pattern(Record):
     def truthy(self):
         return bool(self.parameters)
 
-    def match_score(self, list_value: ListTable) -> int | float:
-        return self.match_zip(list_value.records)[0]
+    def match_score(self, list_value: List) -> int | float:
+        return self.match_zip(tuple(list_value.records))[0]
+
+    def __len__(self):
+        return len(self.parameters)
 
     @memoize
     def min_len(self) -> int:
@@ -864,29 +1273,15 @@ class Pattern(Record):
                 return math.inf
         return len(self.parameters)
 
-    def match_zip(self, args: list[Record] = None) -> tuple[float|int, dict[str, Record]]:
+    def match_zip(self, args: tuple[Record, ...] = None) -> tuple[float|int, dict[str, Record]]:
         if args is None:
             return 1, {}
         if len(args) == 0 == self.min_len():
             return 1, {}
         if not self.min_len() <= len(args) <= self.max_len():
             return 0, {}
-        return self.match_zip_recursive(MatchState(self.parameters, args))
-
-    def try_get_params(self):
-        if len(self.parameters) != 1:
-            raise TypeErr(f"Line {Context.line}: Cannot get union of patterns with multiple parameters.")
-        param = self.parameters[0]
-        if isinstance(param, UnionParam):
-            return param.parameters
-        return param,
-
-    def try_get_matchers(self):
-        params = self.try_get_params()
-        matchers = []
-        for p in params:
-            matchers.extend(p.try_get_matchers())
-        return matchers
+        state = MatchState(self.parameters, args)
+        return self.match_zip_recursive(state)
 
     # def match_zip_recursive(self, args: list, i_inst=0, i_arg=0, score=0, sub_score=0, saves=None):
     #     if saves is None:
@@ -976,8 +1371,11 @@ class Pattern(Record):
 
             key: str | int = param.name or state.i_param
             state.param_score *= param.multi
-            match_value = param.matcher.match_score(state.arg) if state.i_arg < len(state.args) else 0
-            if not match_value and not param.optional:
+            if state.i_arg < len(state.args):
+                match_value = param.matcher.match_score(state.arg)
+            else:
+                match_value = 0  # no arguments left to process match
+            if not match_value and not param.optional and not state.bindings.get(key):
                 return 0, {}
             match param.quantifier:
                 case "":
@@ -1016,6 +1414,48 @@ class Pattern(Record):
         if state.success:
             return state.score_and_bindings()
         return 0, {}
+
+    def __lt__(self, other):
+        if not isinstance(other, Pattern):
+            return NotImplemented
+        return self.parameters < other.parameters
+
+    def __le__(self, other):
+        if not isinstance(other, Pattern):
+            return NotImplemented
+        return self.parameters <= other.parameters
+
+    def __eq__(self, other):
+        if not isinstance(other, Pattern):
+            return False
+        return self.parameters == other.parameters
+        # if isinstance(other, Pattern):
+        #     for p1, p2 in zip(self.parameters, other.parameters):
+        #         if p1 != p2:
+        #             return False
+        #     return True
+        # if len(self.parameters) != 1:
+        #     return False
+        # param1 = self.parameters[0]
+        # if isinstance(other, Matcher):
+        #     param2 = Parameter(other)
+        # else:
+        #     param2 = other
+        # return param1 == param2
+
+    def __hash__(self):
+        return hash(self.parameters)
+
+    def __gt__(self, other):
+        if not isinstance(other, Pattern):
+            return NotImplemented
+        return self.parameters > other.parameters
+
+    def __ge__(self, other):
+        if not isinstance(other, Pattern):
+            return NotImplemented
+        return self.parameters >= other.parameters
+
     def __repr__(self):
         return f"Pattern{self.parameters}"
     # def __len__(self): ...
@@ -1134,10 +1574,11 @@ class CodeBlock:
     scope = None
     native: PyFunction = None
     def __init__(self, block):
-        if hasattr(block, 'statements'):
-            self.exprs = list(map(Context.make_expr, block.statements))
-        else:
-            self.native = block
+        self.exprs = list(map(Context.make_expr, block.nodes))
+        # if hasattr(block, 'statements'):
+        #     self.exprs = list(map(Context.make_expr, block.statements))
+        # else:
+        #     self.native = block
         self.scope = Context.env
     def execute(self, args=None, caller=None, bindings=None):
         if self.native:
@@ -1254,9 +1695,9 @@ class Option(Record):
             case Option(): self.alias = resolution
             case _:
                 raise ValueError(f"Line {Context.line}: Could not assign resolution {resolution} to option {self}")
-    def resolve(self, args, env, bindings=None):
+    def resolve(self, args, caller, bindings=None):
         if self.alias:
-            return self.alias.resolve(args, env, bindings)
+            return self.alias.resolve(args, caller, bindings)
         if self.value:
             return self.value
         if self.fn:
@@ -1265,15 +1706,7 @@ class Option(Record):
             raise NoMatchingOptionError("Could not resolve null option")
         if self.dot_option:
             caller = args[0]
-        else:
-            caller = env
-            # btw: this is possibly the third time the env is getting overriden: it's first set when the FuncBlock is
-            # defined, then overriden by the env argument passed to self.resolve, and finally here if it is a dot-option
-            # ... I should consider making a multi-layer env, or using the prototype, or multiple-inheritance type-thing
         return self.block.execute(args, caller, bindings)
-        # fn = self.block.make_function(bindings or {}, env, caller)
-        # Context.push(Context.line, fn, self)
-        # return self.block.execute(args, fn)
 
     def __eq__(self, other):
         return isinstance(other, Option) and (self.pattern, self.resolution) == (other.pattern, other.resolution)
@@ -1286,47 +1719,6 @@ class Option(Record):
         if self.alias:
             return f"Opt({self.pattern} -> {self.alias})"
         return f"Opt({self.pattern} -> null)"
-
-
-class Function(Record):
-    def __init__(self, options=None, args=None, type=None, env=None, caller=None, name=None):
-        self.name = name
-        # self.type = type or BuiltIns['fn']  # if isinstance(type, tuple) else (type or BuiltIns['fn'],)
-        # self.mro = (self, *self.type.mro)
-        self.env = env or Context.env
-        self.caller = caller
-        self.options = []
-        self.args = []
-        self.hashed_options = {}
-        if args:
-            for patt, val in args.items():
-                self.args.append(self.add_option(patt, val))
-        if options:
-            for patt, val in options.items():
-                self.add_option(patt, val)
-        super().__init__(BuiltIns['Function'])
-
-    def __repr__(self):
-        if self is Context.root:
-            return 'root'
-        return f"Function({self.name or ''})"
-        # if self.table == Context.root:
-        #     return 'root.main'
-        # prefix = self.name or ""
-        # return prefix + "{}"
-
-# class ListFunc(Function):
-#     def __init__(self, *values: Value):
-#         super().__init__(type=BuiltIns['List'])
-#         for i, val in enumerate(values):
-#             self.add_option(ListPatt(Parameter(ValuePattern(Value(i)))), val)
-#     def push(self, val):
-#         self.add_option(numbered_patt(self.len()+1), val)
-#         return self
-#     def pop(self, index: int = -1) -> Value:
-#         return self.remove_option(Value(index))
-#     def len(self) -> int:
-#         return len(self.options)
 
 
 class Operator:

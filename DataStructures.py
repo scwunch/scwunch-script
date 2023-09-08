@@ -36,8 +36,8 @@
 #         if not score:
 #             return 0
 #         if self.guard:
-#             result = self.guard.call([arg])
-#             score *= BuiltIns['bool'].call([result]).value  # noqa
+#             result = self.guard.call(arg)
+#             score *= BuiltIns['bool'].call(result).value  # noqa
 #         return score
 #     def __repr__(self):
 #         return f"Pattern({self.name})"
@@ -58,7 +58,7 @@
 # Any = AnyPattern()
 #
 # class Parameter:
-#     def __init__(self, pattern, name=None, quantifier="", inverse=False):
+#     def __init__(self, pattern, name=None, quantifier="", invert=False):
 #         match pattern:
 #             case str() | int():
 #                 self.name = pattern
@@ -79,7 +79,7 @@
 #             case "*": self.count = (0, math.inf)
 #         self.optional = quantifier in ("?", "*")
 #         self.multi = quantifier in ("+", "*")
-#         self.inverse = inverse
+#         self.invert = invert
 #     def specificity(self) -> int: ...
 #     def match_score(self, arg):
 #         if arg.instanceof(BuiltIns['str']) and arg.value == self.name:
@@ -87,11 +87,11 @@
 #         return self.pattern.match_score(arg)
 #     def __eq__(self, other):
 #         return self.pattern == other.pattern and self.name == other.name and \
-#             self.quantifier == other.quantifier and self.inverse == other.inverse
+#             self.quantifier == other.quantifier and self.invert == other.invert
 #     def __hash__(self):
-#         return hash((self.pattern, self.name, self.quantifier, self.inverse))
+#         return hash((self.pattern, self.name, self.quantifier, self.invert))
 #     def __repr__(self):
-#         return f"{'!' * self.inverse}{self.pattern}" + (' ' + self.name if self.name else '') + self.quantifier
+#         return f"{'!' * self.invert}{self.pattern}" + (' ' + self.name if self.name else '') + self.quantifier
 #
 # class ValuePattern(Pattern):
 #     def __init__(self, value, name: str = None):
@@ -113,13 +113,13 @@
 #     def match_score(self, arg):
 #         score = ((arg == self.prototype) or arg.instanceof(self.prototype)) * 5/6
 #         if score and self.guard:
-#             result = self.guard.call([arg])
-#             score *= BuiltIns['bool'].call([result]).value * 35/36 * 6/5
+#             result = self.guard.call(arg)
+#             score *= BuiltIns['bool'].call(result).value * 35/36 * 6/5
 #         if score and self.exprs:
 #             Context.push(Context.line, arg)
 #             for expr in self.exprs:
 #                 result = expr.evaluate()
-#                 if not BuiltIns['bool'].call([result]).value:
+#                 if not BuiltIns['bool'].call(result).value:
 #                     score = 0
 #                     break
 #             else:
