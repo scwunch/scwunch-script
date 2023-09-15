@@ -5,31 +5,31 @@ from tables import *
 from Env import *
 
 
-def expressionize_OLD(nodes: list[Node] | Statement):
-    if isinstance(nodes, Statement):
-        line = nodes.pos[0]
-        src = nodes.source_text
-        nodes = nodes.nodes
-    else:
-        line = None
-        src = " ".join(n.source_text for n in nodes)
-    if not nodes:
-        return EmptyExpr()
-    if nodes[0].type == TokenType.Command:
-        return Command(nodes[0].source_text, nodes[1:], line, src)
-    if len(nodes) == 1:
-        return SingleNode(nodes[0], line, src)
-    match nodes[0].source_text:
-        case 'if':
-            return Conditional(nodes, line, src)
-        case 'for':
-            return ForLoop(nodes, line, src)
-        case 'while':
-            return WhileLoop(nodes, line, src)
-        # case 'try':
-        #     return TryCatch(nodes, line, src)
-
-    return Mathological(nodes, line, src)
+# def expressionize_OLD(nodes: list[Node] | Statement):
+#     if isinstance(nodes, Statement):
+#         line = nodes.pos[0]
+#         src = nodes.source_text
+#         nodes = nodes.nodes
+#     else:
+#         line = None
+#         src = " ".join(n.source_text for n in nodes)
+#     if not nodes:
+#         return EmptyExpr()
+#     if nodes[0].type == TokenType.Command:
+#         return Command(nodes[0].source_text, nodes[1:], line, src)
+#     if len(nodes) == 1:
+#         return SingleNode(nodes[0], line, src)
+#     match nodes[0].source_text:
+#         case 'if':
+#             return Conditional(nodes, line, src)
+#         case 'for':
+#             return ForLoop(nodes, line, src)
+#         case 'while':
+#             return WhileLoop(nodes, line, src)
+#         # case 'try':
+#         #     return TryCatch(nodes, line, src)
+#
+#     return Mathological(nodes, line, src)
 
 def expressionize(nodes: list[Node] | Statement):
     if isinstance(nodes, Statement):
@@ -44,12 +44,12 @@ def expressionize(nodes: list[Node] | Statement):
         case []:
             return EmptyExpr()
         case [Token(type=TokenType.Command, source_text=key_word), *other_nodes]:
-            return expressions.get(key_word, Command)(key_word, other_nodes, line, src)
+            return expressions.get(key_word, CommandWithExpr)(key_word, other_nodes, line, src)
             # return Command(cmd, other_nodes, line, src)
         case [node]:
             return SingleNode(node, line, src)
         case [Token(type=TokenType.Keyword, source_text=key_word), *_]:
-            return expressions[key_word](key_word, nodes, line, src)
+            return expressions[key_word](nodes, line, src)
             # match word:
             #     case 'if':
             #         return Conditional(nodes, line, src)
@@ -119,7 +119,7 @@ class Mathological(Expression):
                 min_precedence = op.binop
 
         if op_idx is None:
-            raise OperatorError(f'Line {Context.line}: No operator found in expression: {nodes}')
+            raise OperatorErr(f'Line {self.line}: No operator found in expression: {nodes}')
         self.op = Op[nodes[op_idx].source_text]
         self.lhs = nodes[:op_idx]
         self.rhs = nodes[op_idx+1:]
@@ -223,8 +223,8 @@ class ForLoop(ExprWithBlock):
             raise SyntaxErr(f"Line {self.line}: For loop expression expected 'in' keyword.")
 
     def evaluate(self):
-        iterator = self.iterable.evaluate()
-        if not is_iterable(iterator):
+        iterator = get_iterable(self.iterable.evaluate())
+        if iterator is None:
             raise TypeErr(f"Line {Context.line}: {self.iterable} is not iterable.")
         if len(self.var) == 1:
             var_node = self.var[0]
@@ -240,7 +240,7 @@ class ForLoop(ExprWithBlock):
         # patt = patternize(var_val)
         # variable = Context.env.assign_option(patt, py_value(None))
         # variable = Option
-        for val in iterator.value:
+        for val in iterator:
             # variable.assign(val)
             Context.env.names[var_name] = val
             self.block.execute()
@@ -279,12 +279,17 @@ class WhileLoop(ExprWithBlock):
                 return py_value(None)
         raise RuntimeErr(f"Line {self.line or Context.line}: Loop exceeded limit of 46656 executions.")
 
+
 class Command(Expression):
     command: str
-    expr: Expression
-    def __init__(self, cmd: str, nodes: list[Node], line: int | None, source: str):
+    def __init__(self, cmd: str, line: int | None, source: str):
         super().__init__(line, source)
         self.command = cmd
+
+class CommandWithExpr(Command):
+    expr: Expression
+    def __init__(self, cmd: str, nodes: list[Node], line: int | None, source: str):
+        super().__init__(cmd, line, source)
         self.expr = expressionize(nodes)
 
     def evaluate(self):
@@ -302,7 +307,7 @@ class Command(Expression):
                 return result
             case 'print':
                 # print('!@>', BuiltIns['string'].call(self.expr.evaluate()).value)
-                print(BuiltIns['string'].call(self.expr.evaluate()).value)
+                print(BuiltIns['str'].call(self.expr.evaluate()).value)
                 return py_value(None)
             case 'break':
                 result = self.expr.evaluate()
@@ -339,24 +344,239 @@ class Command(Expression):
             #     Context.env.mro += types
             #     return py_value(Context.env.mro)
             case 'label':
-                Context.env.name = BuiltIns['string'].call(self.expr.evaluate()).value
+                Context.env.name = BuiltIns['str'].call(self.expr.evaluate()).value
             case _:
                 raise SyntaxErr(f"Line {Context.line}: Unhandled command {self.command}")
 
 class TraitExpr(Command):
-    pass
+    trait_name: str
+    body: Block
+    def __init__(self, cmd: str, nodes: list[Node], line: int | None, source: str):
+        super().__init__(cmd, line, source)
+        match nodes:
+            case [Token(type=TokenType.Name, source_text=name), Block() as blk]:
+                self.trait_name = name
+                self.body = blk
+            case _:
+                raise SyntaxErr(f"Line {self.line}: Trait syntax should be `trait <trait_name> <block>`.")
+
+    def evaluate(self):
+        trait = Trait(name=self.trait_name)
+        Context.env.assign(self.trait_name, trait)
+        if self.body is not None:
+            CodeBlock(self.body).execute(fn=trait)
+        return trait
 
 class TableExpr(Command):
-    pass
+    table_name: str
+    traits: list[str]
+    body: Block = None
+    def __init__(self, cmd: str, nodes: list[Node], line: int | None, source: str):
+        super().__init__(cmd, line, source)
+        match nodes:
+            case [Token(type=TokenType.Name, source_text=name), *trait_nodes, Block() as blk]:
+                self.body = blk
+            case [Token(type=TokenType.Name, source_text=name), *trait_nodes]:
+                pass
+            case _:
+                raise SyntaxErr(f"Line {self.line}: Table syntax should be `table <table_name> (@<trait>)* <block>`.")
+        self.table_name = name
+        self.traits = []
+        for i in range(0, len(trait_nodes), 2):
+            match trait_nodes[i:i+2]:
+                case [Token(source_text='@'), Token(type=TokenType.Name, source_text=name)]:
+                    self.traits.append(name)
+                case _:
+                    raise SyntaxErr(f"Line {self.line}: "
+                                    f"Table traits must be listed like `@trait_name` separated only by whitespace.")
+
+    def evaluate(self):
+        table = ListTable(name=self.table_name)
+        Context.env.assign(self.table_name, table)
+        table.traits += tuple(Context.deref(tname) for tname in self.traits)
+        for trait, name in zip(table.traits, self.traits):
+            if not isinstance(trait, Trait):
+                raise TypeErr(f"Line: {Context.line}: '{name}' is not a Trait, it is {repr(trait)}")
+        if self.body is not None:
+            CodeBlock(self.body).execute(fn=table)
+        return table
 
 class SlotExpr(Command):
-    pass
+    slot_name: str
+    slot_type: Expression
+    default: None | Expression | Block
+    def __init__(self, cmd: str, nodes: list[Node], line: int | None, source: str):
+        super().__init__(cmd, line, source)
+        match nodes:
+            case [Token(type=TokenType.Name, source_text=name), *other_nodes]:
+                self.slot_name = name
+            case _:
+                raise SyntaxErr(f"Line {self.line}: Slot is missing name.")
+        for i, node in enumerate(other_nodes):
+            if node.source_text == '=':
+                self.slot_type = expressionize(other_nodes[:i])
+                self.default = expressionize(other_nodes[i+1:])
+                break
+            if node.source_text == ':':
+                self.slot_type = expressionize(other_nodes[:i])
+                if i+2 != len(other_nodes):
+                    raise SyntaxErr(f"Line {self.line}: Slot is missing default block after `:`.")
+                self.default = other_nodes[i+1]
+                break
+        else:
+            self.slot_type = expressionize(other_nodes)
+            self.default = None
+
+    def evaluate(self):
+        match patternize(self.slot_type.evaluate()):
+            case Pattern(parameters=(Parameter(matcher=slot_type),)):
+                pass
+            case _:
+                raise TypeErr(f"Line {Context.line}: Invalid type: {self.slot_type.evaluate()}.  "
+                              f"Expected value, table, trait, or single-parameter pattern.")
+        match self.default:
+            case None:
+                default = None
+            case Expression():
+                default_value = self.default.evaluate()
+                default = Function({Parameter(AnyMatcher(), 'self'): default_value})
+            case Block() as blk:
+                default = Function({Parameter(AnyMatcher(), 'self'): CodeBlock(blk)})
+            case _:
+                raise ValueError("Unexpected default")
+        slot = Slot(self.slot_name, slot_type, default)
+        match Context.env.fn:
+            case Trait() as trait:
+                pass
+            case Table(traits=(Trait() as trait, *_)) as table:
+                table.getters[self.slot_name] = len(table.fields), slot
+                table.fields.append(slot)
+                table.setters[self.slot_name] = len(table.fields), slot
+                table.fields.append(slot)
+            case Function(trait=Trait() as trait):
+                pass
+            case _:
+                raise AssertionError
+        trait.upsert_field(slot)
+        return BuiltIns['blank']
 
 class FormulaExpr(Command):
-    pass
+    formula_name: str
+    formula_type: Expression
+    block: Block
+    def __init__(self, cmd: str, nodes: list[Node], line: int | None, source: str):
+        super().__init__(cmd, line, source)
+        match nodes:
+            case [Token(type=TokenType.Name, source_text=name), *patt_nodes, Token(source_text=':'), Block() as blk]:
+                self.formula_name = name
+                self.formula_type = expressionize(patt_nodes)
+                self.block = blk
+            case _:
+                raise SyntaxErr(f"Line {self.line}: Formula syntax is: `formula <name> <type_expr>?: <block>`."
+                                f"Eg, `formula count int: len[self.items]`")
 
+    def evaluate(self):
+        match patternize(self.formula_type.evaluate()):
+            case Pattern(parameters=(Parameter(matcher=formula_type), )):
+                pass
+            case _:
+                raise TypeErr(f"Line {Context.line}: Invalid type: {self.formula_type.evaluate()}.  "
+                              f"Expected value, table, trait, or single-parameter pattern.")
+        formula_fn = Function({Pattern(): CodeBlock(self.block)})
+        formula = Formula(self.formula_name, formula_type, formula_fn)
+        match Context.env.fn:
+            case Trait() as trait:
+                pass
+            case Table(traits=(Trait() as trait, *_)) as table:
+                table.getters[self.formula_name] = len(table.fields), formula
+                table.fields.append(formula)
+            case Function(trait=Trait() as trait):
+                pass
+            case _:
+                raise AssertionError
+        trait.upsert_field(formula)
+        return BuiltIns['blank']
 class SetterExpr(Command):
-    pass
+    field_name: str
+    param_nodes: list[Node]
+    block: Block
+    def __init__(self, cmd: str, nodes: list[Node], line: int | None, source: str):
+        super().__init__(cmd, line, source)
+        match nodes:
+            case [Token(type=TokenType.Name, source_text=name), Token(source_text='.'),
+                  ListNode(items=[Statement() as stmt]),
+                  Token(source_text=':'), Block() as blk]:
+                self.field_name = name
+                self.param_nodes = stmt.nodes
+                self.block = blk
+            case _:
+                raise SyntaxErr(f"Line {self.line}: Setter syntax is: `setter <name>[<value parameter>]: <block>`."
+                                f"Eg, `setter description[str desc]: self._description = trim[desc]`")
+
+    def evaluate(self):
+        fn = Function({Pattern(Parameter(AnyMatcher(), 'self'), make_param(self.param_nodes)):
+                           CodeBlock(self.block)})
+        setter = Setter(self.field_name, fn)
+        match Context.env.fn:
+            case Trait() as trait:
+                pass
+            case Table(traits=(Trait() as trait, *_)) as table:
+                table.setters[self.field_name] = len(table.fields), setter
+                table.fields.append(setter)
+            case Function(trait=Trait() as trait):
+                pass
+            case _:
+                raise AssertionError
+
+        # try:
+        #     fid = trait.field_ids[self.field_name]
+        #     field = trait.fields[fid]
+        #     field.setter = fn
+        # except KeyError:
+        #     raise SlotErr(f"Line {Context.line}: No formula with name '{self.field_name}' to add setter to.")
+        #     # TODO: make this work for adding setters to *other* traits applied (not just the trait in scope)
+        return BuiltIns['blank']
+
+class OptExpr(Command):
+    params: list[Statement]
+    return_type: Expression | None
+    block: Block
+    def __init__(self, cmd: str, nodes: list[Node], line: int | None, source: str):
+        super().__init__(cmd, line, source)
+        match nodes:
+            case [ListNode(nodes=params), *patt_nodes, Token(source_text=':'), Block() as blk]:
+                self.params = params
+                self.return_type = expressionize(patt_nodes)
+                self.block = blk
+            case _:
+                raise SyntaxErr(f"Line {self.line}: Opt syntax is: `opt [param1, param2, ...] <type_expr>?: <block>`."
+                                f"Eg, `opt [int i, int j] str | blank : ...`")
+
+    def evaluate(self):
+        match patternize(self.return_type.evaluate()):
+            case Pattern(parameters=(Parameter(matcher=return_type), )):
+                pass
+            case _:
+                raise TypeErr(f"Line {Context.line}: Invalid type: {self.return_type.evaluate()}.  "
+                              f"Expected value, table, trait, or single-parameter pattern.")
+        pattern = Pattern(*map(make_param, self.params))
+        assert isinstance(Context.env.fn, Table)
+        trait: Trait = Context.env.fn.traits[0]
+        trait.add_option(pattern, CodeBlock(self.block))
+        return BuiltIns['blank']
+
+
+expressions = {
+    'if': Conditional,
+    'for': ForLoop,
+    'while': WhileLoop,
+    'trait': TraitExpr,
+    'table': TableExpr,
+    'slot': SlotExpr,
+    'formula': FormulaExpr,
+    'opt': OptExpr,
+    'setter': SetterExpr
+}
 
 def piliize(val):
     if isinstance(val, list | tuple):
@@ -365,7 +585,7 @@ def piliize(val):
         if isinstance(val, tuple):
             return py_value(tuple(records))
         if isinstance(val, list):
-            return List(records)
+            return List(list(records))
     return py_value(val)
 
 def py_eval(code):
@@ -385,17 +605,6 @@ class SingleNode(Expression):
         return eval_node(self.node)
 
 
-expressions = {
-    'if': Conditional,
-    'for': ForLoop,
-    'while': WhileLoop,
-    'trait': TraitExpr,
-    'table': TableExpr,
-    'slot': SlotExpr,
-    'formula': FormulaExpr,
-    'setter': SetterExpr
-}
-
 def eval_node(node: Node) -> Record:
     match node:
         case Statement() as statement:
@@ -404,8 +613,6 @@ def eval_node(node: Node) -> Record:
             return eval_token(tok)
         case Block() | ListNode(list_type=ListType.Function) as block:
             return CodeBlock(block).execute(())
-            # opt = Option(Pattern(), CodeBlock(block))
-            # return opt.resolve(())
         case ListNode(nodes=nodes):
             return List(list(map(eval_node, nodes)))
         case StringNode(nodes=nodes):
@@ -416,7 +623,7 @@ def eval_string_part(node: Node) -> str:
     if node.type == TokenType.StringPart:
         return eval_string(node.source_text)
     if isinstance(node, Statement):
-        return BuiltIns['string'].call(expressionize(node).evaluate()).value
+        return BuiltIns['str'].call(expressionize(node).evaluate()).value
     raise ValueError('invalid string part')
 
 
@@ -443,6 +650,8 @@ def eval_token(tok: Token) -> Record:
         case TokenType.StringLiteral:
             return py_value(s.strip("`"))
         case TokenType.Name:
+            if s == 'self':
+                return Context.deref(s, Context.env.caller)
             return Context.deref(s)
         case _:
             raise Exception("Could not evaluate token", tok)
@@ -473,15 +682,15 @@ def eval_string(text: str):
     return value
 
 
-def is_iterable(val: Record):
+def get_iterable(val: Record):
     match val:
-        case PyValue(value=tuple() | frozenset() | str()):
-            return True
-        case VirtTable():
-            return False
-        case Table():
-            return True
-    return False
+        case PyValue(value=tuple() | list() | set() | frozenset() as iterable):
+            return iterable
+        case Table(records=iterable):
+            return iterable
+        case PyValue(value=str() as string):
+            return (py_value(c) for c in string)
+    return None
 
 
 def make_value_param(param_nodes: list[Node]) -> Parameter:
@@ -498,7 +707,9 @@ def make_value_param(param_nodes: list[Node]) -> Parameter:
     return Parameter(ValueMatcher(value), name)
 
 
-def make_param(param_nodes: list[Node]) -> Parameter:
+def make_param(param_nodes: list[Node] | Statement) -> Parameter:
+    if isinstance(param_nodes, Statement):
+        param_nodes = param_nodes.nodes
     if not param_nodes:
         raise SyntaxErr(f"Expected function parameter on line {Context.line}; no nodes found.")
     quantifier = ""
@@ -549,75 +760,75 @@ def split(nodes: list[Node], splitter: TokenType) -> list[list[Node]]:
     return groups
 
 
-def read_option_OLD(nodes: list[Node], is_value=False) -> Option:
-    dot_option = nodes[0].source_text == '.'
-    match nodes:
-        # .[].[]
-        case[Token(source_text='.'), ListNode() as opt, Token(source_text='.'), ListNode() as param_list]:
-            fn_nodes = [Token('pili'), Token('.'), opt]
-            param_list = [item.nodes for item in param_list.nodes]
-        # .fn_nodes.[]
-        case [Token(source_text='.'), *fn_nodes, Token(source_text='.'), ListNode() as param_list]:
-            param_list = [item.nodes for item in param_list.nodes]
-        case [Token(source_text='.'), *fn_nodes]:
-            param_list = []
-        case [*fn_nodes, ListNode() as param_list]:
-            if fn_nodes and fn_nodes[-1].source_text == '.':
-                fn_nodes.pop()
-            param_list = [item.nodes for item in param_list.nodes]
-        case [*fn_nodes, Token(source_text='.'), Token(type=TokenType.Name) as name_tok]:
-            param_list = [[name_tok]]
-        case _:
-            param_list = split(nodes, TokenType.Comma)
-            fn_nodes = False
-    if fn_nodes:
-        try:
-            if len(fn_nodes) == 1:
-                name = fn_nodes[0].source_text
-                fn_val = Context.deref(name, False)
-            else:
-                fn_val = expressionize(fn_nodes).evaluate()
-                if fn_val.type is BuiltIns['str']:
-                    fn_val = Context.deref(fn_val.value)
-        except NoMatchingOptionError:
-            if dot_option:
-                # raise NoMatchingOptionError(f"Line {Context.line}: "
-                #                             f"dot option {' '.join((map(str, fn_nodes)))} not found.")
-                # make new function in the root scope
-                temp_env = Context.env
-                Context.env = Context._env[0]
-            opt = read_option(fn_nodes, True)
-            if opt.is_null():
-                fn_val = Function()
-                opt.value = fn_val
-            else:
-                fn_val = opt.value
-            if dot_option:
-                Context.env = temp_env
-            # how many levels deep should this go?
-            # This will recurse infinitely, potentially creating many function
-        # if fn_val.type != BasicType.Function:
-        #     raise RuntimeErr(f"Line {Context.line}: "
-        #                      f"Cannot add option to {fn_val.type.value} {' '.join((map(str, fn_nodes)))}")
-        fn = fn_val
-        definite_env = True
-    else:
-        fn = Context.env
-        definite_env = not is_value
-    params = map(make_param if not is_value else make_value_param, param_list)
-    if dot_option:
-        patt = Pattern(Parameter(TableMatcher(Context.env)), *params)
-    else:
-        patt = Pattern(*params)
-    # try:
-    #     # option = fn.select(patt, walk_prototype_chain=False, ascend_env=not definite_env)
-    #     option = fn.select_by_pattern(patt, walk_prototype_chain=False, ascend_env=not definite_env)
-    #     """critical design decision here: I want to have walk_prototype_chain=False so I don't assign variables from the prototype..."""
-    # except NoMatchingOptionError:
-    #     option = fn.add_option(patt)
-    option = fn.select_by_pattern(patt, ascend_env=True) or fn.add_option(patt)
-    option.dot_option = dot_option
-    return option
+# def read_option_OLD(nodes: list[Node], is_value=False) -> Option:
+#     dot_option = nodes[0].source_text == '.'
+#     match nodes:
+#         # .[].[]
+#         case[Token(source_text='.'), ListNode() as opt, Token(source_text='.'), ListNode() as param_list]:
+#             fn_nodes = [Token('pili'), Token('.'), opt]
+#             param_list = [item.nodes for item in param_list.nodes]
+#         # .fn_nodes.[]
+#         case [Token(source_text='.'), *fn_nodes, Token(source_text='.'), ListNode() as param_list]:
+#             param_list = [item.nodes for item in param_list.nodes]
+#         case [Token(source_text='.'), *fn_nodes]:
+#             param_list = []
+#         case [*fn_nodes, ListNode() as param_list]:
+#             if fn_nodes and fn_nodes[-1].source_text == '.':
+#                 fn_nodes.pop()
+#             param_list = [item.nodes for item in param_list.nodes]
+#         case [*fn_nodes, Token(source_text='.'), Token(type=TokenType.Name) as name_tok]:
+#             param_list = [[name_tok]]
+#         case _:
+#             param_list = split(nodes, TokenType.Comma)
+#             fn_nodes = False
+#     if fn_nodes:
+#         try:
+#             if len(fn_nodes) == 1:
+#                 name = fn_nodes[0].source_text
+#                 fn_val = Context.deref(name, False)
+#             else:
+#                 fn_val = expressionize(fn_nodes).evaluate()
+#                 if fn_val.type is BuiltIns['str']:
+#                     fn_val = Context.deref(fn_val.value)
+#         except NoMatchingOptionError:
+#             if dot_option:
+#                 # raise NoMatchingOptionError(f"Line {Context.line}: "
+#                 #                             f"dot option {' '.join((map(str, fn_nodes)))} not found.")
+#                 # make new function in the root scope
+#                 temp_env = Context.env
+#                 Context.env = Context._env[0]
+#             opt = read_option(fn_nodes, True)
+#             if opt.is_null():
+#                 fn_val = Function()
+#                 opt.value = fn_val
+#             else:
+#                 fn_val = opt.value
+#             if dot_option:
+#                 Context.env = temp_env
+#             # how many levels deep should this go?
+#             # This will recurse infinitely, potentially creating many function
+#         # if fn_val.type != BasicType.Function:
+#         #     raise RuntimeErr(f"Line {Context.line}: "
+#         #                      f"Cannot add option to {fn_val.type.value} {' '.join((map(str, fn_nodes)))}")
+#         fn = fn_val
+#         definite_env = True
+#     else:
+#         fn = Context.env
+#         definite_env = not is_value
+#     params = map(make_param if not is_value else make_value_param, param_list)
+#     if dot_option:
+#         patt = Pattern(Parameter(TableMatcher(Context.env)), *params)
+#     else:
+#         patt = Pattern(*params)
+#     # try:
+#     #     # option = fn.select(patt, walk_prototype_chain=False, ascend_env=not definite_env)
+#     #     option = fn.select_by_pattern(patt, walk_prototype_chain=False, ascend_env=not definite_env)
+#     #     """critical design decision here: I want to have walk_prototype_chain=False so I don't assign variables from the prototype..."""
+#     # except NoMatchingOptionError:
+#     #     option = fn.add_option(patt)
+#     option = fn.trait.select_by_pattern(patt, ascend_env=True) or fn.trait.add_option(patt)
+#     option.dot_option = dot_option
+#     return option
 
 def read_option2(nodes: list[Node]) -> tuple[Function, Pattern, bool]:
     nodes = nodes[:]
@@ -627,7 +838,7 @@ def read_option2(nodes: list[Node]) -> tuple[Function, Pattern, bool]:
             nodes.pop(0)
         if not isinstance(nodes[-1], ListNode):
             nodes.append(Token('.'))
-            nodes.append(ListNode([]))
+            nodes.append(ListNode([], ListType.Params))
     # if len(nodes) > 1 and nodes[-2].source_text != '.':
     #     option_node = List([Statement(nodes)])
     #     nodes = []
@@ -638,7 +849,7 @@ def read_option2(nodes: list[Node]) -> tuple[Function, Pattern, bool]:
         penultimate = nodes.pop()
         if penultimate.source_text != '.':
             # read the whole lhs as a single parameter
-            option_node = ListNode([Statement([*nodes, penultimate, option_node])])
+            option_node = ListNode([Statement([*nodes, penultimate, option_node])], ListType.Params)
             nodes = []
     match option_node:
         case ListNode(nodes=param_list):
@@ -675,9 +886,10 @@ def read_option2(nodes: list[Node]) -> tuple[Function, Pattern, bool]:
         except NoMatchingOptionError:
             fn = Function(name=name)
             if dot_option:
-                Context.root.add_option(name, fn)
+                # Context.root.trait.add_option(name, fn)
+                raise NotImplementedError
             else:
-                context_fn.add_option(name, fn)
+                context_fn.trait.add_option(name, fn)
     else:
         fn = context_fn
 
@@ -691,18 +903,19 @@ def read_option2(nodes: list[Node]) -> tuple[Function, Pattern, bool]:
     #     if opt:
     #         fn = opt.resolve(args, context_fn, bindings)
     #     else:
-    #         fn = context_fn.add_option(patt, resolution).value
+    #         fn = context_fn.trait.add_option(patt, resolution).value
     # elif name:
     #     try:
     #         fn = context_fn.deref(name, ascend)
     #     except NoMatchingOptionError:
-    #         fn = context_fn.add_option(name, Function(name=name)).value
+    #         fn = context_fn.trait.add_option(name, Function(name=name)).value
     # else:
     #     fn = context_fn
 
     params = map(make_param, param_list)
     if dot_option:
-        patt = Pattern(Parameter(TableMatcher(Context.env)), *params)
+        # patt = Pattern(Parameter(TableMatcher(Context.env)), *params)
+        raise NotImplementedError
     else:
         patt = Pattern(*params)
     return fn, patt, dot_option
@@ -743,7 +956,7 @@ def read_option(nodes: list[Node]) -> tuple[Function, Pattern, bool]:
     # which should evaluate to the function where we assign the option
     match nodes:
         case []:
-            context_fn: Function = Context.function
+            context_fn: Function = Context.env.fn
         case [Token(type=TokenType.Name, source_text=name)]:
             context_fn = Context.deref(name, None)
             if context_fn is None:
@@ -757,7 +970,15 @@ def read_option(nodes: list[Node]) -> tuple[Function, Pattern, bool]:
 
     params = map(make_param, param_list)
     if dot_option:
-        patt = Pattern(Parameter(TableMatcher(Context.function)), *params)
+        match Context.env.fn:
+            case Trait() | Table() as t:
+                matcher = TableMatcher(t)
+            case Function() as f:
+                matcher = ValueMatcher(f)
+            case _:
+                raise RuntimeErr(f"Line {Context.line}: "
+                         f"Dot options can only be declared in a scope which is a function, table, or trait.")
+        patt = Pattern(Parameter(matcher, name='self'), *params)
     else:
         patt = Pattern(*params)
     return context_fn, patt, dot_option

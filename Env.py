@@ -50,6 +50,7 @@ class Context:
             return default[0]
         raise MissingNameErr(f"Line {Context.line}: Cannot find name '{name}' in current scope.")
 
+
 class Call:
     def __init__(self, line, fn, option=None):
         self.line = line
@@ -72,7 +73,7 @@ class NoMatchingOptionError(KeyErr):
     pass
 class MissingNameErr(KeyErr):
     pass
-class OperatorError(SyntaxErr):
+class OperatorErr(SyntaxErr):
     pass
 class TypeErr(RuntimeErr):
     pass
@@ -105,14 +106,16 @@ def read_number(text: str, base) -> int | float | Fraction:
             numerator, _, denominator = text.partition('/')
             return Fraction(int(numerator, base), int(denominator, base))
         whole, _, frac = text.partition('.')
-        val = int(whole, base) if whole else 0
-        pow = base
-        for c in frac:
-            if int(c) >= base:
-                raise ValueError("invalid digit for base "+str(base))
-            val += int(c) / pow
-            pow *= base
-        return val
+        try:
+            val = int(whole, base) if whole else 0
+            pow = base
+            for c in frac:
+                val += int(c) / pow
+                pow *= base
+            return val
+        except ValueError as e:
+            raise TypeErr(f"Line {Context.line}: {e}")
+
 
 def write_number(num: int|float|Fraction, base, precision=12, sep="_", grouping=4) -> str:
     """ take a number and convert to a string of digits, possibly separated by / or . """

@@ -58,6 +58,7 @@ class Commands(Enum):
     Trait = 'trait'
     Slot = 'slot'
     Formula = 'formula'
+    Opt = 'opt'
     Setter = 'setter'
 
 class OptionType(Enum):
@@ -190,9 +191,6 @@ class StringNode(NonTerminal):
         return ''.join(map(repr, self.nodes))
 
 class Statement(NonTerminal):
-    def __init__(self, nodes: list[Node]):
-        super().__init__(nodes)
-
     def __repr__(self):
         return ' '.join(repr(node) for node in self.nodes)
 

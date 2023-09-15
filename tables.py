@@ -148,14 +148,433 @@ PyFunction = type(lambda: None)
 #         # return 0
 #         # # return len(self.type) and int(prototype in self.type) or self.type.instanceof(prototype)/2
 
-class OptionMap:
-    """ essentially just container to hold the options of tables, a proxy for methods """
-    def __init__(self, options=None):
+
+class Record:
+    name = None
+    # table: Table
+    # _filters: set | None = None
+    # filters: set[FilterSlice]
+    # slices: list[Slice]
+    # data: dict[int, Record]
+    # key: Record
+    truthy = True
+    def __init__(self, table, *data_tuple, **data_dict):
+        self.table = table
+        # self.slices = list(slices)
+        self.data = []  # [BuiltIns['blank']] * len(self.table.fields)  # if len(self.table.fields) else []
+        for i, field in enumerate(f for trait in table.traits for f in trait.fields):
+            match field:
+                case Slot():
+                    if field.name in data_dict:
+                        datum = data_dict[field.name]
+                    elif i < len(data_tuple):
+                        datum = data_tuple[i]
+                    elif field.default is not None:
+                        datum = field.default.call(self)
+                    else:
+                        datum = BuiltIns['blank']
+                case _:
+                    datum = None
+            self.data.append(datum)
+        table.add_record(self)
+
+    @property
+    def mro(self):
+        yield from self.table.traits
+        # return (t for t in self.table.traits)
+    # key property
+    # def get_key(self):
+    #     match self.table:
+    #         case ListTable():
+    #             return py_value(self.index)
+    #         case DictTable(key_field=fid):
+    #             return self.get_by_index(fid)
+    #         case SetTable():
+    #             return self
+    #     raise RuntimeErr
+    # def set_key(self, new_key):
+    #     match self.table:
+    #         case ListTable():
+    #             raise RuntimeErr(f"Cannot set automatically assigned key (index)")
+    #         case DictTable(key_field=fid):
+    #             self.set_by_index(fid, new_key)
+    #         case SetTable():
+    #             raise RuntimeErr(f"Cannot set key of SetTable.")
+    #         case _:
+    #             raise RuntimeErr
+    # key = property(get_key, set_key)
+
+    # @property
+    # def filters(self):
+    #     if self._filters is None:
+    #         self.update_slices()
+    #     return self._filters
+
+    # def update_slices(self, *slices):
+    #     if self._filters is None or not slices:
+    #         self._filters = set(filter(lambda s: s.filter.call(self).truthy,
+    #                                          self.table.slices))
+    #     else:
+    #         for s in slices:
+    #             if s.filter.call(self).truthy:
+    #                 self._filters.add(s)
+
+    def get(self, name: str, *default):
+        if name in self.table.getters:
+            idx, field = self.table.getters[name]
+            return field.get_data(self, idx)
+
+        # for t in self.mro:
+        #     if name in t.field_ids:
+        #         return t.get_field(self, t.field_ids[name])
+        if not default:
+            raise SlotErr(f"Line {Context.line}: no field found with name '{name}'.")
+        return default[0]
+        # try:
+        #     index = self.table.field_ids[name]
+        # except KeyError:
+        #     if not default:
+        #         raise SlotErr(f"Line {Context.line}: no field found with name '{name}'.")
+        #     return default[0]
+        # return self.get_by_index(index)
+
+    # def get_by_index(self, index: int):
+    #     field = self.table.fields[index]
+    #     match field:
+    #         case Slot():
+    #             return self.data[index]
+    #         case Formula():
+    #             raise NotImplementedError
+    #         case _:
+    #             raise TypeError(f"Invalid Field subtype: {type(field)}")
+
+    def set(self, name: str, value):
+        try:
+            idx, field = self.table.setters[name]
+        except KeyError:
+            raise SlotErr(f"Line {Context.line}: no field found with name '{name}'.")
+        return field.set_data(self, idx, value)
+        # for t in self.mro:
+        #     if name in t.field_ids:
+        #         return t.set_field(self, t.field_ids[name], value)
+
+        # index = self.table.field_ids[name]
+        # return self.set_by_index(index, value)
+
+    # def set_by_index(self, index: int, value):
+    #     field = self.table.fields[index]
+    #     match field:
+    #         case Slot():
+    #             # first validate the type
+    #             self.data[index] = value
+    #         case Formula():
+    #             raise RuntimeErr("Cannot set formula field.")
+    #         case _:
+    #             raise TypeError(f"Invalid Field subtype: {type(field)}")
+    #     self._filter_slices = None
+
+    def call(self, *key):
+        option, bindings = self.select(*key)
+        if option:
+            return option.resolve(key, self, bindings)
+        raise NoMatchingOptionError(f"Line {Context.line}: key {key} not found in {self.name or self}")
+
+    def select(self, *key):
+        for t in self.mro:
+            option, bindings = t.select_and_bind(key)
+            if option:
+                return option, bindings
+        return None, None
+
+    def hashable(self):
+        try:
+            return isinstance(hash(self), int)
+        except TypeError:
+            return False
+
+    # @property
+    # def truthy(self):
+    #     return True
+
+    def to_string(self):
+        if self.name:
+            return py_value(self.name)
+        # if self.instanceof(BuiltIns['BasicType']):
+        #     return Value(self.name)
+        return py_value(str(self))
+
+    # def __eq__(self, other):
+    #     if not isinstance(other, Record):
+    #         return False
+    #     if isinstance(self.table, VirtTable) or isinstance(other.table, VirtTable):
+    #         return id(self) == id(other)
+    #     return (self.table, self.key) == (other.table, other.key)
+    #
+    # def __hash__(self):
+    #     return id(self)
+
+    def __repr__(self):
+        return f"Record<{self.table}>({self.data})"
+
+    # def __eq__(self, other):
+    #     if getattr(self, "value", object()) == getattr(other, "value", object()) and self.value is not NotImplemented:
+    #         return True
+    #     if self is other:
+    #         return True
+    #     if not isinstance(other, Function):
+    #         return False
+    #     if getattr(self, "value", object()) == getattr(other, "value", object()) and self.value is not NotImplemented:
+    #         return True
+    #     if self.type is not other.type:
+    #         return False
+    #     if self.env != other.env or self.name != other.name:
+    #         return False
+    #     # for opt in self.options:
+    #     #     if opt.resolution != getattr(other.select_by_pattern(opt.pattern), 'resolution', None):
+    #     #         return False
+    #     return True
+
+
+T = TypeVar('T', None, bool, int, Fraction, float, str, tuple, frozenset, list)
+A = TypeVar('A')
+class PyValue(Record, Generic[T]):
+    def __init__(self, table, value: T):
+        self.value = value
+        # self.slices = list(slices)
+        super().__init__(table, key=self)
+
+    def to_string(self):
+        if self.table in (BuiltIns['ratio'], BuiltIns['float']):
+            return py_value(write_number(self.value, Context.settings['base']))
+        # if self.instanceof(BuiltIns['list']):
+        #     return py_value(f"[{', '.join(v.to_string().value for v in self.value)}]")
+        if isinstance(self.value, frozenset):
+            return py_value(str(set(self.value)))
+        return py_value(str(self.value))
+
+    def __index__(self) -> int | None:
+        if not isinstance(self.value, int | bool):
+            raise TypeErr(f"Line {Context.line}: Index must be integer, not {self.table}")
+        if not self.value:
+            # return None  -->  TypeError: __index__ returned non-int (type NoneType)
+            raise ValueError(f"Line {Context.line}: Pili indices start at 1, so 0 is not a valid index.")
+        return self.value - (self.value > 0)
+
+    @property
+    def truthy(self):
+        return bool(self.value)
+
+    def __hash__(self):
+        try:
+            return hash(self.value)
+        except TypeError:
+            return id(self)
+    def __eq__(self, other):
+        return isinstance(other, PyValue) and self.value == other.value or self.value == other
+    def __repr__(self):
+        match self.value:
+            case frozenset() as f:
+                return repr(set(f))
+            case Fraction(numerator=n, denominator=d):
+                return f"{n}/{d}"
+            case v:
+                return repr(v)
+        # return f"Record({self.value})"
+
+
+class2table = dict(bool='Bool', int="Integer", Fraction='Fraction', float="Float", str='String', tuple="Tuple",
+                   list='List', set='Set', frozenset='FrozenSet', dict='Dictionary')
+
+def py_value(value: T):
+    match value:
+        case None:
+            return BuiltIns['blank']
+        case True:
+            return BuiltIns['true']
+        case False:
+            return BuiltIns['false']
+        case Fraction(denominator=1, numerator=value) | (int() as value):
+            return PyValue(BuiltIns['Integer'], value)
+        case Fraction() | float() | str():
+            table = BuiltIns[class2table[type(value).__name__]]
+        # case list():
+        #     return List(list(map(py_value, value)))
+        case tuple() | list() | set() | frozenset():
+            table = BuiltIns[class2table[type(value).__name__]]
+            t = type(value)
+            value = t(map(py_value, value))
+        case dict():
+            raise NotImplementedError
+        case Record():
+            return value
+        case Parameter():
+            return Pattern(value)
+        case Matcher() as t:
+            return Pattern(Parameter(t))
+        case _:
+            return PyObj(value)
+    return PyValue(table, value)
+
+    # slices = []
+    # if value is None:
+    #     return BuiltIns['blank']
+    #
+    # t = type(value)
+    # match t.__name__:
+    #     case 'bool':
+    #         return BuiltIns[str(value).lower()]
+    #     case 'Fraction':
+    #         if value.denominator == 1:
+    #             value = value.numerator
+    #     case 'float' | 'str' as tn:
+    #         table = BuiltIns[tn]
+    #         return PyValue[t](table, value)
+    #     case 'tuple' | 'frozenset' as tn:
+    #         table = BuiltIns[tn.title()]
+    #         value = t(piliize(v) for v in value)
+    #     case unknown_type:
+    #         raise TypeErr(f"Unhandled python type for PyValue: {unknown_type} {value}")
+    # if isinstance(table, SetTable):
+    #     return PyValue[t](table, value, *slices)
+    # return table[value] or PyValue[type(value)](table, value, *slices)
+
+piliize = py_value
+
+class PyObj(Record, Generic[A]):
+    def __init__(self, obj):
+        self.obj = obj
+        super().__init__(BuiltIns['PyObj'])
+
+List = py_value
+# class List(Record):
+#     records: list
+#     _type = None
+#     def __init__(self, initial_list: list = None, type=None):
+#         if initial_list is not None and not isinstance(initial_list, list):
+#             pass
+#         self.records = initial_list or []
+#         if type is not None:
+#             self._type = type
+#         super().__init__(BuiltIns['List'])
+#
+#     def __getitem__(self, index: PyValue[int]) -> Record:
+#         return self.records[index]
+#
+#     def __setitem__(self, index: PyValue[int], value: Record):
+#         if not self._type.match_score(value):
+#             raise TypeErr(f"Line {Context.line}: invalid type for assigning to this list.")
+#         self.records[index] = value
+#
+#     def insert(self, index: PyValue[int], value: Record):
+#         if not self._type.match_score(value):
+#             raise TypeErr(f"Line {Context.line}: invalid type for assigning to this list.")
+#         self.records.insert(index, value)
+#
+#     def slice(self, i: PyValue[int], j: PyValue[int]):
+#         if i.value in (None, 0, False):
+#             i = None
+#         else:
+#             i = i.__index__()
+#         if j.value in (None, 0, False):
+#             j = None
+#         else:
+#             j = i.__index__()
+#         return self.records[i:j + 1]
+#
+#     def to_string(self):
+#         items = (rec.to_string().value for rec in self.records)
+#         return py_value(f"[{', '.join(items)}]")
+
+
+# def piliize(value: any):
+#     match value:
+#         case None | bool() | int() | Fraction() | float() | str() | tuple() | frozenset():
+#             return py_value(value)
+#         case list():
+#             return List([piliize(v) for v in value])
+#         case set():
+#             s = SetTable()
+#             s.records = {piliize(v) for v in value}
+#             return s
+#         case dict():
+#             d = DictTable()
+#             for k, v in value.items():
+#                 d.records[piliize(k)] = piliize(v)  # this is not the proper full implementation
+#             return d
+#         case Record():
+#             return value
+#         case Parameter():
+#             return Pattern(value)
+#         case Matcher() as t:
+#             return Pattern(Parameter(t))
+#         case _:
+#             return PyObj(value)
+
+class Function(Record):
+    # trait: Trait
+    def __init__(self, options=None, *fields, name=None, table_name='Function'):
+        if name:
+            self.name = name
+        self.slot_dict = {}
+        for f in fields:
+            if isinstance(f, Slot):
+                self.slot_dict[f.name] = f.default
+        self.trait = Trait(options, *fields)
+        super().__init__(BuiltIns[table_name])
+
+    @property
+    def mro(self):
+        if self.trait:
+            yield self.trait
+        yield from super().mro
+        # return self.trait, *super().mro
+
+    def get(self, name: str, *default):
+        if name in self.slot_dict:
+            return self.slot_dict[name]
+        return super().get(name, *default)
+
+    def set(self, name: str, value: Record):
+        if name in self.slot_dict:
+            sid = self.trait.field_ids[name]
+            setter = self.trait.fields[sid].setter
+            if setter:
+                return setter.call(self, value)
+            else:
+                self.slot_dict[name] = value
+                return BuiltIns['blank']
+        return super().set(name, value)
+
+    # def add_option(self, *args):
+    #     return self.trait.add_option(*args)
+    #
+    # def assign_option(self, *args):
+    #     return self.trait.assign_option(*args)
+
+    def __repr__(self):
+        if self is Context.root:
+            return 'root'
+        return f"Function({self.name or ''})"
+
+class Trait(Function):
+    trait = None
+    def __init__(self, options=None, *fields, name=None, own_trait=None):
+        if name:
+            self.name = name
+        if own_trait:
+            self.trait = own_trait
         self.options = []
         self.hashed_options = {}
+        self.field_ids = {}
+        self.fields = []
+        self.slots = {}
         if options:
             for patt, val in options.items():
                 self.add_option(patt, val)
+        for field in fields:
+            for field in fields:
+                self.upsert_field(field)
+        Record.__init__(self, BuiltIns['Trait'])
 
     def add_option(self, pattern, resolution=None):
         option = Option(pattern, resolution)
@@ -221,348 +640,90 @@ class OptionMap:
                 return opt
         return default
 
+    def get_field(self, rec, index):
+        match self.fields[index]:
+            case Slot():
+                return rec.data[index]
+            case Formula(formula=fn):
+                return fn.call(rec)
+            case _:
+                raise SlotErr
+
+    def set_field(self, rec, index, value):
+        match self.fields[index]:
+            case Field(setter=setter):
+                return setter.call(self, value)
+            case Slot(type=matcher):
+                if not matcher.match_score(value):
+                    raise TypeErr(f"Line {Context.line}: Failed slot assignment: {value.table} {value} is not {matcher}.")
+                rec.data[index] = value
+                return value
+            case Formula(name=name):
+                raise SlotErr(f"Line {Context.line}: formula {name} has no setter.")
+
+    def upsert_field(self, field):
+        if field.name in self.field_ids:
+            fid = self.field_ids[field.name]
+            self.fields[fid] = field
+        else:
+            self.field_ids[field.name] = len(self.fields)
+            self.fields.append(field)
+
+    def add_own_option(self, pattern, resolution=None):
+        if self.trait is None:
+            self.trait = Trait()
+        return self.trait.add_option(pattern, resolution)
+
     def __repr__(self):
         match self.options, self.hashed_options:
+            case _ if self.name:
+                return f"Trait({self.name})"
             case [], {}:
-                return "OptionMap()"
+                return "Trait()"
             case [opt], {}:
-                return f"OptionMap({opt})"
+                return f"Trait({opt})"
             case [], dict() as d if len(d) == 1:
-                return f"OptionMap({tuple(d.values())[0]})"
+                return f"Trait({tuple(d.values())[0]})"
             case list() as opts, dict() as hopts:
-                return f"OptionMap({len(opts) + len(hopts)})"
+                return f"Trait({len(opts) + len(hopts)})"
         # return f"OptionMap({self.table})"
 
-
-class Record:
-    # table: Table
-    _filters: set | None = None
-    # filters: set[FilterSlice]
-    # slices: list[Slice]
-    # data: dict[int, Record]
-    # key: Record
-    truthy = True
-    def __init__(self, table, *slices, **data):
-        super().__init__()
-        self.table = table
-        self.slices = list(slices)
-        self.data = [py_value(None)] * len(self.table.fields)  # if len(self.table.fields) else []
-        for i, field in enumerate(self.table.fields):
-            match field:
-                case Slot():
-                    if field.name in data:
-                        self.data[i] = data[field.name]
-                    elif field.default is not None:
-                        self.data[i] = field.default.call(self)
-                    else:
-                        self.data[i] = py_value(None)
-                case Formula():
-                    pass  # self.data[i] = py_value(None)
-        table.add_record(self)
-
-    @property
-    def mro(self):
-        return (self.table.prototype, )
-    # key property
-    def get_key(self):
-        match self.table:
-            case ListTable():
-                return py_value(self.index)
-            case DictTable(key_field=fid):
-                return self.get_by_index(fid)
-            case SetTable():
-                return self
-        raise RuntimeErr
-    def set_key(self, new_key):
-        match self.table:
-            case ListTable():
-                raise RuntimeErr(f"Cannot set automatically assigned key (index)")
-            case DictTable(key_field=fid):
-                self.set_by_index(fid, new_key)
-            case SetTable():
-                raise RuntimeErr(f"Cannot set key of SetTable.")
-            case _:
-                raise RuntimeErr
-    key = property(get_key, set_key)
-
-    @property
-    def filters(self):
-        if self._filters is None:
-            self.update_slices()
-        return self._filters
-
-    def update_slices(self, *slices):
-        if self._filters is None or not slices:
-            self._filters = set(filter(lambda s: s.filter.call(self).truthy,
-                                             self.table.slices))
+def flat_gen(*args):
+    for arg in args:
+        if isinstance(arg, str):
+            yield arg
         else:
-            for s in slices:
-                if s.filter.call(self).truthy:
-                    self._filters.add(s)
-
-    def get(self, name: str, *default):
-        try:
-            index = self.table.field_ids[name]
-        except KeyError:
-            if not default:
-                raise SlotErr(f"Line {Context.line}: no field found with name '{name}'.")
-            return default[0]
-        return self.get_by_index(index)
-
-    def get_by_index(self, index: int):
-        field = self.table.fields[index]
-        match field:
-            case Slot():
-                return self.data[index]
-            case Formula():
-                raise NotImplementedError
-            case _:
-                raise TypeError(f"Invalid Field subtype: {type(field)}")
-
-    def set(self, name: str, value):
-        index = self.table.field_ids[name]
-        return self.set_by_index(index, value)
-
-    def set_by_index(self, index: int, value):
-        field = self.table.fields[index]
-        match field:
-            case Slot():
-                # first validate the type
-                self.data[index] = value
-            case Formula():
-                raise RuntimeErr("Cannot set formula field.")
-            case _:
-                raise TypeError(f"Invalid Field subtype: {type(field)}")
-        self._filter_slices = None
-
-    def call(self, *key):
-        for t in self.mro:
-            option, bindings = t.select_and_bind(key)
-            if option:
-                return option.resolve(key, self, bindings)
-        raise NoMatchingOptionError(f"Line {Context.line}: key {key} not found in {self.name or self}")
-
-    def hashable(self):
-        try:
-            return isinstance(hash(self), int)
-        except TypeError:
-            return False
-
-    # @property
-    # def truthy(self):
-    #     return True
-
-    def to_string(self):
-        if self.name:
-            return py_value(self.name)
-        # if self.instanceof(BuiltIns['BasicType']):
-        #     return Value(self.name)
-        return py_value(str(self))
-
-    def __eq__(self, other):
-        if not isinstance(other, Record):
-            return False
-        if isinstance(self.table, VirtTable) or isinstance(other.table, VirtTable):
-            return id(self) == id(other)
-        return (self.table, self.key) == (other.table, other.key)
-
-    def __hash__(self):
-        return id(self)
-
-    def __repr__(self):
-        return f"Record<{self.table}>({self.data})"
-
-    # def __eq__(self, other):
-    #     if getattr(self, "value", object()) == getattr(other, "value", object()) and self.value is not NotImplemented:
-    #         return True
-    #     if self is other:
-    #         return True
-    #     if not isinstance(other, Function):
-    #         return False
-    #     if getattr(self, "value", object()) == getattr(other, "value", object()) and self.value is not NotImplemented:
-    #         return True
-    #     if self.type is not other.type:
-    #         return False
-    #     if self.env != other.env or self.name != other.name:
-    #         return False
-    #     # for opt in self.options:
-    #     #     if opt.resolution != getattr(other.select_by_pattern(opt.pattern), 'resolution', None):
-    #     #         return False
-    #     return True
-
-
-T = TypeVar('T', None, bool, int, Fraction, float, str, tuple, frozenset)
-A = TypeVar('A')
-class PyValue(Record, Generic[T]):
-    def __init__(self, table, value: T, *slices):
-        self.value = value
-        super().__init__(table, *slices, key=self)
-
-    def to_string(self):
-        if self.table in (BuiltIns['ratio'], BuiltIns['float']):
-            return py_value(write_number(self.value, Context.settings['base']))
-        # if self.instanceof(BuiltIns['list']):
-        #     return py_value(f"[{', '.join(v.to_string().value for v in self.value)}]")
-        if isinstance(self.value, frozenset):
-            return py_value(str(set(self.value)))
-        return py_value(str(self.value))
-
-    def __index__(self) -> int:
-        if not isinstance(self.value, int | bool):
-            raise TypeErr(f"Line {Context.line}: Index must be integer, not {self.table}")
-        if not self.value:
-            # return None
-            raise ValueError("Pili lists are one-based, not zero-based.")
-        return self.value - (self.value > 0)
-
-    @property
-    def truthy(self):
-        return bool(self.value)
-
-    def __hash__(self):
-        return hash(self.value)
-    def __eq__(self, other):
-        return isinstance(other, PyValue) and self.value == other.value or self.value == other
-    def __repr__(self):
-        match self.value:
-            case frozenset() as f:
-                return repr(set(f))
-            case Fraction(numerator=n, denominator=d):
-                return f"{n}/{d}"
-            case v:
-                return repr(v)
-        # return f"Record({self.value})"
-
-def py_value(value: T):
-    slices = []
-    if value is None:
-        return BuiltIns['blank']
-    t = type(value)
-    match t.__name__:
-        case 'bool':
-            return BuiltIns[str(value).lower()]
-        case 'Fraction' | 'int':
-            table = BuiltIns['ratio']
-            if value.denominator == 1:
-                value = int(value)
-                slices.append(BuiltIns['int'])
-        case 'float' | 'str' as tn:
-            table = BuiltIns[tn]
-            return PyValue[t](table, value)
-        case 'tuple' | 'frozenset' as tn:
-            table = BuiltIns[tn.title()]
-            value = t(piliize(v) for v in value)
-        case unknown_type:
-            raise TypeErr(f"Unhandled python type for PyValue: {unknown_type} {value}")
-    if isinstance(table, SetTable):
-        return PyValue[t](table, value, *slices)
-    return table[value] or PyValue[type(value)](table, value, *slices)
-
-class PyObj(Record, Generic[A]):
-    def __init__(self, obj):
-        self.obj = obj
-        super().__init__(BuiltIns['PyObj'])
-
-
-class List(Record):
-    records: list
-    _type = None
-    def __init__(self, initial_list: list = None, type=None):
-        if initial_list is not None and not isinstance(initial_list, list):
-            pass
-        self.records = initial_list or []
-        if type is not None:
-            self._type = type
-        super().__init__(BuiltIns['List'])
-
-    def __getitem__(self, index: PyValue[int]) -> Record:
-        return self.records[index]
-
-    def __setitem__(self, index: PyValue[int], value: Record):
-        if not self._type.match_score(value):
-            raise TypeErr(f"Line {Context.line}: invalid type for assigning to this list.")
-        self.records[index] = value
-
-    def insert(self, index: PyValue[int], value: Record):
-        if not self._type.match_score(value):
-            raise TypeErr(f"Line {Context.line}: invalid type for assigning to this list.")
-        self.records.insert(index, value)
-
-    def slice(self, i: PyValue[int], j: PyValue[int]):
-        if i.value in (None, 0, False):
-            i = None
-        else:
-            i = i.__index__()
-        if j.value in (None, 0, False):
-            j = None
-        else:
-            j = i.__index__()
-        return self.records[i:j + 1]
-
-
-def piliize(value: any):
-    match value:
-        case None | bool() | int() | Fraction() | float() | str() | tuple() | frozenset():
-            return py_value(value)
-        case list():
-            return List([piliize(v) for v in value])
-        case set():
-            s = SetTable()
-            s.records = {piliize(v) for v in value}
-            return s
-        case dict():
-            d = DictTable()
-            for k, v in value.items():
-                d.records[piliize(k)] = piliize(v)  # this is not the proper full implementation
-            return d
-        case Record():
-            return value
-        case Parameter():
-            return Pattern(value)
-        case Matcher() as t:
-            return Pattern(Parameter(t))
-        case _:
-            return PyObj(value)
-
-class Function(Record):
-    option_map: OptionMap
-    def __init__(self, options=None, *, name=None):
-        self.name = name
-        self.option_map = OptionMap(options)
-        super().__init__(BuiltIns[__class__.__name__])
-
-    @property
-    def mro(self):
-        return self.option_map, *super().mro
-
-    def add_option(self, *args):
-        return self.option_map.add_option(*args)
-
-    def assign_option(self, *args):
-        return self.option_map.assign_option(*args)
-
-    def __repr__(self):
-        if self is Context.root:
-            return 'root'
-        return f"Function({self.name or ''})"
-
+            try:
+                for item in flat_gen(*arg):
+                    yield item
+            except TypeError:
+                yield arg
 
 class Table(Function):
     name = None
-    fields: list
-    field_ids: dict[str, int]
     # records: list[Record] | dict[Record, Record] | set[Record] | None
-    def __init__(self, *fields, name=None):
-        self.name = name
+    # getters = dict[str, tuple[int, Field]]
+    # setters = dict[str, tuple[int, Field]]
+    # fields = list[Field]
+    def __init__(self, *traits: Trait, fields=(), name: str = None):
+        self.traits = (Trait(), *traits)
+        self.getters = {}
+        self.setters = {}
         self.fields = []
-        self.field_ids = {}
-        self.option_field = None
-        self.sub_slices = set([])
         for field in fields:
             self.upsert_field(field)
-        self.prototype = OptionMap()
-        self.option_map = OptionMap()
-        Record.__init__(self, BuiltIns[__class__.__name__])
+        match self:
+            case VirtTable():
+                pass
+            case ListTable():
+                self.records = []
+            case DictTable():
+                self.records = {}
+            case SetTable():
+                self.records = set()
+            case _:
+                raise TypeError("Oops, don't use the Table class — use a derived class instead.")
+        super().__init__(name=name, table_name='Table')
 
         # match fields:
         #     case list() | tuple():
@@ -591,16 +752,16 @@ class Table(Function):
         return bool(self.records)
 
     def upsert_field(self, field):
-        if field.name in self.field_ids:
-            fid = self.field_ids[field.name]
-            self.fields[fid] = field
-        else:
-            self.field_ids[field.name] = len(self.fields)
-            self.fields.append(field)
+        # TODO: if field is overwriting another traits field, check to make sure field.type <: existing_field.type
+        self.trait.upsert_field(field)
+        # if field.name in self.field_ids:
+        #     fid = self.field_ids[field.name]
+        #     self.fields[fid] = field
+        # else:
+        #     self.field_ids[field.name] = len(self.fields)
+        #     self.fields.append(field)
 
-    def add_record(self, record: Record = None, **data: Record):
-        if record is None:
-            record = Record(self, **data)
+    def add_record(self, record: Record):
         match self:
             case VirtTable():
                 pass
@@ -615,14 +776,14 @@ class Table(Function):
     def __repr__(self):
         if self.name:
             return self.name
-        return f"Table({self.fields})"
+        return f"Table({self.traits})"
 
 
 class ListTable(Table):
     records: list[Record]
-    def __init__(self, *fields, name=None):
-        super().__init__(*fields, name=name)
-        self.records = []
+    # def __init__(self, *fields, name=None):
+    #     super().__init__(*fields, name=name)
+    #     self.records = []
 
     def __getitem__(self, key: PyValue[int]):
         try:
@@ -636,14 +797,18 @@ class ListTable(Table):
 class MetaTable(ListTable):
     def __init__(self):
         self.name = 'MetaTable'
-        self.fields = []
-        self.field_ids = {}
         self.records = [self]
         self.table = self
         self.data = []
         self.index = 0
-        self.prototype = OptionMap()
-        self.option_map = OptionMap()
+        self.traits = ()
+
+class BootstrapTraitTable(ListTable):
+    def __init__(self):
+        self.name = "TraitTable"
+        self.records = []
+        self.traits = ()
+        Record.__init__(self, BuiltIns['Table'])
 
 
 class DictTable(Table):
@@ -658,94 +823,96 @@ class DictTable(Table):
 
 class SetTable(Table):
     records: set[Record]
-    def __init__(self, *fields, name=None):
-        super().__init__(*fields, name=name)
-        self.records = set([])
+    # def __init__(self, *fields, name=None):
+    #     super().__init__(*fields, name=name)
+    #     self.records = set([])
     def __getitem__(self, key: Record):
         return key
 
 class VirtTable(SetTable):
     records = None
-    def __init__(self, *fields, name=None):
-        self.records = None
-        Table.__init__(self, *fields, name=name)
+    # def __init__(self, *fields, name=None):
+    #     self.records = None
+    #     Table.__init__(self, *fields, name=name)
 
     @property
     def truthy(self):
         return True
 
 
-class Slice(Table):
-    """
-    when a filter slice is created or the formula updated, it should add itself to the .slices property of each record that passes the test
-    likewise, when a new record is created, it should check if it belongs to each slice of that table.
-    and if a record is updated?  also update the slice just in case?
-    - optimization opportunity: determine the dependencies of the formula, and then only watch for changes in those fields
-    Simpler strategy: make the slices pointer like this:
-    - Record._filter_slices: set[Slice] | None
-    - Record.slices[]:
-        if self._filter_slices is not None:
-            return self._filter_slices
-        slice.update(self) for slice in self.table.slices
-        return self._filter_slices
-    - then reset Record._filter_slices to None every time the record is modified
-    Or maybe I could do something tricky with hashes?  Like hash all the relevant slots/formulas together...
-        but then I still need to redo the slice every time the record is modified
-    """
-    def __init__(self, parent):
-        self.parent = parent
-        parent.sub_slices.add(self)
-        super().__init__()
-
-    def __contains__(self, item: Record):
-        return self in item.slices
-
-    def __repr__(self):
-        if self.name is not None:
-            return self.name
-        return f"{self.__class__.__name__}<{self.parent}>"
-
-
-class FilterSlice(Slice, VirtTable):
-    def __init__(self, parent, filter):
-        self.filter = filter
-        VirtTable.__init__(self)
-        super().__init__(parent)
-        for record in parent.records or []:
-            record.update_slices(self)
-
-    def __contains__(self, item: Record):
-        item.update_slices(self)
-        return self in item.slices
-
-class VirtSlice(Slice, VirtTable):
-    def __init__(self, parent):
-        VirtTable.__init__(self)
-        super().__init__(parent)
-
-
-class ListSlice(Slice, ListTable):
-    def __init__(self, parent):
-        ListTable.__init__(self)
-        super().__init__(parent)
-
-
-class DictSlice(Slice, DictTable):
-    def __init__(self, parent):
-        DictTable.__init__(self)
-        super().__init__(parent)
-
-
-class SetSlice(Slice, SetTable):
-    def __init__(self, parent):
-        SetTable.__init__(self)
-        super().__init__(parent)
+# class Slice(Table):
+#     """
+#     when a filter slice is created or the formula updated, it should add itself to the .slices property of each record that passes the test
+#     likewise, when a new record is created, it should check if it belongs to each slice of that table.
+#     and if a record is updated?  also update the slice just in case?
+#     - optimization opportunity: determine the dependencies of the formula, and then only watch for changes in those fields
+#     Simpler strategy: make the slices pointer like this:
+#     - Record._filter_slices: set[Slice] | None
+#     - Record.slices[]:
+#         if self._filter_slices is not None:
+#             return self._filter_slices
+#         slice.update(self) for slice in self.table.slices
+#         return self._filter_slices
+#     - then reset Record._filter_slices to None every time the record is modified
+#     Or maybe I could do something tricky with hashes?  Like hash all the relevant slots/formulas together...
+#         but then I still need to redo the slice every time the record is modified
+#     """
+#     def __init__(self, parent):
+#         self.parent = parent
+#         parent.sub_slices.add(self)
+#         super().__init__()
+#
+#     def __contains__(self, item: Record):
+#         return self in item.slices
+#
+#     def __repr__(self):
+#         if self.name is not None:
+#             return self.name
+#         return f"{self.__class__.__name__}<{self.parent}>"
+#
+#
+# class FilterSlice(Slice, VirtTable):
+#     def __init__(self, parent, filter):
+#         self.filter = filter
+#         VirtTable.__init__(self)
+#         super().__init__(parent)
+#         for record in parent.records or []:
+#             record.update_slices(self)
+#
+#     def __contains__(self, item: Record):
+#         item.update_slices(self)
+#         return self in item.slices
+#
+# class VirtSlice(Slice, VirtTable):
+#     def __init__(self, parent):
+#         VirtTable.__init__(self)
+#         super().__init__(parent)
+#
+#
+# class ListSlice(Slice, ListTable):
+#     def __init__(self, parent):
+#         ListTable.__init__(self)
+#         super().__init__(parent)
+#
+#
+# class DictSlice(Slice, DictTable):
+#     def __init__(self, parent):
+#         DictTable.__init__(self)
+#         super().__init__(parent)
+#
+#
+# class SetSlice(Slice, SetTable):
+#     def __init__(self, parent):
+#         SetTable.__init__(self)
+#         super().__init__(parent)
 
 
 class Field(Record):
-    def __init__(self, name: str, type, default=None, formula=None, setter=None):
+    type = None
+    def __init__(self, name: str, type=None, default=None, formula=None):
         self.name = name
-        self.type = type
+        if self.type:
+            self.type = type
         if default is None:
             default = py_value(None)
         if formula is None:
@@ -754,28 +921,51 @@ class Field(Record):
                          is_formula=py_value(formula is not None),
                          default=default, formula=formula)
 
+    def get_data(self, rec, idx):
+        raise SlotErr(f"Line {Context.line}: getter not defined for {self.__class__.__name__} {self.name}")
+
+    def set_data(self, idx: int, value):
+        raise SlotErr(f"Line {Context.line}: setter not defined for {self.__class__.__name__} {self.name}")
+
 
 class Slot(Field):
-    # default: Function
-
-    def __init__(self, name, type, default=None, setter=None):
+    def __init__(self, name, type, default=None):
         self.default = default
-        super().__init__(name, type, default, setter)
+        super().__init__(name, type, default)
+
+    def get_data(self, rec, idx):
+        return rec.data[idx]
+
+    def set_data(self, rec, idx, value):
+        rec.data[idx] = value
+        return BuiltIns['blank']
 
     def __repr__(self):
         return f"Slot({self.name}: {self.type}{' ('+str(self.default)+')' if self.default else ''})"
 
 
 class Formula(Field):
-    # formula: Function
-    setter = None
-    def __init__(self, name, type, formula, setter=None):
+    def __init__(self, name, type, formula):
         self.formula = formula
-        self.setter = setter
-        super().__init__(name, type, None, formula, setter)
+        super().__init__(name, type, None, formula)
+
+    def get_data(self, rec, idx):
+        return self.formula.call(rec)
 
     def __repr__(self):
         return f"Formula({self.name}: {str(self.formula)})"
+
+class Setter(Field):
+    fn: Function
+    def __init__(self, name: str, fn: Function):
+        self.fn = fn
+        super().__init__(name)
+
+    def set_data(self, rec, idx, value):
+        return self.fn.call(rec, value)
+
+    def __repr__(self):
+        return f"Setter({self.name}: {self.fn})"
 
 class Matcher:
     name: str | None
@@ -833,31 +1023,47 @@ class TableMatcher(Matcher):
     rank = 5, 0
 
     def __init__(self, table, name=None, guard=None, inverse=False):
-        assert not isinstance(table, Slice)
+        assert isinstance(table, Table)
         self.table = table
         super().__init__(name, guard, inverse)
 
     def basic_score(self, arg: Record) -> bool:
-        return arg.table == self.table
+        return arg.table == self.table or self.table in arg.table.traits
 
     def __repr__(self):
         return f"TableMatcher({'!'*self.invert}{self.table}{' as '+self.name if self.name else ''})"
 
-class SliceMatcher(Matcher):
-    slices: tuple[Slice, ...]
-    def __init__(self, *slices: Slice, name=None, guard=None, inverse=False):
-        self.slices = slices
+class TraitMatcher(Matcher):
+    traits: frozenset[Trait]
+    rank = 6, 0
+
+    def __init__(self, *traits, name=None, guard=None, inverse=False):
+        # assert not isinstance(table, Trait)
+        self.traits = frozenset(traits)
         super().__init__(name, guard, inverse)
 
     def basic_score(self, arg: Record) -> bool:
-        for s in self.slices:
-            if arg not in s:
-                return False
-        return True
+        traits = frozenset(arg.table.traits)
+        return self.traits <= traits
 
-    @property
-    def rank(self):
-        return 4, 0, len(self.slices)
+    def __repr__(self):
+        return f"TraitMatcher({'!'*self.invert}{'&'.join(map(str, self.traits))}{' as '+self.name if self.name else ''})"
+
+# class SliceMatcher(Matcher):
+#     slices: tuple[Slice, ...]
+#     def __init__(self, *slices: Slice, name=None, guard=None, inverse=False):
+#         self.slices = slices
+#         super().__init__(name, guard, inverse)
+#
+#     def basic_score(self, arg: Record) -> bool:
+#         for s in self.slices:
+#             if arg not in s:
+#                 return False
+#         return True
+#
+#     @property
+#     def rank(self):
+#         return 4, 0, len(self.slices)
 
     # def __lt__(self, other):
     #     match other:
@@ -873,9 +1079,9 @@ class SliceMatcher(Matcher):
     #             return False
     #         case _:
     #             return NotImplemented
-
-    def __repr__(self):
-        return f"SliceMatcher({'!'*self.invert}{self.slices[0] if len(self.slices) == 1 else self.slices}{' as '+self.name if self.name else ''})"
+    #
+    # def __repr__(self):
+    #     return f"SliceMatcher({'!'*self.invert}{self.slices[0] if len(self.slices) == 1 else self.slices}{' as '+self.name if self.name else ''})"
 
 class ValueMatcher(Matcher):
     value: Record
@@ -1031,7 +1237,7 @@ class EmptyMatcher(Matcher):
                 return False
             case PyValue(value=str() | tuple() | frozenset() as v) | Table(records=v):
                 return len(v) == 0
-            case Function(option_map=OptionMap(options=options, hashed_options=hashed_options)):
+            case Function(trait=Trait(options=options, hashed_options=hashed_options)):
                 return bool(len(options) + len(hashed_options))
             case _:
                 return False
@@ -1067,14 +1273,18 @@ class Parameter:
     def __init__(self, matcher, name=None, quantifier=""):
         self.name = name
         match matcher:
-            case Pattern(parameters=(Parameter(matcher=m, name=None, quantifier=""),)):
-                self.matcher = m
-            case Parameter(matcher=m, name=None, quantifier=""):
-                self.matcher = m
+            # case Pattern(parameters=(Parameter(matcher=m, name=None, quantifier=""),)):
+            #     self.matcher = m
+            # case Parameter(matcher=m, name=None, quantifier=""):
+            #     self.matcher = m
             case Matcher():
                 self.matcher = matcher
+            case Trait() as trait:
+                self.matcher: Matcher = TraitMatcher(trait)
+            case Table() as table:
+                self.matcher: Matcher = TableMatcher(table)
             case _:
-                raise TypeError(f"Failed to create Parameter of matcher: {matcher}")
+                raise TypeError(f"Failed to create Parameter from: {repr(matcher)}")
         self.quantifier = quantifier
 
     def _get_quantifier(self) -> str:
@@ -1253,11 +1463,14 @@ class Pattern(Record):
     def truthy(self):
         return bool(self.parameters)
 
-    def match_score(self, list_value: List) -> int | float:
-        return self.match_zip(tuple(list_value.records))[0]
+    def match_score(self, *values: Record) -> int | float:
+        return self.match_zip(values)[0]
 
     def __len__(self):
         return len(self.parameters)
+
+    def __getitem__(self, item):
+        return self.parameters[item]
 
     @memoize
     def min_len(self) -> int:
@@ -1359,8 +1572,8 @@ class Pattern(Record):
 
     def match_zip_recursive(self, state):
         state: MatchState
-        while not state.done:
-            param = state.param
+        while param := state.param:
+            # param = state.param
             if isinstance(param, UnionParam):
                 for param in param.parameters:
                     new_params = [*state.parameters[:state.i_param], param, *state.parameters[state.i_param + 1:]]
@@ -1476,19 +1689,23 @@ class MatchState:
         if i_param > len(parameters) or i_arg > len(args):
             raise RuntimeErr(f"Line {Context.line}: Pattern error: i_param or i_arg went out of bounds.")
 
-    @property
-    def done(self):
-        if self.i_param > len(self.parameters) or self.i_arg > len(self.args):
-            raise RuntimeErr(f"Line {Context.line}: Pattern error: i_param or i_arg went out of bounds.")
-        return self.i_param == len(self.parameters) and self.i_arg == len(self.args)
+    # @property
+    # def done(self):
+    #     if self.i_param > len(self.parameters) or self.i_arg > len(self.args):
+    #         raise RuntimeErr(f"Line {Context.line}: Pattern error: i_param or i_arg went out of bounds.")
+    #     return self.i_param == len(self.parameters) and self.i_arg == len(self.args)
 
     @property
     def success(self):
-        return self.done and self.score
+        if self.i_param > len(self.parameters) or self.i_arg > len(self.args):
+            raise RuntimeErr(f"Line {Context.line}: Pattern error: i_param or i_arg went out of bounds.")
+        return self.i_param == len(self.parameters) and self.i_arg == len(self.args) and self.score
+        # return self.done and self.score
 
     @property
     def param(self):
-        return self.parameters[self.i_param]
+        if self.i_param < len(self.parameters):
+            return self.parameters[self.i_param]
 
     @property
     def arg(self):
@@ -1496,14 +1713,11 @@ class MatchState:
 
     def branch(self, **kwargs):
         if 'bindings' not in kwargs:
-            kwargs['bindings'] = self.copy_bindings()
+            kwargs['bindings'] = self.bindings.copy()
         for key in self.__dict__:
             if key not in kwargs:
                 kwargs[key] = self.__dict__[key]
         return MatchState(**kwargs)
-
-    def copy_bindings(self):
-        return self.bindings.copy()
 
     def score_and_bindings(self):
         for key, value in self.bindings.items():
@@ -1519,10 +1733,12 @@ def patternize(val):
             return val
         case PyValue():
             return Pattern(Parameter(ValueMatcher(val)))
-        case Slice():
-            return Pattern(Parameter(SliceMatcher(val)))
+        # case Slice():
+        #     return Pattern(Parameter(SliceMatcher(val)))
         case Table():
             return Pattern(Parameter(TableMatcher(val)))
+        case Trait():
+            return Pattern(Parameter(TraitMatcher(val)))
         case _:
             return Pattern(Parameter(ValueMatcher(val)))
 
@@ -1572,26 +1788,17 @@ def patternize(val):
 class CodeBlock:
     exprs: list
     scope = None
-    native: PyFunction = None
     def __init__(self, block):
         self.exprs = list(map(Context.make_expr, block.nodes))
-        # if hasattr(block, 'statements'):
-        #     self.exprs = list(map(Context.make_expr, block.statements))
-        # else:
-        #     self.native = block
         self.scope = Context.env
-    def execute(self, args=None, caller=None, bindings=None):
-        if self.native:
-            if caller:
-                return self.native(caller, *args)
-            return self.native(*args)
-        if args is not None:
-            closure = Closure(self, args, caller, bindings)
+    def execute(self, args=None, caller=None, bindings=None, *, fn=None):
+        if args is not None or fn is not None:
+            closure = Closure(self, args, caller, bindings, fn)
             Context.push(Context.line, closure)
 
             def finish():
                 Context.pop()
-                return closure.return_value or caller
+                return closure.return_value or caller or fn
         else:
             def finish():  # noqa
                 return py_value(None)
@@ -1604,39 +1811,42 @@ class CodeBlock:
             if Context.break_loop or Context.continue_:
                 break
         return finish()
+
     def __repr__(self):
         return f"CodeBlock({len(self.exprs)})"
 
+class Native(CodeBlock):
+    def __init__(self, fn: PyFunction):
+        self.fn = fn
+        self.scope = Context.env
+
+    def execute(self, args=None, caller=None, bindings=None, *, fn=None):
+        closure = Closure(self, args, caller, bindings, fn)
+        Context.push(Context.line, closure)
+        closure.return_value = self.fn(*args)
+        Context.pop()
+        return closure.return_value
+
+    def __repr__(self):
+        return f"Native({self.fn})"
+
 class Closure:
     return_value = None
-    def __init__(self, code_block, args=None, caller=None, bindings=None):
+    def __init__(self, code_block, args=None, caller=None, bindings=None, fn=None):
         self.names = bindings or {}
         self.code_block = code_block
         self.scope = code_block.scope
         self.args = args
         self.caller = caller
+        self.fn = fn
 
-    def execute_moved_to_CodeBlock(self):
-        fn = self.caller
-        if fn:
-            def finish():
-                Context.pop()
-                return fn.return_value or fn
-        else:
-            fn = Context.env
-            def finish():  # noqa
-                return py_value(None)
+    def assign(self, name: str, value: Record):
+        self.names[name] = value
+        return value
 
-        for expr in self.exprs:
-            Context.line = expr.line
-            expr.evaluate()
-            if fn.return_value:
-                break
-            if Context.break_loop or Context.continue_:
-                break
-        return finish()
     def __repr__(self):
-        return f"Closure({len(self.names)} names; {'running' if self.return_value is None else 'finished: '+str(self.return_value)})"
+        return (f"Closure({len(self.names)} names; "
+                f"{'running' if self.return_value is None else 'finished: ' + str(self.return_value)})")
 
 class TopNamespace(Closure):
     code_block = None
@@ -1691,6 +1901,7 @@ class Option(Record):
         match resolution:
             case Record(): self.value = resolution
             case CodeBlock(): self.block = resolution
+            # case PyFunction(): self.block = Native(resolution)
             case PyFunction(): self.fn = resolution
             case Option(): self.alias = resolution
             case _:
@@ -1702,10 +1913,10 @@ class Option(Record):
             return self.value
         if self.fn:
             return self.fn(*args)
-        if self.block is None:
-            raise NoMatchingOptionError("Could not resolve null option")
         if self.dot_option:
             caller = args[0]
+        if self.block is None:
+            raise NoMatchingOptionError("Could not resolve null option")
         return self.block.execute(args, caller, bindings)
 
     def __eq__(self, other):

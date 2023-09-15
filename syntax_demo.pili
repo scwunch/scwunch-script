@@ -23,8 +23,8 @@ print '1 + 2 = {1 + 2}'
 CAN = 'can'
 print 'Can you nest string interpolation? {'Yes, you {CAN}' if 1 == 1 else 'nope'}'
 print ''
-
-settings.set['base', 'h']
+print 'next is "settings.base = \'h\'"'
+settings.base = 'h'
 # pili fluidly and automatically converts between booleans, integers, and rational numbers,
 # depending on what operators are applied to them
 # floats only appear if a function explicitly returns a float (like the float function) or float literals
@@ -38,16 +38,16 @@ print my_float
 
 # by the way, all numbers in pili used to be heximal (base-six).  To input decimal numbers, use a 'd' suffix.  To output decimal numbers, convert using the string function
 print '9d = {9d}'
-print 'string[20, 10d] = {string[20, 10d]}'
+print 'str[20, 10d] = {str[20, 10d]}'
 print ''
 
 # the default base is stored in the pili.settings module
-print "current base: " + settings.get['base']
+print "current base: " + settings.base
 print "the base is a letter representing (from binary to decimal): 'btqphsond'"
 # ... but then it was decided that heximal was too wierd, and so we switched back to decimal
 # set the default base like this:
-settings.set['base', 'd']
-print 9
+settings.base = 'd'
+print "Just changed the base back to decimal.  See?  5 + 4 = {5+4}"
 print ''
 
 # How do you define function?
@@ -106,6 +106,7 @@ print ''
 print "Value Patterns"
 greeting[1] = "One"
 greeting["one"] = 1
+greeting[1] ??= "one"
 print 'greeting[1] => ' + greeting[1]
 print 'greeting["one"] => {greeting["one"]}'
 # notice how that second pattern *overrides* the very first pattern [str name] that we put on greeting.  Value patterns generally take precedence over prototype patterns
@@ -114,16 +115,37 @@ print "value patterns are mostly just used as keys in dictionary-like options; t
 print "\nPrototype Patterns"
 # prototype patterns are interpreted from values when used as parameters, like [str name] above
 # prototype matching is also used by the MATCH ~ operator
-print '-33 ~ int => {-33 ~ int}'
+print '-33 is int => {-33 is int}'
 print '0.43 ~ float and 0.43 ~ num and -33 ~ num => {0.43 ~ float and 0.43 ~ num and -33 ~ num}'
 print '0.43 ~ str => {0.43 ~ str}'
 print '0.43 !~ str => {0.43 !~ str}'
 # union patterns match if any of the sub-patterns match
 print "'hello' ~ num|str => {'hello' ~ num|str}"
 neg_float_or_pos_int = float < 0 | int > 0
+
+print "Indexing and slicing..."
+ls = (1, 2, 3, 4, 5)
+print ls[1]
+print ls[2]
+print ls[3]
+print ls[4]
+print ls[-1]
+print 'two-index slices'
+print ls[0,1]
+print ls[1,0]
+print ls[2,-2]
+print ls[5,0]
+print ls[-2,0]
+print "three-index slices"
+print ls[1,0,1]
+print ls[0,0,2]
+print ls[1,0,2]
+print ls[4,1,-1]
+print ls[0,0,-1]
+
 print "for n in [-1, 0 , 1, -0.3, 0.0, 0.3]"
 for n in [-1, 0 , 1, -0.3, 0.0, 0.3]
-    print "{' ' * (10-len[n.string])}{n} ~ float < 0 | int > 0 => {n ~ neg_float_or_pos_int}"
+    print "{' ' * (10-len[n.str])}{n} ~ float < 0 | int > 0 => {n ~ neg_float_or_pos_int}"
 print "5 ~ float | int > 4 => {5 ~ float | int > 4}"
 print "-0.3 ~ float | int > 4 => {-0.3 ~ float | int > 4}"
 # these are just some built-in types.  We can create our own too
@@ -134,12 +156,12 @@ print 5 ~ int > 4 | float
 # Some funky operators
 print "The `has` and `~` operators are just some of the funky operators in Pili."
 print "There is also `??`, `.?`, and `..`."
-print "some_null_value = none; some_null_value ?? 0 ?? 1 => {some_null_value = none; some_null_value ?? 0 ?? 1}"
-print greeting.one
+print "some_null_value = blank; some_null_value ?? 0 ?? 1 => {some_null_value = blank; some_null_value ?? 0 ?? 1}"
+print greeting['one']
 print greeting.?name ?? greeting.?nlljlasd ?? greeting.?[2451] ?? 'none of those optinos were found\n'
 
 # the swizzle operator `..` is fun.  It acts like a dot operator distributed over every element of an iterable
-print "my_list = {my_list = [-1, -2, 0 ,1 ,2]}"
+print "my_list = {my_list = [-1, -2, 0 ,1 ,2, ]}"
 print "my_list..abs => {my_list..abs}"
 
 
@@ -173,61 +195,58 @@ print "\n\n**************************"
 # There are two ways to create class-like inheritance
 
 
-Animal =
-    []:
-        none
-    species = none
-    alive = "I'm alive."
-    make_sound: print self.sound
-    print_sound[]:
-        print self.sound
-
-a = Animal[]
-print a.species
-print a.type
-
-Dog =
-    inherit Animal
-    []:
-        none
-    bark: print "Bark!"
-    sound = 'bark sound!'
-    species = 'canis lupus'
-
-d = Dog[]
-print d.species
-print d.alive
-d.make_sound
-# d.print_sound[],,
-print d.type
-print d.type.type
-
-
-print "\n\n************************************"
-Factory =
-    []:
-        Factory.factory_count += 1
-        Animal[str species]:
-            []:
-                Factory.species_count += 1
-            alive = "I'm alive."
-            greet:
-                return "Hi, I'm a {self.species}"
-    factory_count = 0
-    species_count = 0
-
-f = Factory[]
-print Factory.factory_count
-print f.factory_count
-off = f[]
-print type[off]
-
-
+# Animal =
+#     []:
+#         blank
+#     species = blank
+#     alive = "I'm alive."
+#     "make_sound" : print self.sound
+#     print_sound[]:
+#         print self.sound
+#
+# a = Animal[]
+# # print a.species
+# print a.type
+#
+# Dog =
+#     inherit Animal
+#     []:
+#         none
+#     bark: print "Bark!"
+#     sound = 'bark sound!'
+#     species = 'canis lupus'
+#
+# d = Dog[]
+# print d.species
+# print d.alive
+# d.make_sound
+# # d.print_sound[],,
+# print d.type
+# print d.type.type
+#
+#
+# print "\n\n************************************"
+# Factory =
+#     []:
+#         Factory.factory_count += 1
+#         Animal[str species]:
+#             []:
+#                 Factory.species_count += 1
+#             alive = "I'm alive."
+#             greet:
+#                 return "Hi, I'm a {self.species}"
+#     factory_count = 0
+#     species_count = 0
+#
+# f = Factory[]
+# print Factory.factory_count
+# print f.factory_count
+# off = f[]
+# print type[off]
 
 
-exit
 
-print "\n\n************************************************"
+
 print "Some funky operators include:  .., ??, ~, "
 print "next: demo classes/prototyping and dot-options"
 print "aliases... := ..."
@@ -252,42 +271,38 @@ closure_demo[]:
     f = chonky[]
     return f["y arg"]
 
-USE_DONKY_Z = true
+USE_DONKY_Z = true and 0
 print closure_demo[]
 
 
-exit
+print "\n\n************************************************"
 # the exit command is not necessary, but without it, the script will return the running function, which is awkwardly printed as root.main
-Animal =
-    []:
-        none
-    species = none
-    alive = "I'm alive."
-    make_sound: print self.sound
-    print_sound[]:
-        print self.sound
 
-table Animal :
-    slot species <str?>
-    slot alive <bool> = true
-    slot sound <str> = ""
-    formula make_sound <blank> :
+trait Animal
+    slot species str?
+    slot alive bool = true
+    slot sound str = ""
+    formula make_sound blank :
         print self.sound
 
 
-table Dog @Animal :
-    slot name <str> = ""
-    formula bark[]:
-        print "Helo, my name is {self.name}!"
+table Dog @Animal
+    slot name str = ""
+    slot length num
+    slot array List:
+        return []
+    formula bark str:
+        return "Helo, my name is {self.name}!"
+    formula print_bark:
+        print self.bark
+    opt [int n]:
+        print 'debug array[n] (ie, list_get function, resolution of option of List.prototype)'
+        return self.array[n]
+    opt [int i, int j]:
+        return self.array[i, j]
 
-    [str name, int length]:
-        return Dog.new[name, length]
-
-    .call =
-        [int n]:
-            return self.array[n]
-        [int i, int j]
-            return self.array[i, j]
+    [str name, int length, List array]:
+        return Dog.new[name, length, array]
 
     .call[]:
         return
@@ -298,42 +313,49 @@ table Dog @Animal :
     .bool[]:
         return
 
-    .'+'[]:
-        return
+#     .'+'[]:
+#         return
+#
+#     Op['+'][Dog d1, Dog d2]:
+#         return
+#
+#     .Op['+'][any other]:
+#         return
+#
+#     .add[any other]:
+#         return
+#
+#     .'.'[]:
+#         return
 
-    .'.'[]:
-        return
-
-    .module.add[]:
-        return
-
-    module.add[Dog d1, Dog d2]:
-        return
+    # .module.add[]:
+    #     return
+    #
+    # module.add[Dog d1, Dog d2]:
+    #     return
 
     # dot-option
-    .eat[Food food]:
-        del food
+    .eat[any food]:
+        del(food)
         self.full = True
 
 
-rover = Dog['Rover', 137]
+rover = Dog['Rover', 137, [1,2,3]]
 
-rover[3]
-
-rover.call[3]
+print rover[3]
 
 
-trait Details :
-    formula description <str>:
+trait Details
+    formula description str:
         return "{self.title}, released in {self.release_year}, is a {self.genre} movie directed by {self.director}."
-    formula years_since_release <int>:
+    formula years_since_release int:
         return 2020 - self.release_year
 
-table Movie @Details:
+table Movie @Details
     slot title str = ""
     slot director str = ""
-    slot release_year <int>0>
-    slot genre <str>
+    slot release_year int>0
+    slot genre str
     [str title, str director, int release_year, str genre]:
         return Movie.new[title, director, release_year, genre]
 
@@ -350,7 +372,7 @@ table TokenTypeEnum
 TokenType = TokenTypeEnum[]
 
 
-trait Node :
+trait Node
     slot pos tuple(int, int) = (-1, -1)
     slot type TokenType = TokenType.Unknown
 
