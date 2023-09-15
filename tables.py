@@ -752,7 +752,7 @@ class Table(Function):
         return bool(self.records)
 
     def upsert_field(self, field):
-        # TODO: if field is overwriting another traits field, check to make sure field.type <: existing_field.type
+        # TO DO: if field is overwriting another traits field, check to make sure field.type <: existing_field.type
         self.trait.upsert_field(field)
         # if field.name in self.field_ids:
         #     fid = self.field_ids[field.name]

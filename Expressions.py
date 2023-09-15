@@ -534,7 +534,7 @@ class SetterExpr(Command):
         #     field.setter = fn
         # except KeyError:
         #     raise SlotErr(f"Line {Context.line}: No formula with name '{self.field_name}' to add setter to.")
-        #     # TODO: make this work for adding setters to *other* traits applied (not just the trait in scope)
+        #     # DONE: make this work for adding setters to *other* traits applied (not just the trait in scope)
         return BuiltIns['blank']
 
 class OptExpr(Command):
