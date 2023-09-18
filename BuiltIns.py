@@ -48,6 +48,7 @@ BuiltIns['Tuple'] = VirtTable(TupTrait, SeqTrait, IterTrait)
 BuiltIns['Set'] = VirtTable(SetTrait, IterTrait)
 BuiltIns['List'] = VirtTable(ListTrait, SeqTrait, IterTrait)
 BuiltIns['Dictionary'] = VirtTable(DictTrait, IterTrait)
+BuiltIns['Args'] = VirtTable(SeqTrait, DictTrait, IterTrait)
 
 BuiltIns['fn'] = FnTrait = Trait(own_trait=Trait())
 BuiltIns['Function'] = ListTable(FnTrait)
@@ -55,7 +56,7 @@ BuiltIns['Function'] = ListTable(FnTrait)
 TableTable.traits += (FnTrait,)
 BuiltIns['Trait'].traits += (FnTrait,)
 
-BuiltIns['Pattern'] = ListTable()
+BuiltIns['Pattern'] = ListTable(SeqTrait, IterTrait)
 BuiltIns['Block'] = ListTable()
 
 BuiltIns['Field'] = ListTable()
@@ -435,6 +436,8 @@ BuiltIns['join'] = Function({Pattern(SeqParam, StringParam):
                              lambda ls, sep: py_value(sep.value.join(BuiltIns['str'].call(item).value for item in ls.value))})
 BuiltIns['split'] = Function({Pattern(StringParam, StringParam): lambda txt, sep: piliize([py_value(s) for s in txt.value.split(sep.value)])})
 
+TableTable.traits[0].add_option(AnyPattern, Native(lambda *args:
+                                                   BuiltIns['new'].call(Context.env.caller, *args)))
 BuiltIns['new'] = Function({Pattern(TableParam, AnyPattern[0]): lambda t, *args: Record(t, *args)})
 
 def convert(name: str) -> Function:

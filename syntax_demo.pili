@@ -289,20 +289,19 @@ trait Animal
 table Dog @Animal
     slot name str = ""
     slot length num
-    slot array List:
+    slot array list:
         return []
     formula bark str:
         return "Helo, my name is {self.name}!"
     formula print_bark:
         print self.bark
     opt [int n]:
-        print 'debug array[n] (ie, list_get function, resolution of option of List.prototype)'
-        return self.array[n]
+        return debug self.array[n]
     opt [int i, int j]:
         return self.array[i, j]
 
-    [str name, int length, List array]:
-        return Dog.new[name, length, array]
+    [str name, int length, list array]:
+        return Dog.new[name, length, array, 'Dog', true, 'bark']
 
     .call[]:
         return
@@ -341,8 +340,23 @@ table Dog @Animal
 
 
 rover = Dog['Rover', 137, [1,2,3]]
+boulder = debug Dog['Boulder', 232, ['a', 'b', 'c'], 'Big Dog', true, 'BARK']
 
-print rover[3]
+print rover.name
+print rover.length
+print rover.array
+print rover.species
+print rover.alive
+print rover.sound
+print rover[-1]
+print boulder.name
+print boulder.length
+print boulder.array
+print boulder.species
+
+Dog[name='Boulder', 232, sound='Bark']  #, !big]
+
+# fn sum[num a+, DogType]
 
 
 trait Details
@@ -364,6 +378,8 @@ table Movie @Details
 
 table TokenType
     slot name str
+    [str t]:
+        return TokenType.new[t]
 
 table TokenTypeEnum
     slot Unkown TokenType = TokenType['?']
@@ -372,9 +388,11 @@ table TokenTypeEnum
 TokenType = TokenTypeEnum[]
 
 
-trait Node
-    slot pos tuple(int, int) = (-1, -1)
-    slot type TokenType = TokenType.Unknown
+# trait Node
+#     slot pos tuple(int, int) = (-1, -1)
+#     slot type TokenType = TokenType.Unknown
+
+
 
 
 

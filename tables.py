@@ -161,21 +161,28 @@ class Record:
     def __init__(self, table, *data_tuple, **data_dict):
         self.table = table
         # self.slices = list(slices)
-        self.data = []  # [BuiltIns['blank']] * len(self.table.fields)  # if len(self.table.fields) else []
-        for i, field in enumerate(f for trait in table.traits for f in trait.fields):
-            match field:
-                case Slot():
-                    if field.name in data_dict:
-                        datum = data_dict[field.name]
-                    elif i < len(data_tuple):
-                        datum = data_tuple[i]
-                    elif field.default is not None:
-                        datum = field.default.call(self)
-                    else:
-                        datum = BuiltIns['blank']
-                case _:
-                    datum = None
-            self.data.append(datum)
+        # self.data = self.table.defaults.copy()  # [BuiltIns['blank']] * len(self.table.fields)  # if len(self.table.fields) else []
+        # for i, field in enumerate(f for trait in table.traits for f in trait.fields):
+        #     match field:
+        #         case Slot():
+        #             if field.name in data_dict:
+        #                 datum = data_dict[field.name]
+        #             elif i < len(data_tuple):
+        #                 datum = data_tuple[i]
+        #             elif field.default is not None:
+        #                 datum = field.default.call(self)
+        #             else:
+        #                 datum = BuiltIns['blank']
+        #             self.data.append(datum)
+        i = len(data_tuple)
+        if i > len(self.table.defaults):
+            raise RuntimeErr(f"Line {Context.line}: too many values provided for creating new instance of {self.table}; "
+                             f"Expected a maximum of {len(self.table.defaults)} values but got {i}: {data_tuple}")
+        defaults = (val.call(self) if val else BuiltIns['blank'] for val in self.table.defaults[i:])
+        self.data = [*data_tuple, *defaults]
+        for k, v in data_dict.items():
+            self.set(k, v)
+            
         table.add_record(self)
 
     @property
@@ -221,8 +228,11 @@ class Record:
 
     def get(self, name: str, *default):
         if name in self.table.getters:
-            idx, field = self.table.getters[name]
-            return field.get_data(self, idx)
+            match self.table.getters[name]:
+                case int() as idx:
+                    return self.data[idx]
+                case Function() as fn:
+                    return fn.call(self)
 
         # for t in self.mro:
         #     if name in t.field_ids:
@@ -249,11 +259,15 @@ class Record:
     #             raise TypeError(f"Invalid Field subtype: {type(field)}")
 
     def set(self, name: str, value):
-        try:
-            idx, field = self.table.setters[name]
-        except KeyError:
-            raise SlotErr(f"Line {Context.line}: no field found with name '{name}'.")
-        return field.set_data(self, idx, value)
+        match self.table.setters.get(name):
+            case int() as idx:
+                # TODO: check for type agreement
+                self.data[idx] = value
+                return BuiltIns['blank']
+            case Function() as fn:
+                return fn.call(self, value)
+            case None:
+                raise SlotErr(f"Line {Context.line}: no field found with name '{name}'.")
         # for t in self.mro:
         #     if name in t.field_ids:
         #         return t.set_field(self, t.field_ids[name], value)
@@ -341,10 +355,13 @@ class PyValue(Record, Generic[T]):
     def __init__(self, table, value: T):
         self.value = value
         # self.slices = list(slices)
-        super().__init__(table, key=self)
+        super().__init__(table)
 
     def to_string(self):
-        if self.table in (BuiltIns['ratio'], BuiltIns['float']):
+        for singleton in ('true', 'false', 'blank'):
+            if self == BuiltIns[singleton]:
+                return py_value(singleton)
+        if BuiltIns['num'] in self.table.traits:
             return py_value(write_number(self.value, Context.settings['base']))
         # if self.instanceof(BuiltIns['list']):
         #     return py_value(f"[{', '.join(v.to_string().value for v in self.value)}]")
@@ -516,9 +533,16 @@ class Function(Record):
         if name:
             self.name = name
         self.slot_dict = {}
+        self.formula_dict = {}
+        self.setter_dict = {}
         for f in fields:
-            if isinstance(f, Slot):
-                self.slot_dict[f.name] = f.default
+            match f:
+                case Slot(default=default):
+                    self.slot_dict[f.name] = default.call(self)
+                case Formula(formula=fn):
+                    self.formula_dict[f.name] = fn
+                case Setter(fn=fn):
+                    self.setter_dict[f.name] = fn
         self.trait = Trait(options, *fields)
         super().__init__(BuiltIns[table_name])
 
@@ -532,17 +556,16 @@ class Function(Record):
     def get(self, name: str, *default):
         if name in self.slot_dict:
             return self.slot_dict[name]
+        if name in self.formula_dict:
+            return self.formula_dict[name].call(self)
         return super().get(name, *default)
 
     def set(self, name: str, value: Record):
         if name in self.slot_dict:
-            sid = self.trait.field_ids[name]
-            setter = self.trait.fields[sid].setter
-            if setter:
-                return setter.call(self, value)
-            else:
-                self.slot_dict[name] = value
-                return BuiltIns['blank']
+            self.slot_dict[name] = value
+            return value
+        if name in self.setter_dict:
+            return self.setter_dict[name].call(self, value)
         return super().set(name, value)
 
     # def add_option(self, *args):
@@ -640,26 +663,26 @@ class Trait(Function):
                 return opt
         return default
 
-    def get_field(self, rec, index):
-        match self.fields[index]:
-            case Slot():
-                return rec.data[index]
-            case Formula(formula=fn):
-                return fn.call(rec)
-            case _:
-                raise SlotErr
-
-    def set_field(self, rec, index, value):
-        match self.fields[index]:
-            case Field(setter=setter):
-                return setter.call(self, value)
-            case Slot(type=matcher):
-                if not matcher.match_score(value):
-                    raise TypeErr(f"Line {Context.line}: Failed slot assignment: {value.table} {value} is not {matcher}.")
-                rec.data[index] = value
-                return value
-            case Formula(name=name):
-                raise SlotErr(f"Line {Context.line}: formula {name} has no setter.")
+    # def get_field(self, rec, index):
+    #     match self.fields[index]:
+    #         case Slot():
+    #             return rec.data[index]
+    #         case Formula(formula=fn):
+    #             return fn.call(rec)
+    #         case _:
+    #             raise SlotErr
+    #
+    # def set_field(self, rec, index, value):
+    #     match self.fields[index]:
+    #         case Field(setter=setter):
+    #             return setter.call(self, value)
+    #         case Slot(type=matcher):
+    #             if not matcher.match_score(value):
+    #                 raise TypeErr(f"Line {Context.line}: Failed slot assignment: {value.table} {value} is not {matcher}.")
+    #             rec.data[index] = value
+    #             return value
+    #         case Formula(name=name):
+    #             raise SlotErr(f"Line {Context.line}: formula {name} has no setter.")
 
     def upsert_field(self, field):
         if field.name in self.field_ids:
@@ -709,9 +732,10 @@ class Table(Function):
         self.traits = (Trait(), *traits)
         self.getters = {}
         self.setters = {}
-        self.fields = []
+        self.defaults = ()
         for field in fields:
             self.upsert_field(field)
+        self.integrate_traits()
         match self:
             case VirtTable():
                 pass
@@ -739,6 +763,52 @@ class Table(Function):
         #     case _:
         #         raise TypeError(f"Invalid argument type for fields: {type(fields)} {fields}")
 
+    def integrate_traits(self):
+        defaults: dict[str, Record | None] = {}
+        types: dict[str, Matcher] = {}
+
+        for trait in self.traits:
+            for trait_field in trait.fields:
+                name = trait_field.name
+                matcher = getattr(trait_field, 'type', None)
+                if matcher:
+                    if name in types and not types[name].issubset(matcher):
+                        raise SlotErr(f"Line {Context.line}: Could not integrate table {self.name}; "
+                                      f"Field {name}'s type ({types[name]}) "
+                                      f"doesn't match {trait_field.__class__.__name__} {name} of {trait.name}.")
+                    else:
+                        types[name] = matcher
+
+                match trait_field:
+                    case Slot(default=default):
+                        # if slot: allow adding of default
+                        # if formula: skip (formula should overwrite slot)
+                        # if setter: skip (setter overwrites slot, hopefully a formula will also be defined)
+
+                        if name in defaults:
+                            # this means a slot was already defined.  Add a default if none exists
+                            if defaults[name] is None:
+                                defaults[name] = default
+                        elif name not in self.getters and name not in self.setters:
+                            # this means no slot, formula, or setter was defined.  So add a slot.
+                            self.getters[name] = self.setters[name] = len(defaults)
+                            defaults[name] = default
+
+                    case Formula(formula=fn):
+                        if name not in self.getters:
+                            self.getters[name] = fn
+                    case Setter(fn=fn):
+                        if name not in self.setters:
+                            self.setters[name] = fn
+
+        self.defaults = tuple(defaults[n]
+                              for n in defaults)
+
+    def get_field(self, name: str):
+        _, field = self.getters.get(name,
+                                    self.setters.get(name, (0, None)))
+        return field
+
     def __getitem__(self, item):
         raise NotImplementedError
 
@@ -752,7 +822,7 @@ class Table(Function):
         return bool(self.records)
 
     def upsert_field(self, field):
-        # TO DO: if field is overwriting another traits field, check to make sure field.type <: existing_field.type
+        # TODO: if field is overwriting another traits field, check to make sure field.type <: existing_field.type
         self.trait.upsert_field(field)
         # if field.name in self.field_ids:
         #     fid = self.field_ids[field.name]
@@ -802,12 +872,25 @@ class MetaTable(ListTable):
         self.data = []
         self.index = 0
         self.traits = ()
+        self.getters = {}
+        self.setters = {}
+        self.defaults = []
+        self.slot_dict = {}
+        self.formula_dict = {}
+        self.setter_dict = {}
+
 
 class BootstrapTraitTable(ListTable):
     def __init__(self):
         self.name = "TraitTable"
         self.records = []
         self.traits = ()
+        self.getters = {}
+        self.setters = {}
+        self.defaults = []
+        self.slot_dict = {}
+        self.formula_dict = {}
+        self.setter_dict = {}
         Record.__init__(self, BuiltIns['Table'])
 
 
@@ -911,15 +994,16 @@ class Field(Record):
     type = None
     def __init__(self, name: str, type=None, default=None, formula=None):
         self.name = name
-        if self.type:
+        if type:
             self.type = type
         if default is None:
             default = py_value(None)
         if formula is None:
             formula = py_value(None)
-        super().__init__(BuiltIns['Field'], name=py_value(name), type=Pattern(Parameter(type)),
-                         is_formula=py_value(formula is not None),
-                         default=default, formula=formula)
+        super().__init__(BuiltIns['Field'])  #, name=py_value(name),
+                         # type=Pattern(Parameter(type)) if type else BuiltIns['blank'],
+                         # is_formula=py_value(formula is not None),
+                         # default=default, formula=formula)
 
     def get_data(self, rec, idx):
         raise SlotErr(f"Line {Context.line}: getter not defined for {self.__class__.__name__} {self.name}")
@@ -992,14 +1076,18 @@ class Matcher:
         # implemented by subclasses
         raise NotImplementedError
 
+    def issubset(self, other):
+        print('Not implemented properly yet.')
+        return self.equivalent(other)
+
+    def equivalent(self, other):
+        return (other.guard is None or self.guard == other.guard) and self.invert == other.invert
+
     def call_guard(self, arg: Record) -> bool:
         if self.guard:
             result = self.guard.call(arg)
             return BuiltIns['bool'].call(result).value
         return True
-
-    def get_matchers(self):
-        return frozenset([self])
 
     def get_rank(self):
         rank = self.rank
@@ -1030,6 +1118,14 @@ class TableMatcher(Matcher):
     def basic_score(self, arg: Record) -> bool:
         return arg.table == self.table or self.table in arg.table.traits
 
+    def issubset(self, other):
+        if self.guard and other.guard is None:
+            return self.table == getattr(other, 'table', None) and self.invert == other.invert
+        return self.equivalent(other)
+
+    def equivalent(self, other):
+        return self.table == getattr(other, 'table', None) and self.guard == other.guard and self.invert == other.invert
+
     def __repr__(self):
         return f"TableMatcher({'!'*self.invert}{self.table}{' as '+self.name if self.name else ''})"
 
@@ -1045,6 +1141,14 @@ class TraitMatcher(Matcher):
     def basic_score(self, arg: Record) -> bool:
         traits = frozenset(arg.table.traits)
         return self.traits <= traits
+
+    def issubset(self, other):
+        return (self.traits <= getattr(other, 'traits', set())
+                and (other.guard is None or self.guard == other.guard)
+                and self.invert == other.invert)
+
+    def equivalent(self, other):
+        return self.traits == getattr(other, 'traits', None) and self.guard == other.guard and self.invert == other.invert
 
     def __repr__(self):
         return f"TraitMatcher({'!'*self.invert}{'&'.join(map(str, self.traits))}{' as '+self.name if self.name else ''})"
@@ -1107,6 +1211,9 @@ class ValueMatcher(Matcher):
     #         case _:
     #             return NotImplemented
 
+    def equivalent(self, other):
+        return self.value == getattr(other, 'value', None) and self.guard == other.guard and self.invert == other.invert
+
     def __repr__(self):
         return f"ValueMatcher({'!'*self.invert}{self.value}{' as '+self.name if self.name else ''})"
 
@@ -1142,6 +1249,9 @@ class FieldMatcher(Matcher):
     #             return True
     #         case _:
     #             return NotImplemented
+
+    def equivalent(self, other):
+        return self.fields == getattr(other, 'fields', None) and self.guard == other.guard and self.invert == other.invert
 
 class UnionMatcher(Matcher):
     matchers: frozenset[Matcher]
@@ -1180,6 +1290,9 @@ class UnionMatcher(Matcher):
     #             return max(self.matchers) < other
     #         case _:
     #             return NotImplemented
+    def equivalent(self, other):
+        return (isinstance(other, UnionMatcher) and self.matchers == other.matchers
+                and self.guard == other.guard and self.invert == other.invert)
 
     def __repr__(self):
         return f"UnionMatcher({'!'*self.invert}{set(self.matchers)}{' as '+self.name if self.name else ''})"
@@ -1213,6 +1326,10 @@ class Intersection(Matcher):
     #         case _:
     #             return NotImplemented
 
+    def equivalent(self, other):
+        return (isinstance(other, Intersection) and self.matchers == other.matchers
+                and self.guard == other.guard and self.invert == other.invert)
+
     def __repr__(self):
         return f"IntersectionMatcher({'!'*self.invert}{self.matchers}{' as ' + self.name if self.name else ''})"
 
@@ -1226,6 +1343,9 @@ class AnyMatcher(Matcher):
     #         return NotImplemented
     #     return False
 
+    def equivalent(self, other):
+        return isinstance(other, AnyMatcher) and self.guard == other.guard and self.invert == other.invert
+
     def __repr__(self):
         return f"AnyMatcher({'!'*self.invert}{' as '+self.name if self.name else ''})"
 
@@ -1235,7 +1355,7 @@ class EmptyMatcher(Matcher):
         match arg:
             case VirtTable():
                 return False
-            case PyValue(value=str() | tuple() | frozenset() as v) | Table(records=v):
+            case PyValue(value=str() | tuple() | frozenset() | list() | set() as v) | Table(records=v):
                 return len(v) == 0
             case Function(trait=Trait(options=options, hashed_options=hashed_options)):
                 return bool(len(options) + len(hashed_options))
@@ -1258,6 +1378,9 @@ class EmptyMatcher(Matcher):
     # def __eq__(self, other):
     #     return isinstance(other, EmptyMatcher) and \
     #             (self.name, self.invert, self.guard) == (other.name, other.invert, other.guard)
+
+    def equivalent(self, other):
+        return isinstance(other, EmptyMatcher) and self.guard == other.guard and self.invert == other.invert
 
     def __repr__(self):
         return f"EmptyMatcher({'!'*self.invert}{' as '+self.name if self.name else ''})"
@@ -1286,6 +1409,13 @@ class Parameter:
             case _:
                 raise TypeError(f"Failed to create Parameter from: {repr(matcher)}")
         self.quantifier = quantifier
+
+    def issubset(self, other):
+        if isinstance(other, UnionParam):
+            return any(self.issubset(param) for param in other.parameters)
+        if self.count[1] > other.count[1] or self.count[0] < other.count[0]:
+            return False
+        return self.matcher.issubset(other.matcher)
 
     def _get_quantifier(self) -> str:
         return self._quantifier
@@ -1373,6 +1503,10 @@ class UnionParam(Parameter):
     def __init__(self, *parameters, name=None, quantifier=""):
         self.parameters = parameters
         super().__init__(None, name, quantifier)
+
+    def issubset(self, other):
+        if isinstance(other, UnionParam):
+            return all(param.issubset(other) for param in self.parameters)
 
     def __lt__(self, other):
         return max(self.parameters) < other
@@ -1465,6 +1599,9 @@ class Pattern(Record):
 
     def match_score(self, *values: Record) -> int | float:
         return self.match_zip(values)[0]
+
+    def issubset(self, other):
+        return all(p1.issubset(p2) for (p1, p2) in zip(self.parameters, other.parameters))
 
     def __len__(self):
         return len(self.parameters)
@@ -1785,6 +1922,16 @@ def patternize(val):
 #             return f"FuncBlock({self.exprs[0]})"
 #         return f"FuncBlock({len(self.exprs)} exprs)"
 
+class Args(Record):
+    positional_arguments: list[Record]
+    named_arguments: dict[str, Record]
+    flags: set[str]
+    def __init__(self, *args: Record, flags: set[str], **kwargs: Record):
+        self.positional_arguments = args
+        self.flags = flags
+        self.named_arguments = kwargs
+        super().__init__(BuiltIns['Args'])
+
 class CodeBlock:
     exprs: list
     scope = None
@@ -1877,7 +2024,7 @@ class Option(Record):
                 raise TypeErr(f"Line {Context.line}: Invalid option pattern: {pattern}")
         if resolution is not None:
             self.assign(resolution)
-        super().__init__(BuiltIns['Option'], signature=self.pattern, code_block=self.resolution)
+        super().__init__(BuiltIns['Option'])  # , signature=self.pattern, code_block=self.resolution)
 
     def is_null(self):
         return (self.value and self.block and self.fn and self.alias) is None

@@ -393,12 +393,15 @@ class TableExpr(Command):
     def evaluate(self):
         table = ListTable(name=self.table_name)
         Context.env.assign(self.table_name, table)
-        table.traits += tuple(Context.deref(tname) for tname in self.traits)
+        traits = tuple(Context.deref(tname) for tname in self.traits)
+        table.traits += traits
         for trait, name in zip(table.traits, self.traits):
             if not isinstance(trait, Trait):
                 raise TypeErr(f"Line: {Context.line}: '{name}' is not a Trait, it is {repr(trait)}")
         if self.body is not None:
             CodeBlock(self.body).execute(fn=table)
+
+        table.integrate_traits()
         return table
 
 class SlotExpr(Command):
@@ -449,10 +452,10 @@ class SlotExpr(Command):
             case Trait() as trait:
                 pass
             case Table(traits=(Trait() as trait, *_)) as table:
-                table.getters[self.slot_name] = len(table.fields), slot
-                table.fields.append(slot)
-                table.setters[self.slot_name] = len(table.fields), slot
-                table.fields.append(slot)
+                # table.getters[self.slot_name] = len(table.defaults), slot
+                # table.setters[self.slot_name] = len(table.defaults), slot
+                # table.defaults.append(default)
+                pass
             case Function(trait=Trait() as trait):
                 pass
             case _:
@@ -488,8 +491,8 @@ class FormulaExpr(Command):
             case Trait() as trait:
                 pass
             case Table(traits=(Trait() as trait, *_)) as table:
-                table.getters[self.formula_name] = len(table.fields), formula
-                table.fields.append(formula)
+                # table.getters[self.formula_name] = len(table.fields), formula
+                pass
             case Function(trait=Trait() as trait):
                 pass
             case _:
@@ -521,8 +524,8 @@ class SetterExpr(Command):
             case Trait() as trait:
                 pass
             case Table(traits=(Trait() as trait, *_)) as table:
-                table.setters[self.field_name] = len(table.fields), setter
-                table.fields.append(setter)
+                # table.setters[self.field_name] = len(table.fields), setter
+                pass
             case Function(trait=Trait() as trait):
                 pass
             case _:
