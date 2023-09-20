@@ -164,3 +164,8 @@ def frac_from_base(num: float, base, precision=12):
     # if digits == [base]:
     #     return [base-1] * precision
     return digits
+
+
+def call(fn, args):
+    kwargs = {**args.named_arguments, **dict(zip(args.flags, [BuiltIns['true']] * len(args.flags)))}
+    return fn(*args.positional_arguments, **kwargs)

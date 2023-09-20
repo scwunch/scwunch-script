@@ -223,9 +223,7 @@ class ForLoop(ExprWithBlock):
             raise SyntaxErr(f"Line {self.line}: For loop expression expected 'in' keyword.")
 
     def evaluate(self):
-        iterator = get_iterable(self.iterable.evaluate())
-        if iterator is None:
-            raise TypeErr(f"Line {Context.line}: {self.iterable} is not iterable.")
+        iterator = iter(BuiltIns['iter'].call(self.iterable.evaluate()))
         if len(self.var) == 1:
             var_node = self.var[0]
             if var_node.type == TokenType.Name:
@@ -441,13 +439,13 @@ class SlotExpr(Command):
             case None:
                 default = None
             case Expression():
-                default_value = self.default.evaluate()
-                default = Function({Parameter(AnyMatcher(), 'self'): default_value})
+                default = self.default.evaluate()
+                # default = Function({Parameter(AnyMatcher(), 'self'): default_value})
             case Block() as blk:
-                default = Function({Parameter(AnyMatcher(), 'self'): CodeBlock(blk)})
+                default = CodeBlock(blk)
             case _:
                 raise ValueError("Unexpected default")
-        slot = Slot(self.slot_name, slot_type, default)
+        slot = Slot(self.slot_name, slot_type, Function({Parameter(AnyMatcher(), 'self'): default}))
         match Context.env.fn:
             case Trait() as trait:
                 pass
@@ -485,7 +483,9 @@ class FormulaExpr(Command):
             case _:
                 raise TypeErr(f"Line {Context.line}: Invalid type: {self.formula_type.evaluate()}.  "
                               f"Expected value, table, trait, or single-parameter pattern.")
-        formula_fn = Function({Pattern(): CodeBlock(self.block)})
+        patt = patternize(Context.env.fn)
+        patt.parameters[0].name = 'self'
+        formula_fn = Function({patt: CodeBlock(self.block)})
         formula = Formula(self.formula_name, formula_type, formula_fn)
         match Context.env.fn:
             case Trait() as trait:
@@ -616,8 +616,18 @@ def eval_node(node: Node) -> Record:
             return eval_token(tok)
         case Block() | ListNode(list_type=ListType.Function) as block:
             return CodeBlock(block).execute(())
-        case ListNode(nodes=nodes):
-            return List(list(map(eval_node, nodes)))
+        case ListNode(list_type=list_type, items=items):
+            match list_type:
+                case ListType.List:
+                    return py_value(list(map(eval_node, items)))
+                case ListType.Args:
+                    return eval_args_list(items)
+                case ListType.Params:
+                    return Pattern(*map(make_param, items))
+                case ListType.Tuple:
+                    return py_value(tuple(map(eval_node, items)))
+                case _:
+                    raise NotImplementedError
         case StringNode(nodes=nodes):
             return py_value(''.join(map(eval_string_part, nodes)))
     raise ValueError(f'Could not evaluate node {node} at line: {node.pos}')
@@ -685,7 +695,22 @@ def eval_string(text: str):
     return value
 
 
-def get_iterable(val: Record):
+def eval_args_list(statements: list[Statement]) -> Args:
+    pos_args = []
+    named_args = {}
+    flags = set()
+    for stmt in statements:
+        match stmt.nodes:
+            case [Token(type=TokenType.Name, source_text=name), Token(source_text='='), *expr_nodes]:
+                named_args[name] = expressionize(expr_nodes).evaluate()
+            case [Token(source_text='!'), Token(type=TokenType.Name, source_text=name)]:
+                flags.add(name)
+            case nodes:
+                pos_args.append(expressionize(nodes).evaluate())
+
+    return Args(*pos_args, flags=flags, **named_args)
+
+def get_iterable_DEPRECATED(val: Record):
     match val:
         case PyValue(value=tuple() | list() | set() | frozenset() as iterable):
             return iterable

@@ -64,8 +64,8 @@ def eval_alias_args(lhs: list[Node], rhs: list[Node]) -> list[Record]:
     return [*left, option]
 
 
-def assign_option(fn: Function, key: PyValue[list], val: Record):
-    params = (Parameter(ValueMatcher(rec)) for rec in key.value)
+def assign_option(fn: Function, args: PyValue[tuple] | Args, val: Record):
+    params = (Parameter(ValueMatcher(rec)) for rec in args)
     fn.trait.assign_option(Pattern(*params), val)
     return val
 
@@ -426,12 +426,17 @@ def eval_call_args(lhs: list[Node], rhs: list[Node]) -> list[Record]:
             if fn is None:
                 raise KeyErr(f"Line {Context.line}: {a.table} {a} has no slot '{name}' and no variable with that name "
                              f"found in current scope either.")
-            args = List([a] + args.value)
+            if isinstance(args, Args):
+                args.positional_arguments = (a, *args.positional_arguments)
+            else:
+                args = List([a] + args.value)
     else:
         fn = expressionize(lhs).evaluate()
     return [fn, args]
 def dot_fn(a: Record, b: Record):
     match b:
+        case Args() as args:
+            return a(args)
         case PyValue(value=str() as name):
             try:
                 # return a.deref(name, ascend_env=False)

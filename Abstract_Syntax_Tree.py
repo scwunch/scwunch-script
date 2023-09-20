@@ -267,8 +267,14 @@ class AST:
                     if self.idx and self.peek(-1).type in \
                             (TokenType.Name, TokenType.GroupEnd, TokenType.ListEnd, TokenType.FnEnd):
                         nodes.append(Token('.', self.tok.pos))
+                        list_type = ListType.Args
+                    else:
+                        list_type = ListType.List
                     self.seek()
-                    nodes.append(ListNode(self.read_list(TokenType.ListEnd), ListType.List))
+                    ls = ListNode(self.read_list(TokenType.ListEnd), list_type)
+                    if self.peek().source_text == ':':
+                        ls.list_type = ListType.Params
+                    nodes.append(ls)
                 case TokenType.FnStart:
                     self.seek()
                     nodes.append(ListNode(self.read_list(TokenType.FnEnd), ListType.Function))

@@ -293,6 +293,19 @@ class Record:
             return option.resolve(key, self, bindings)
         raise NoMatchingOptionError(f"Line {Context.line}: key {key} not found in {self.name or self}")
 
+    def __call__(self, args):
+        option, bindings = self.select_by_args(args)
+        if option:
+            return option.resolve(args, self, bindings)
+        raise NoMatchingOptionError(f"Line {Context.line}: key {args} not found in {self.name or self}")
+
+    def select_by_args(self, args):
+        for t in self.mro:
+            option, bindings = t.select_and_bind(args)
+            if option:
+                return option, bindings
+        return None, None
+
     def select(self, *key):
         for t in self.mro:
             option, bindings = t.select_and_bind(key)
@@ -388,6 +401,15 @@ class PyValue(Record, Generic[T]):
             return id(self)
     def __eq__(self, other):
         return isinstance(other, PyValue) and self.value == other.value or self.value == other
+
+    def __iter__(self):
+        match self.value:
+            case tuple() | list() | set() | frozenset() as iterable:
+                return iter(iterable)
+            case str() as string:
+                return (PyValue(BuiltIns['String'], c) for c in string)
+        raise TypeErr(f"Line {Context.line}: {self.table} {self} is not iterable.")
+
     def __repr__(self):
         match self.value:
             case frozenset() as f:
@@ -641,9 +663,13 @@ class Trait(Function):
         opt.assign(resolution)
         return opt
 
-    def select_and_bind(self, key: tuple):
-        if key in self.hashed_options:
-            return self.hashed_options[key], {}
+    def select_and_bind(self, key):
+        match key:
+            case tuple() if key in self.hashed_options:
+                return self.hashed_options[key], {}
+            case Args(positional_arguments=tuple() as pos) if not (key.named_arguments or key.flags):
+                if pos in self.hashed_options:
+                    return self.hashed_options[pos], {}
 
         option = bindings = None
         high_score = 0
@@ -662,27 +688,6 @@ class Trait(Function):
             if opt.pattern == patt:
                 return opt
         return default
-
-    # def get_field(self, rec, index):
-    #     match self.fields[index]:
-    #         case Slot():
-    #             return rec.data[index]
-    #         case Formula(formula=fn):
-    #             return fn.call(rec)
-    #         case _:
-    #             raise SlotErr
-    #
-    # def set_field(self, rec, index, value):
-    #     match self.fields[index]:
-    #         case Field(setter=setter):
-    #             return setter.call(self, value)
-    #         case Slot(type=matcher):
-    #             if not matcher.match_score(value):
-    #                 raise TypeErr(f"Line {Context.line}: Failed slot assignment: {value.table} {value} is not {matcher}.")
-    #             rec.data[index] = value
-    #             return value
-    #         case Formula(name=name):
-    #             raise SlotErr(f"Line {Context.line}: formula {name} has no setter.")
 
     def upsert_field(self, field):
         if field.name in self.field_ids:
@@ -735,6 +740,7 @@ class Table(Function):
         self.defaults = ()
         for field in fields:
             self.upsert_field(field)
+        super().__init__(name=name, table_name='Table')
         self.integrate_traits()
         match self:
             case VirtTable():
@@ -747,7 +753,7 @@ class Table(Function):
                 self.records = set()
             case _:
                 raise TypeError("Oops, don't use the Table class — use a derived class instead.")
-        super().__init__(name=name, table_name='Table')
+
 
         # match fields:
         #     case list() | tuple():
@@ -764,7 +770,7 @@ class Table(Function):
         #         raise TypeError(f"Invalid argument type for fields: {type(fields)} {fields}")
 
     def integrate_traits(self):
-        defaults: dict[str, Record | None] = {}
+        defaults: dict[str, Function | None] = {}
         types: dict[str, Matcher] = {}
 
         for trait in self.traits:
@@ -801,8 +807,12 @@ class Table(Function):
                         if name not in self.setters:
                             self.setters[name] = fn
 
-        self.defaults = tuple(defaults[n]
-                              for n in defaults)
+        self.defaults = tuple(defaults[n] for n in defaults)
+        def fn(args: Args):
+            args = Args(Context.env.caller, *args.positional_arguments, flags=args.flags, **args.named_arguments)
+            return BuiltIns['new'](args)
+        self.trait.add_option(Pattern(*(Parameter(types[name], name, default=defaults[name]) for name in defaults)),
+                              Native(fn))
 
     def get_field(self, name: str):
         _, field = self.getters.get(name,
@@ -880,14 +890,14 @@ class MetaTable(ListTable):
         self.setter_dict = {}
 
 
-class BootstrapTraitTable(ListTable):
-    def __init__(self):
-        self.name = "TraitTable"
+class BootstrapTable(ListTable):
+    def __init__(self, name):
+        self.name = name
         self.records = []
         self.traits = ()
         self.getters = {}
         self.setters = {}
-        self.defaults = []
+        self.defaults = ()
         self.slot_dict = {}
         self.formula_dict = {}
         self.setter_dict = {}
@@ -1392,8 +1402,9 @@ class Parameter:
     count: tuple[int, int | float]
     optional: bool
     multi: bool
+    default = None
 
-    def __init__(self, matcher, name=None, quantifier=""):
+    def __init__(self, matcher, name=None, quantifier="", default=None):
         self.name = name
         match matcher:
             # case Pattern(parameters=(Parameter(matcher=m, name=None, quantifier=""),)):
@@ -1408,6 +1419,16 @@ class Parameter:
                 self.matcher: Matcher = TableMatcher(table)
             case _:
                 raise TypeError(f"Failed to create Parameter from: {repr(matcher)}")
+        if default:
+            if isinstance(default, Option):
+                self.default = default
+            else:
+                self.default = Option(Pattern(), default)
+            match quantifier:
+                case "":
+                    quantifier = '?'
+                case "+":
+                    quantifier = "*"
         self.quantifier = quantifier
 
     def issubset(self, other):
@@ -1623,13 +1644,15 @@ class Pattern(Record):
                 return math.inf
         return len(self.parameters)
 
-    def match_zip(self, args: tuple[Record, ...] = None) -> tuple[float|int, dict[str, Record]]:
+    def match_zip(self, args=None) -> tuple[float|int, dict[str, Record]]:
         if args is None:
             return 1, {}
         if len(args) == 0 == self.min_len():
             return 1, {}
         if not self.min_len() <= len(args) <= self.max_len():
             return 0, {}
+        if isinstance(args, Args):
+            return MatchState(self.parameters, args).match_zip()
         state = MatchState(self.parameters, args)
         return self.match_zip_recursive(state)
 
@@ -1836,6 +1859,11 @@ class MatchState:
     def success(self):
         if self.i_param > len(self.parameters) or self.i_arg > len(self.args):
             raise RuntimeErr(f"Line {Context.line}: Pattern error: i_param or i_arg went out of bounds.")
+        if isinstance(self.args, Args):
+            if self.i_arg < len(self.args.positional_arguments):
+                return False
+            else:
+                return self.i_param == len(self.parameters) and self.score
         return self.i_param == len(self.parameters) and self.i_arg == len(self.args) and self.score
         # return self.done and self.score
 
@@ -1846,7 +1874,10 @@ class MatchState:
 
     @property
     def arg(self):
-        return self.args[self.i_arg]
+        try:
+            return self.args[self.i_arg]
+        except IndexError:
+            return None
 
     def branch(self, **kwargs):
         if 'bindings' not in kwargs:
@@ -1855,6 +1886,80 @@ class MatchState:
             if key not in kwargs:
                 kwargs[key] = self.__dict__[key]
         return MatchState(**kwargs)
+
+    def match_zip(self):
+        self.args: Args
+        while param := self.param:
+            name = param.name
+            if name in self.args.named_arguments and name not in self.bindings:
+                branch = self.branch()
+                branch.args: Args  # noqa
+                branch.bindings[name] = branch.args.named_arguments[name]
+                branch.i_param += 1
+                score, bindings = branch.match_zip()
+                if score:
+                    return score, bindings
+            if name in self.args.flags and name not in self.bindings:
+                self.bindings[name] = BuiltIns['true']
+                self.i_param += 1
+                continue
+            if isinstance(param, UnionParam):
+                for param in param.parameters:
+                    new_params = [*self.parameters[:self.i_param], param, *self.parameters[self.i_param + 1:]]
+                    score, bindings = self.branch(parameters=new_params).match_zip()
+                    if score:
+                        return score, bindings
+                return 0, {}
+
+            key: str | int = param.name or self.i_param
+            self.param_score *= param.multi
+            if self.arg:
+                match_value = param.matcher.match_score(self.arg)
+            else:
+                match_value = 0  # no arguments left to process match
+            if not match_value and not param.optional and not self.bindings.get(key):
+                return 0, {}
+            match param.quantifier:
+                case "":
+                    # match patt, save, and move on
+                    if not match_value:
+                        return 0, {}
+                    self.bindings[key] = self.arg
+                    self.score += match_value
+                    self.i_arg += 1
+                    self.i_param += 1
+                case "?":
+                    # try match patt and save... move on either way
+                    self.i_param += 1
+                    if match_value:
+                        branch = self.branch()
+                        branch.i_arg += 1
+                        branch.score += match_value
+                        branch.bindings[key] = self.arg
+                        score, bindings = branch.match_zip()
+                        if score:
+                            return score, bindings
+                    elif param.default:
+                        self.bindings[key] = param.default.resolve()
+                case "+" | "*":
+                    if key not in self.bindings:
+                        self.bindings[key] = []
+                        if not match_value and param.default:
+                            self.bindings[key] = param.default.resolve()
+                    if match_value:
+                        branch = self.branch()
+                        branch.i_arg += 1
+                        branch.param_score += match_value
+                        branch.bindings[key].append(self.arg)
+                        score, bindings = branch.match_zip()
+                        if score:
+                            return score, bindings
+                    if self.param_score:  #  if len(saves[key].value):
+                        self.score += self.param_score / len(self.bindings[key])
+                    self.i_param += 1
+        if self.success:
+            return self.score_and_bindings()
+        return 0, {}
 
     def score_and_bindings(self):
         for key, value in self.bindings.items():
@@ -1923,14 +2028,29 @@ def patternize(val):
 #         return f"FuncBlock({len(self.exprs)} exprs)"
 
 class Args(Record):
-    positional_arguments: list[Record]
+    positional_arguments: list[Record] | tuple[Record, ...]
     named_arguments: dict[str, Record]
     flags: set[str]
-    def __init__(self, *args: Record, flags: set[str], **kwargs: Record):
+    def __init__(self, *args: Record, flags: set[str] = None, **kwargs: Record):
         self.positional_arguments = args
-        self.flags = flags
+        self.flags = flags or set()
         self.named_arguments = kwargs
         super().__init__(BuiltIns['Args'])
+
+    def __len__(self):
+        return len(self.positional_arguments) + len(self.named_arguments) + len(self.flags)
+
+    def __getitem__(self, item):
+        return self.named_arguments.get(item, self.positional_arguments[item])
+
+    def keys(self):
+        return self.named_arguments.keys()
+
+    def __repr__(self):
+        pos = map(str, self.positional_arguments)
+        names = (f"{k}={v}" for (k, v) in self.named_arguments.items())
+        flags = ('!'+str(f) for f in self.flags)
+        return f"Args({', '.join(pos)}; {', '.join(names)}; {' '.join(flags)})"
 
 class CodeBlock:
     exprs: list
@@ -1970,7 +2090,10 @@ class Native(CodeBlock):
     def execute(self, args=None, caller=None, bindings=None, *, fn=None):
         closure = Closure(self, args, caller, bindings, fn)
         Context.push(Context.line, closure)
-        closure.return_value = self.fn(*args)
+        if isinstance(args, tuple):
+            closure.return_value = self.fn(*args)
+        else:
+            closure.return_value = self.fn(args)
         Context.pop()
         return closure.return_value
 
@@ -2046,19 +2169,21 @@ class Option(Record):
         self.nullify()
         self.resolution = resolution
         match resolution:
-            case Record(): self.value = resolution
             case CodeBlock(): self.block = resolution
             # case PyFunction(): self.block = Native(resolution)
             case PyFunction(): self.fn = resolution
             case Option(): self.alias = resolution
+            case Record(): self.value = resolution
             case _:
                 raise ValueError(f"Line {Context.line}: Could not assign resolution {resolution} to option {self}")
-    def resolve(self, args, caller, bindings=None):
+    def resolve(self, args=None, caller=None, bindings=None):
         if self.alias:
             return self.alias.resolve(args, caller, bindings)
         if self.value:
             return self.value
         if self.fn:
+            if isinstance(args, Args) and args.named_arguments:
+                return self.fn(*args, **args)
             return self.fn(*args)
         if self.dot_option:
             caller = args[0]

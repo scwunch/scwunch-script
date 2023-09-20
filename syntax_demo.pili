@@ -296,7 +296,7 @@ table Dog @Animal
     formula print_bark:
         print self.bark
     opt [int n]:
-        return debug self.array[n]
+        return self.array[n]
     opt [int i, int j]:
         return self.array[i, j]
 
@@ -340,7 +340,7 @@ table Dog @Animal
 
 
 rover = Dog['Rover', 137, [1,2,3]]
-boulder = debug Dog['Boulder', 232, ['a', 'b', 'c'], 'Big Dog', true, 'BARK']
+boulder = Dog['Boulder', 232, ['a', 'b', 'c'], 'Big Dog', sound='BARK']
 
 print rover.name
 print rover.length
@@ -349,12 +349,16 @@ print rover.species
 print rover.alive
 print rover.sound
 print rover[-1]
+rover.make_sound
 print boulder.name
 print boulder.length
 print boulder.array
 print boulder.species
+print "Boulder's Sound: "+  boulder.sound
+boulder.make_sound
 
-Dog[name='Boulder', 232, sound='Bark']  #, !big]
+other = debug Dog[name='Boulder', 232, sound='Bark']  #, !big]
+other.make_sound
 
 # fn sum[num a+, DogType]
 
@@ -387,6 +391,7 @@ table TokenTypeEnum
 
 TokenType = TokenTypeEnum[]
 
+# Node[!argset, 2,3,4]
 
 # trait Node
 #     slot pos tuple(int, int) = (-1, -1)
@@ -399,7 +404,7 @@ TokenType = TokenTypeEnum[]
 
 
 
-
+# ls`['3 .. 1', -1]
 
 
 

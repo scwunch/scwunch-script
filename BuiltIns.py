@@ -7,7 +7,9 @@ from Expressions import expressionize, read_number, Expression, py_eval, piliize
 
 # BuiltIns['blank'] = None
 BuiltIns['Table'] = TableTable = MetaTable()
-BuiltIns['Trait'] = TraitTable = BootstrapTraitTable()
+BuiltIns['Trait'] = TraitTable = BootstrapTable('Trait')
+BuiltIns['Pattern'] = IntermediatePatternTable = BootstrapTable('Pattern')
+BuiltIns['Option'] = IntermediateOptionTable = BootstrapTable('Option')
 TableTable.trait = Trait()
 TableTable.traits = (Trait(),)
 TraitTable.trait = Trait()
@@ -29,6 +31,7 @@ BuiltIns['seq'] = SeqTrait = Trait(own_trait=Trait())
 BuiltIns['str'] = StrTrait = Trait(own_trait=Trait())
 BuiltIns['tuple'] = TupTrait = Trait(own_trait=Trait())
 BuiltIns['set'] = SetTrait = Trait(own_trait=Trait())
+BuiltIns['frozenset'] = FrozenSetTrait = Trait(own_trait=Trait())
 BuiltIns['list'] = ListTrait = Trait(own_trait=Trait())
 BuiltIns['dict'] = DictTrait = Trait(own_trait=Trait())
 
@@ -57,6 +60,7 @@ TableTable.traits += (FnTrait,)
 BuiltIns['Trait'].traits += (FnTrait,)
 
 BuiltIns['Pattern'] = ListTable(SeqTrait, IterTrait)
+BuiltIns['Pattern'].records = IntermediatePatternTable.records
 BuiltIns['Block'] = ListTable()
 
 BuiltIns['Field'] = ListTable()
@@ -71,6 +75,7 @@ def upsert_field_fields():
 upsert_field_fields()
 
 BuiltIns['Option'] = ListTable()
+BuiltIns['Option'].records = IntermediateOptionTable.records
 BuiltIns['Option'].upsert_field(Slot('signature', TableMatcher(BuiltIns['Pattern'])))
 BuiltIns['Option'].upsert_field(Slot('code block', TableMatcher(BuiltIns['Block'])))
 
@@ -244,6 +249,8 @@ BuiltIns['float'].trait.add_option(Pattern(NormalParam), lambda x: py_value(floa
 BuiltIns['str'].trait.add_option(Pattern(AnyParam), lambda x: x.to_string())
 BuiltIns['str'].trait.add_option(Pattern(NumericParam, IntegralParam),
                                lambda n, b: py_value(write_number(n.value, b.value)))
+BuiltIns['iter'].trait.add_option(UnionMatcher(*(TraitMatcher(BuiltIns[t]) for t in ('tuple', 'list', 'set', 'frozenset', 'str'))),
+                                  lambda x: x)
 # BuiltIns['string'].trait.add_option(Pattern(ListParam), lambda l: py_value(str(l.value[1:])))
 # BuiltIns['string'].trait.add_option(Pattern(NumberParam),
 #                               lambda n: py_value('-' * (n.value < 0) +
@@ -260,11 +267,11 @@ BuiltIns['len'] = Function({SeqParam: lambda s: py_value(len(s.value)),
 BuiltIns['traits'] = Function({Parameter(BuiltIns['Table']): lambda t: py_value(t.traits)})
 # BuiltIns['contains'] = Function({Pattern(FunctionParam: AnyParam),
 #                                 lambda a, b: py_value(b in (opt.value for opt in a.options)))
-BuiltIns['options'] = Function({AnyParam: lambda x: piliize([py_value(lp.pattern) for lp in x.options])})
-BuiltIns['names'] = Function({AnyParam: lambda x: piliize([py_value(k) for k in x.named_options.keys()])})
-BuiltIns['keys'] = Function({AnyParam:
-                            lambda x: piliize([lp.pattern[0].pattern.value for lp in x.options
-                                               if len(lp.pattern) == 1 and isinstance(lp.pattern[0].pattern, ValueMatcher)])})
+# BuiltIns['options'] = Function({AnyParam: lambda x: piliize([py_value(lp.pattern) for lp in x.options])})
+# BuiltIns['names'] = Function({AnyParam: lambda x: piliize([py_value(k) for k in x.named_options.keys()])})
+# BuiltIns['keys'] = Function({AnyParam:
+#                             lambda x: piliize([lp.pattern[0].pattern.value for lp in x.options
+#                                                if len(lp.pattern) == 1 and isinstance(lp.pattern[0].pattern, ValueMatcher)])})
 
 BuiltIns['max'] = Function({Parameter(BuiltIns["num"], quantifier='+'):
                                 lambda *args: py_value(max(*[arg.value for arg in args])),
@@ -277,7 +284,8 @@ BuiltIns['min'] = Function({Parameter(BuiltIns["num"], quantifier='+'):
                                 lambda *args: py_value(min(*[arg.value for arg in args])),
                             Parameter(TraitMatcher(BuiltIns["str"]), quantifier='+'):
                                 lambda *args: py_value(min(arg.value for arg in args)),
-                            IterParam: lambda ls: py_value(min(arg.value for arg in ls.value))})
+                            IterParam: lambda ls: py_value(min(arg.value for arg in ls.value))
+                            })
 BuiltIns['abs'] = Function({NumericParam: lambda n: py_value(abs(n.value))})
 def pili_round(num, places):
     num, places = num.value, places.value
@@ -348,6 +356,12 @@ def list_get(*args: PyValue):
         raise TypeErr(f"Line {Context.line}: Could not find sequence value of non PyValue {seq}")
     try:
         match args:
+            case (Args(positional_arguments=pos, named_arguments=names, flags=flags),):
+                pos = iter(pos)
+                start = names.get('start', next(pos, py_value(1)))
+                end = names.get('end', next(pos, py_value(0)))
+                step = names.get('step', next(pos, py_value(1)))
+                return list_get(start, end, step)
             case (PyValue() as i,):
                 try:
                     return py_value(seq[i])
