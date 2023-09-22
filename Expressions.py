@@ -306,7 +306,7 @@ class CommandWithExpr(Command):
             case 'print':
                 # print('!@>', BuiltIns['string'].call(self.expr.evaluate()).value)
                 print(BuiltIns['str'].call(self.expr.evaluate()).value)
-                return py_value(None)
+                return BuiltIns['blank']
             case 'break':
                 result = self.expr.evaluate()
                 match result.value:
@@ -405,7 +405,7 @@ class TableExpr(Command):
 class SlotExpr(Command):
     slot_name: str
     slot_type: Expression
-    default: None | Expression | Block
+    default: None | Expression | Block | str = None
     def __init__(self, cmd: str, nodes: list[Node], line: int | None, source: str):
         super().__init__(cmd, line, source)
         match nodes:
@@ -424,9 +424,10 @@ class SlotExpr(Command):
                     raise SyntaxErr(f"Line {self.line}: Slot is missing default block after `:`.")
                 self.default = other_nodes[i+1]
                 break
+            if node.source_text == '?' and i + 1 == len(other_nodes):
+                self.default = expressionize([])
         else:
             self.slot_type = expressionize(other_nodes)
-            self.default = None
 
     def evaluate(self):
         match patternize(self.slot_type.evaluate()):
@@ -445,20 +446,19 @@ class SlotExpr(Command):
                 default = CodeBlock(blk)
             case _:
                 raise ValueError("Unexpected default")
-        slot = Slot(self.slot_name, slot_type, Function({Parameter(AnyMatcher(), 'self'): default}))
+        if default is not None:
+            default = Function({Parameter(AnyMatcher(), 'self'): default})
+        slot = Slot(self.slot_name, slot_type, default)
         match Context.env.fn:
             case Trait() as trait:
-                pass
-            case Table(traits=(Trait() as trait, *_)) as table:
-                # table.getters[self.slot_name] = len(table.defaults), slot
-                # table.setters[self.slot_name] = len(table.defaults), slot
-                # table.defaults.append(default)
-                pass
-            case Function(trait=Trait() as trait):
-                pass
+                trait.fields.append(slot)
+            case Table(traits=(Trait() as trait, *_)):
+                trait.fields.append(slot)
+            case Function() as fn:
+                fn.update_field(slot)
             case _:
                 raise AssertionError
-        trait.upsert_field(slot)
+
         return BuiltIns['blank']
 
 class FormulaExpr(Command):
@@ -489,15 +489,13 @@ class FormulaExpr(Command):
         formula = Formula(self.formula_name, formula_type, formula_fn)
         match Context.env.fn:
             case Trait() as trait:
-                pass
-            case Table(traits=(Trait() as trait, *_)) as table:
-                # table.getters[self.formula_name] = len(table.fields), formula
-                pass
-            case Function(trait=Trait() as trait):
-                pass
+                trait.fields.append(formula)
+            case Table(traits=(Trait() as trait, *_)):
+                trait.fields.append(formula)
+            case Function() as fn:
+                fn.update_field(formula)
             case _:
                 raise AssertionError
-        trait.upsert_field(formula)
         return BuiltIns['blank']
 class SetterExpr(Command):
     field_name: str
@@ -522,22 +520,14 @@ class SetterExpr(Command):
         setter = Setter(self.field_name, fn)
         match Context.env.fn:
             case Trait() as trait:
-                pass
+                trait.fields.append(setter)
             case Table(traits=(Trait() as trait, *_)) as table:
-                # table.setters[self.field_name] = len(table.fields), setter
-                pass
-            case Function(trait=Trait() as trait):
-                pass
+                trait.fields.append(setter)
+            case Function() as fn:
+                fn.update_field(setter)
             case _:
                 raise AssertionError
 
-        # try:
-        #     fid = trait.field_ids[self.field_name]
-        #     field = trait.fields[fid]
-        #     field.setter = fn
-        # except KeyError:
-        #     raise SlotErr(f"Line {Context.line}: No formula with name '{self.field_name}' to add setter to.")
-        #     # DONE: make this work for adding setters to *other* traits applied (not just the trait in scope)
         return BuiltIns['blank']
 
 class OptExpr(Command):
@@ -563,9 +553,16 @@ class OptExpr(Command):
                 raise TypeErr(f"Line {Context.line}: Invalid type: {self.return_type.evaluate()}.  "
                               f"Expected value, table, trait, or single-parameter pattern.")
         pattern = Pattern(*map(make_param, self.params))
-        assert isinstance(Context.env.fn, Table)
-        trait: Trait = Context.env.fn.traits[0]
-        trait.add_option(pattern, CodeBlock(self.block))
+        match Context.env.fn:
+            case Trait() as trait:
+                pass
+            case Table(traits=(Trait() as trait, *_)):
+                pass
+            case Function():
+                raise TypeErr(f"To add options to functions, omit the Opt keyword.")
+            case _:
+                raise AssertionError
+        trait.options.append(Option(pattern, CodeBlock(self.block)))
         return BuiltIns['blank']
 
 
@@ -598,7 +595,7 @@ class EmptyExpr(Expression):
     def __init__(self):
         pass
     def evaluate(self):
-        return py_value(None)
+        return BuiltIns['blank']
 
 class SingleNode(Expression):
     def __init__(self, node: Node, line: int | None, source: str):
@@ -854,7 +851,7 @@ def split(nodes: list[Node], splitter: TokenType) -> list[list[Node]]:
 #     #     """critical design decision here: I want to have walk_prototype_chain=False so I don't assign variables from the prototype..."""
 #     # except NoMatchingOptionError:
 #     #     option = fn.add_option(patt)
-#     option = fn.trait.select_by_pattern(patt, ascend_env=True) or fn.trait.add_option(patt)
+#     option = fn.aselect_by_pattern(patt, ascend_env=True) or fn.add_option(patt)
 #     option.dot_option = dot_option
 #     return option
 
@@ -914,10 +911,10 @@ def read_option2(nodes: list[Node]) -> tuple[Function, Pattern, bool]:
         except NoMatchingOptionError:
             fn = Function(name=name)
             if dot_option:
-                # Context.root.trait.add_option(name, fn)
+                # Context.root.add_option(name, fn)
                 raise NotImplementedError
             else:
-                context_fn.trait.add_option(name, fn)
+                context_fn.assign_option(name, fn)
     else:
         fn = context_fn
 
@@ -931,12 +928,12 @@ def read_option2(nodes: list[Node]) -> tuple[Function, Pattern, bool]:
     #     if opt:
     #         fn = opt.resolve(args, context_fn, bindings)
     #     else:
-    #         fn = context_fn.trait.add_option(patt, resolution).value
+    #         fn = context_fn.add_option(patt, resolution).value
     # elif name:
     #     try:
     #         fn = context_fn.deref(name, ascend)
     #     except NoMatchingOptionError:
-    #         fn = context_fn.trait.add_option(name, Function(name=name)).value
+    #         fn = context_fn.add_option(name, Function(name=name)).value
     # else:
     #     fn = context_fn
 

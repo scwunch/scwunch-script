@@ -49,7 +49,7 @@ else:
 #     if not getattr(builtin, 'name', False):
 #         builtin.name = key
 #     pili.names[key] = builtin
-#     # pili.trait.add_option(Pattern(Parameter(Matcher(key))), builtin)
+#     # pili.add_option(Pattern(Parameter(Matcher(key))), builtin)
 # Context.root = pili
 # Context.push(0, pili, Option(Any))
 
@@ -113,7 +113,7 @@ def execute_script(path):
     # for key, builtin in BuiltIns.items():
     #     if not builtin.name:
     #         builtin.name = key
-    #     root.trait.add_option(ListPatt(Parameter(key)), builtin)
+    #     root.add_option(ListPatt(Parameter(key)), builtin)
     # Context.root = root
     output = main_block.execute(())
     # output = pili.deref('main')

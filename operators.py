@@ -1,4 +1,3 @@
-import contextlib
 import re
 from fractions import Fraction
 from Syntax import Block, Statement
@@ -66,7 +65,7 @@ def eval_alias_args(lhs: list[Node], rhs: list[Node]) -> list[Record]:
 
 def assign_option(fn: Function, args: PyValue[tuple] | Args, val: Record):
     params = (Parameter(ValueMatcher(rec)) for rec in args)
-    fn.trait.assign_option(Pattern(*params), val)
+    fn.assign_option(Pattern(*params), val)
     return val
 
 
@@ -84,8 +83,11 @@ Operator(';',
          Function({AnyBinopPattern: lambda x, y: y}),
          binop=1)
 def assign_fn(fn: Function, patt: Pattern, block: CodeBlock, dot_option: PyValue[bool]) -> PyValue:
-    option = fn.trait.select_by_pattern(patt) or fn.trait.add_option(patt)
-    option.assign(block)
+    option = fn.select_by_pattern(patt)
+    if option is None:
+        option = fn.assign_option(patt, block)
+    else:
+        option.resolution = block
     option.dot_option = dot_option.value
     return py_value(None)
 Operator(':',
@@ -140,7 +142,7 @@ def eval_null_assign_args(lhs: list[Node], rhs: list[Node]) -> tuple[Record, ...
             raise SyntaxErr(
                 f'Line {Context.line}: Invalid left-hand-side for = assignment: {" ".join(n.source_text for n in lhs)}')
     if fn:
-        opt, _ = fn.select(*key.value)
+        opt, _ = fn.select(Args(*key.value))
         if opt and opt.value and opt.value != BuiltIns['blank']:
             existing = opt.value
     if existing is None or existing == BuiltIns['blank']:
@@ -161,7 +163,7 @@ def null_assign(key: PyValue[str], val: Record):
 
 def null_assign_option(fn: Function, key: PyValue[list], val: Record):
     params = (Parameter(ValueMatcher(rec)) for rec in key.value)
-    fn.trait.assign_option(Pattern(*params), val)
+    fn.assign_option(Pattern(*params), val)
     return val
 
 
@@ -371,13 +373,13 @@ def has_option(fn: Record, arg: Record = None) -> PyValue:
         case Record(), PyValue(value=str() as name):
             return py_value(fn.get(name, None) is not None)
         # case Record(), List(records=args) | PyValue(value=tuple() as args):
+        case Record(), Args() as args:
+            option, _ = fn.select(args)
+            return py_value(option is not None)
         case Record(), PyValue(value=tuple() | list() as args):
-            args = tuple(args)
-            for t in fn.mro:
-                option, _ = t.select_and_bind(args)
-                if option:
-                    return py_value(True)
-            return py_value(False)
+            args = Args(*args)
+            option, _ = fn.select(args)
+            return py_value(option is not None)
         case _:
             raise TypeErr(f"Line {Context.line}: "
                           f"The right-hand term of the `has` operator must be a string or sequence of arguments.")
@@ -499,13 +501,13 @@ def make_lambda_guard(type_name: str):
 for type_name in ('num', 'ratio', 'float', 'int', 'str'):
     if type_name == 'int':
         pass
-    pass # BuiltIns[type_name].trait.add_option(Pattern(NumericParam, NumericParam), make_lambda_guard(type_name))
+    pass # BuiltIns[type_name].add_option(Pattern(NumericParam, NumericParam), make_lambda_guard(type_name))
 
 
-# BuiltIns['str'].trait.add_option(Pattern(StringParam),
+# BuiltIns['str'].add_option(Pattern(StringParam),
 #                            lambda regex: Pattern(Parameter(TraitMatcher(
 #                                BuiltIns['str'], guard=lambda s: py_value(bool(re.fullmatch(regex.value, s.value)))))))
-# BuiltIns['num'].trait.add_option(Pattern(NumericParam, NumericParam), lambda a, b: py_value(TableMatcher(BuiltIns['num'], guard=lambda x: py_value(a.value <= x.value <= b.value))))
+# BuiltIns['num'].add_option(Pattern(NumericParam, NumericParam), lambda a, b: py_value(TableMatcher(BuiltIns['num'], guard=lambda x: py_value(a.value <= x.value <= b.value))))
 
 # Add shortcut syntax for adding function guards to type checks.  Eg `int > 0` or `float < 1.0`
 def number_guard(op_sym: str):
@@ -522,7 +524,7 @@ def string_guard(op_sym: str):
     # return Pattern(Parameter(TableMatcher(BuiltIns['str'], guard=lambda s: Op[op_sym].fn.call(py_value(len(s.value)), b))))
 
 # def add_guards(op_sym: str):
-#     Op[op_sym].fn.trait.add_option(Pattern(Parameter(ValueMatcher(BuiltIns['int'])), NumericParam),
+#     Op[op_sym].fn.add_option(Pattern(Parameter(ValueMatcher(BuiltIns['int'])), NumericParam),
 #                                 number_guard(op_sym))
 #     Op[op_sym].fn.assign_option(Pattern(Parameter(ValueMatcher(BuiltIns['float'])), NumericParam),
 #                                 lambda a, b: number_guard(a, b, op_sym))
@@ -534,8 +536,8 @@ def string_guard(op_sym: str):
 
 for op_sym in ('>', '<', '>=', '<='):
     for type_name in ('int', 'ratio', 'float', 'num'):
-        Op[op_sym].fn.trait.add_option(Pattern(Parameter(ValueMatcher(BuiltIns[type_name])), NumericParam),
-                                 number_guard(op_sym))
-    Op[op_sym].fn.trait.add_option(Pattern(Parameter(ValueMatcher(BuiltIns['str'])), NumericParam),
-                             string_guard(op_sym))
+        Op[op_sym].fn.assign_option(Pattern(Parameter(ValueMatcher(BuiltIns[type_name])), NumericParam),
+                                    number_guard(op_sym))
+    Op[op_sym].fn.assign_option(Pattern(Parameter(ValueMatcher(BuiltIns['str'])), NumericParam),
+                                string_guard(op_sym))
     # add_guards(op)

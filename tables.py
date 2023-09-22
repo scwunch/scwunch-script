@@ -6,178 +6,109 @@ from typing import TypeVar, Generic
 PyFunction = type(lambda: None)
 
 
-# class FunctionRecordPrototype:
-#     return_value = None
-#     name: str = None
-#     # mro = ()
-#     env = None
-#     caller = None  # self
-#     block = None
-#     return_type = None
-#     is_null = True
-#     options = None
-#     hashed_options = None
-#     def __init__(self):
-#         # self.mro = (self, )
-#         self.env = Context.env
-#         if self.options is None:
-#             self.options = []
-#         if self.hashed_options is None:
-#             self.hashed_options = {}
-#
-#     def add_option(self, pattern, resolution=None):
-#         option = Option(pattern, resolution)
-#
-#         # try to hash option
-#         key: list[Record] = []
-#         for parameter in option.pattern.parameters:
-#             t = parameter.matcher
-#             if isinstance(t, ValueMatcher) and t.guard is None and not t.invert and t.value.hashable():
-#                 key.append(t.value)
-#             else:
-#                 self.options.insert(0, option)
-#                 break
-#         else:
-#             self.hashed_options[tuple(key)] = option
-#
-#         return option
-#
-#     def remove_option(self, pattern):
-#         opt = self.select_by_pattern(pattern)
-#         if opt is None:
-#             raise NoMatchingOptionError(f'cannot find option "{pattern}" to remove')
-#         opt.nullify()
-#
-#     def assign_option(self, pattern, resolution=None):
-#         opt = self.select_by_pattern(pattern)
-#         if opt is None:
-#             return self.add_option(pattern, resolution)
-#         opt.nullify()
-#         opt.assign(resolution)
-#         return opt
-#
-#     @property
-#     def mro(self):
-#         self: Record
-#         return self, *(s.prototype for s in self.slices), self.table.prototype
-#
-#     def select_and_bind(self, key: list, walk_prototype_chain=True, ascend_env=False):
-#         try:
-#             return self.hashed_options[tuple(key)], {}
-#         except (TypeError, KeyError):
-#             pass
-#         option = bindings = high_score = 0
-#         for opt in self.options:
-#             score, saves = opt.pattern.match_zip(key)
-#             if score == 1:
-#                 return opt, saves
-#             if score > high_score:
-#                 high_score = score
-#                 option, bindings = opt, saves
-#         if option:
-#             return option, bindings
-#         if walk_prototype_chain and self.mro:
-#             for t in self.mro[1:]:
-#                 try:
-#                     return t.select_and_bind(key, False, ascend_env)
-#                 except NoMatchingOptionError:
-#                     pass
-#         if ascend_env and self.env:
-#             try:
-#                 return self.env.select_and_bind(key, walk_prototype_chain, True)
-#             except NoMatchingOptionError:
-#                 pass
-#         raise NoMatchingOptionError(f"Line {Context.line}: key {key} not found in {self.name or self}")
-#         # -> tuple[Option, dict[str, Function]]:
-#
-#     def select_by_pattern(self, patt=None, default=None, ascend_env=False):
-#         # return [*[opt for opt in self.options if opt.pattern == patt], None][0]
-#         for opt in self.options:
-#             if opt.pattern == patt:
-#                 return opt
-#         if ascend_env and self.env:
-#             return self.env.select_by_pattern(patt, default)
-#         return default
-#
-#     def select_by_name(self, name: str, ascend_env=True):
-#         return self.select_by_value((py_value(name),), ascend_env)
-#
-#     def select_by_value(self, values, ascend_env=True):
-#         # try self first
-#         for fn in self.mro:
-#             try:
-#                 return fn.hashed_options[values]
-#             except KeyError:
-#                 continue
-#
-#         if ascend_env and self.env:
-#             try:
-#                 return self.env.select_by_value(values, True)
-#             except NoMatchingOptionError:
-#                 pass
-#         raise NoMatchingOptionError(f"Line {Context.line}: {values} not found in {self}")
-#
-#     def call(self, *key, ascend=False):
-#         if key and isinstance(key[0], list | tuple):
-#             pass
-#         try:
-#             option, bindings = self.select_and_bind(key, ascend_env=ascend)
-#         except NoMatchingOptionError as e:
-#             # if ascend and self.env:
-#             #     try:
-#             #         return self.env.call(*key, ascend=True)
-#             #     except NoMatchingOptionError:
-#             #         pass
-#             raise e
-#         return option.resolve(key, self, bindings)
-#
-#     def deref(self, name: str, ascend_env=True):
-#         option = self.select_by_value((py_value(name),), ascend_env)
-#         return option.resolve((), self)
-#
-#     def instanceof(self, type):
-#         self: Record
-#         return type == self.table or type in self.slices
-#         # types = self.mro[1:]
-#         # if prototype in types:
-#         #     return 1
-#         # for t in types:
-#         #     k = t.instanceof(prototype)
-#         #     if k:
-#         #         return k / 2
-#         # return 0
-#         # # return len(self.type) and int(prototype in self.type) or self.type.instanceof(prototype)/2
+class OptionCatalog:
+    op_list: list
+    op_map: dict
+    # noinspection PyDefaultArgument
+    def __init__(self, options={}, *traits):
+        self.op_list = []
+        self.op_map = {}
+        if options:
+            for patt, res in options.items():
+                self.assign_option(patt, res)
+        for trait in traits:
+            for option in trait.options:
+                self.assign_option(option)
+
+    def assign_option(self, pattern, resolution=None):
+        match pattern, resolution:
+            case Option(pattern=pattern, resolution=resolution) as option, None:
+                pass
+            case _:
+                if resolution is None:
+                    raise AssertionError("Why are you trying to add a null option?")
+                option = Option(pattern, resolution)
+
+        # try to hash option
+        key: list[Record] = []
+        for parameter in option.pattern.parameters:
+            t = parameter.matcher
+            if isinstance(t, ValueMatcher) and t.guard is None and not t.invert and t.value.hashable():
+                key.append(t.value)
+            else:
+                if Context.settings['sort_options']:
+                    for i, opt in enumerate(self.op_list):
+                        if option.pattern <= opt.pattern:
+                            self.op_list.insert(i, option)
+                            break
+                        elif option.pattern == opt.pattern:
+                            self.op_list[i] = option
+                            break
+                    else:
+                        self.op_list.append(option)
+                elif opt := self.select_by_pattern(pattern):
+                    opt.resolution = resolution
+                else:
+                    self.op_list.append(option)
+                break
+        else:
+            self.op_map[tuple(key)] = option
+
+        return option
+
+    def remove_option(self, pattern):
+        opt = self.select_by_pattern(pattern)
+        if opt is None:
+            raise NoMatchingOptionError(f'cannot find option "{pattern}" to remove')
+        opt.nullify()
+
+    # def assign_option(self, pattern, resolution=None):
+    #     opt = self.select_by_pattern(pattern)
+    #     if opt is None:
+    #         return self.add_option(pattern, resolution)
+    #     else:
+    #         opt.resolution = resolution
+    #     return opt
+
+    def select_and_bind(self, key):
+        match key:
+            case tuple() if key in self.op_map:
+                return self.op_map[key], {}
+            case Args(positional_arguments=pos) if not (key.named_arguments or key.flags):
+                if pos in self.op_map:
+                    return self.op_map[pos], {}
+
+        option = bindings = None
+        high_score = 0
+        for opt in self.op_list:
+            score, saves = opt.pattern.match_zip(key)
+            if score == 1:
+                return opt, saves
+            if score > high_score:
+                high_score = score
+                option, bindings = opt, saves
+        return option, bindings
+
+    def select_by_pattern(self, patt, default=None):
+        # return [*[opt for opt in self.op_list if opt.pattern == patt], None][0]
+        for opt in self.op_list:
+            if opt.pattern == patt:
+                return opt
+        return default
 
 
 class Record:
     name = None
     # table: Table
-    # _filters: set | None = None
-    # filters: set[FilterSlice]
-    # slices: list[Slice]
     # data: dict[int, Record]
     # key: Record
     truthy = True
     def __init__(self, table, *data_tuple, **data_dict):
         self.table = table
-        # self.slices = list(slices)
-        # self.data = self.table.defaults.copy()  # [BuiltIns['blank']] * len(self.table.fields)  # if len(self.table.fields) else []
-        # for i, field in enumerate(f for trait in table.traits for f in trait.fields):
-        #     match field:
-        #         case Slot():
-        #             if field.name in data_dict:
-        #                 datum = data_dict[field.name]
-        #             elif i < len(data_tuple):
-        #                 datum = data_tuple[i]
-        #             elif field.default is not None:
-        #                 datum = field.default.call(self)
-        #             else:
-        #                 datum = BuiltIns['blank']
-        #             self.data.append(datum)
         i = len(data_tuple)
         if i > len(self.table.defaults):
-            raise RuntimeErr(f"Line {Context.line}: too many values provided for creating new instance of {self.table}; "
-                             f"Expected a maximum of {len(self.table.defaults)} values but got {i}: {data_tuple}")
+            raise RuntimeErr(f"Line {Context.line}: too many values provided for creating new instance of {self.table};"
+                             f" Expected a maximum of {len(self.table.defaults)} values but got {i}: {data_tuple}")
         defaults = (val.call(self) if val else BuiltIns['blank'] for val in self.table.defaults[i:])
         self.data = [*data_tuple, *defaults]
         for k, v in data_dict.items():
@@ -185,10 +116,10 @@ class Record:
             
         table.add_record(self)
 
-    @property
-    def mro(self):
-        yield from self.table.traits
-        # return (t for t in self.table.traits)
+    # @property
+    # def mro(self):
+    #     yield from self.table.traits
+
     # key property
     # def get_key(self):
     #     match self.table:
@@ -211,21 +142,6 @@ class Record:
     #             raise RuntimeErr
     # key = property(get_key, set_key)
 
-    # @property
-    # def filters(self):
-    #     if self._filters is None:
-    #         self.update_slices()
-    #     return self._filters
-
-    # def update_slices(self, *slices):
-    #     if self._filters is None or not slices:
-    #         self._filters = set(filter(lambda s: s.filter.call(self).truthy,
-    #                                          self.table.slices))
-    #     else:
-    #         for s in slices:
-    #             if s.filter.call(self).truthy:
-    #                 self._filters.add(s)
-
     def get(self, name: str, *default):
         if name in self.table.getters:
             match self.table.getters[name]:
@@ -234,29 +150,9 @@ class Record:
                 case Function() as fn:
                     return fn.call(self)
 
-        # for t in self.mro:
-        #     if name in t.field_ids:
-        #         return t.get_field(self, t.field_ids[name])
         if not default:
             raise SlotErr(f"Line {Context.line}: no field found with name '{name}'.")
         return default[0]
-        # try:
-        #     index = self.table.field_ids[name]
-        # except KeyError:
-        #     if not default:
-        #         raise SlotErr(f"Line {Context.line}: no field found with name '{name}'.")
-        #     return default[0]
-        # return self.get_by_index(index)
-
-    # def get_by_index(self, index: int):
-    #     field = self.table.fields[index]
-    #     match field:
-    #         case Slot():
-    #             return self.data[index]
-    #         case Formula():
-    #             raise NotImplementedError
-    #         case _:
-    #             raise TypeError(f"Invalid Field subtype: {type(field)}")
 
     def set(self, name: str, value):
         match self.table.setters.get(name):
@@ -268,50 +164,34 @@ class Record:
                 return fn.call(self, value)
             case None:
                 raise SlotErr(f"Line {Context.line}: no field found with name '{name}'.")
-        # for t in self.mro:
-        #     if name in t.field_ids:
-        #         return t.set_field(self, t.field_ids[name], value)
 
-        # index = self.table.field_ids[name]
-        # return self.set_by_index(index, value)
+    def call(self, *args, flags=None, **kwargs):
+        return self(Args(*args, flags=flags, **kwargs))
+        # if not isinstance(args, Args):
+        #     args = Args(args)
+        # option, bindings = self.select_by_args(args)
+        # if option:
+        #     return option.resolve(args, self, bindings)
+        # raise NoMatchingOptionError(f"Line {Context.line}: key {args} not found in {self.name or self}")
 
-    # def set_by_index(self, index: int, value):
-    #     field = self.table.fields[index]
-    #     match field:
-    #         case Slot():
-    #             # first validate the type
-    #             self.data[index] = value
-    #         case Formula():
-    #             raise RuntimeErr("Cannot set formula field.")
-    #         case _:
-    #             raise TypeError(f"Invalid Field subtype: {type(field)}")
-    #     self._filter_slices = None
-
-    def call(self, *key):
-        option, bindings = self.select(*key)
-        if option:
-            return option.resolve(key, self, bindings)
-        raise NoMatchingOptionError(f"Line {Context.line}: key {key} not found in {self.name or self}")
+        # option, bindings = self.select(*key)
+        # if option:
+        #     return option.resolve(key, self, bindings)
+        # raise NoMatchingOptionError(f"Line {Context.line}: key {key} not found in {self.name or self}")
 
     def __call__(self, args):
-        option, bindings = self.select_by_args(args)
+        option, bindings = self.select(args)
         if option:
             return option.resolve(args, self, bindings)
-        raise NoMatchingOptionError(f"Line {Context.line}: key {args} not found in {self.name or self}")
+        raise NoMatchingOptionError(f"Line {Context.line}: {args} not found in {self.name or self}")
 
-    def select_by_args(self, args):
-        for t in self.mro:
-            option, bindings = t.select_and_bind(args)
-            if option:
-                return option, bindings
-        return None, None
-
-    def select(self, *key):
-        for t in self.mro:
-            option, bindings = t.select_and_bind(key)
-            if option:
-                return option, bindings
-        return None, None
+    def select(self, args):
+        return self.table.catalog.select_and_bind(args)
+    #     for t in self.mro:
+    #         option, bindings = t.select_and_bind(args)
+    #         if option:
+    #             return option, bindings
+    #     return None, None
 
     def hashable(self):
         try:
@@ -372,7 +252,7 @@ class PyValue(Record, Generic[T]):
 
     def to_string(self):
         for singleton in ('true', 'false', 'blank'):
-            if self == BuiltIns[singleton]:
+            if self is BuiltIns[singleton]:
                 return py_value(singleton)
         if BuiltIns['num'] in self.table.traits:
             return py_value(write_number(self.value, Context.settings['base']))
@@ -399,6 +279,7 @@ class PyValue(Record, Generic[T]):
             return hash(self.value)
         except TypeError:
             return id(self)
+
     def __eq__(self, other):
         return isinstance(other, PyValue) and self.value == other.value or self.value == other
 
@@ -454,29 +335,6 @@ def py_value(value: T):
             return PyObj(value)
     return PyValue(table, value)
 
-    # slices = []
-    # if value is None:
-    #     return BuiltIns['blank']
-    #
-    # t = type(value)
-    # match t.__name__:
-    #     case 'bool':
-    #         return BuiltIns[str(value).lower()]
-    #     case 'Fraction':
-    #         if value.denominator == 1:
-    #             value = value.numerator
-    #     case 'float' | 'str' as tn:
-    #         table = BuiltIns[tn]
-    #         return PyValue[t](table, value)
-    #     case 'tuple' | 'frozenset' as tn:
-    #         table = BuiltIns[tn.title()]
-    #         value = t(piliize(v) for v in value)
-    #     case unknown_type:
-    #         raise TypeErr(f"Unhandled python type for PyValue: {unknown_type} {value}")
-    # if isinstance(table, SetTable):
-    #     return PyValue[t](table, value, *slices)
-    # return table[value] or PyValue[type(value)](table, value, *slices)
-
 piliize = py_value
 
 class PyObj(Record, Generic[A]):
@@ -485,95 +343,36 @@ class PyObj(Record, Generic[A]):
         super().__init__(BuiltIns['PyObj'])
 
 List = py_value
-# class List(Record):
-#     records: list
-#     _type = None
-#     def __init__(self, initial_list: list = None, type=None):
-#         if initial_list is not None and not isinstance(initial_list, list):
-#             pass
-#         self.records = initial_list or []
-#         if type is not None:
-#             self._type = type
-#         super().__init__(BuiltIns['List'])
-#
-#     def __getitem__(self, index: PyValue[int]) -> Record:
-#         return self.records[index]
-#
-#     def __setitem__(self, index: PyValue[int], value: Record):
-#         if not self._type.match_score(value):
-#             raise TypeErr(f"Line {Context.line}: invalid type for assigning to this list.")
-#         self.records[index] = value
-#
-#     def insert(self, index: PyValue[int], value: Record):
-#         if not self._type.match_score(value):
-#             raise TypeErr(f"Line {Context.line}: invalid type for assigning to this list.")
-#         self.records.insert(index, value)
-#
-#     def slice(self, i: PyValue[int], j: PyValue[int]):
-#         if i.value in (None, 0, False):
-#             i = None
-#         else:
-#             i = i.__index__()
-#         if j.value in (None, 0, False):
-#             j = None
-#         else:
-#             j = i.__index__()
-#         return self.records[i:j + 1]
-#
-#     def to_string(self):
-#         items = (rec.to_string().value for rec in self.records)
-#         return py_value(f"[{', '.join(items)}]")
 
-
-# def piliize(value: any):
-#     match value:
-#         case None | bool() | int() | Fraction() | float() | str() | tuple() | frozenset():
-#             return py_value(value)
-#         case list():
-#             return List([piliize(v) for v in value])
-#         case set():
-#             s = SetTable()
-#             s.records = {piliize(v) for v in value}
-#             return s
-#         case dict():
-#             d = DictTable()
-#             for k, v in value.items():
-#                 d.records[piliize(k)] = piliize(v)  # this is not the proper full implementation
-#             return d
-#         case Record():
-#             return value
-#         case Parameter():
-#             return Pattern(value)
-#         case Matcher() as t:
-#             return Pattern(Parameter(t))
-#         case _:
-#             return PyObj(value)
-
-class Function(Record):
-    # trait: Trait
-    def __init__(self, options=None, *fields, name=None, table_name='Function'):
+class Function(Record, OptionCatalog):
+    def __init__(self, options=None, *fields, name=None, table_name='Function', traits=()):
         if name:
             self.name = name
         self.slot_dict = {}
         self.formula_dict = {}
         self.setter_dict = {}
         for f in fields:
-            match f:
-                case Slot(default=default):
-                    self.slot_dict[f.name] = default.call(self)
-                case Formula(formula=fn):
-                    self.formula_dict[f.name] = fn
-                case Setter(fn=fn):
-                    self.setter_dict[f.name] = fn
-        self.trait = Trait(options, *fields)
+            self.update_field(f)
+        # self.trait = Trait(options, *fields)
+        OptionCatalog.__init__(self, options or {}, *traits)
         super().__init__(BuiltIns[table_name])
 
-    @property
-    def mro(self):
-        if self.trait:
-            yield self.trait
-        yield from super().mro
-        # return self.trait, *super().mro
+    # @property
+    # def mro(self):
+    #     if self.trait:
+    #         yield self.trait
+    #     yield from super().mro
+    #     # return self.trait, *super().mro
+
+    def update_field(self, field):
+        name = field.name
+        match field:
+            case Slot(default=default):
+                self.slot_dict[name] = default.call(self)
+            case Formula(formula=fn):
+                self.formula_dict[name] = fn
+            case Setter(fn=fn):
+                self.setter_dict[name] = fn
 
     def get(self, name: str, *default):
         if name in self.slot_dict:
@@ -590,130 +389,137 @@ class Function(Record):
             return self.setter_dict[name].call(self, value)
         return super().set(name, value)
 
-    # def add_option(self, *args):
-    #     return self.trait.add_option(*args)
-    #
-    # def assign_option(self, *args):
-    #     return self.trait.assign_option(*args)
+    def select(self, args):
+        option, bindings = self.select_and_bind(args)
+        if option is not None:
+            return option, bindings
+        return self.table.catalog.select_and_bind(args)
 
     def __repr__(self):
         if self is Context.root:
             return 'root'
         return f"Function({self.name or ''})"
 
+
 class Trait(Function):
-    trait = None
-    def __init__(self, options=None, *fields, name=None, own_trait=None):
-        if name:
-            self.name = name
-        if own_trait:
-            self.trait = own_trait
-        self.options = []
-        self.hashed_options = {}
-        self.field_ids = {}
-        self.fields = []
-        self.slots = {}
-        if options:
-            for patt, val in options.items():
-                self.add_option(patt, val)
-        for field in fields:
-            for field in fields:
-                self.upsert_field(field)
-        Record.__init__(self, BuiltIns['Trait'])
+    # trait = None
+    # noinspection PyDefaultArgument
+    def __init__(self, options={}, *fields, name=None, fn_options={}, fn_fields=[]):
+        # if name:
+        #     self.name = name
+        # if own_trait:
+        #     self.trait = own_trait
+        self.options = [Option(patt, res) for (patt, res) in options.items()]
+        # self.hashed_options = {}
+        # self.field_ids = {}
+        self.fields = list(fields)
+        # if options:
+        #     for patt, val in options.items():
+        #         self.add_option(patt, val)
+        # for field in fields:
+        #     for field in fields:
+        #         self.fields.append(field)
+        super().__init__(fn_options, *fn_fields, name=name, table_name='Trait')
 
-    def add_option(self, pattern, resolution=None):
-        option = Option(pattern, resolution)
-
-        # try to hash option
-        key: list[Record] = []
-        for parameter in option.pattern.parameters:
-            t = parameter.matcher
-            if isinstance(t, ValueMatcher) and t.guard is None and not t.invert and t.value.hashable():
-                key.append(t.value)
-            else:
-                if Context.settings['sort_options']:
-                    for i, opt in enumerate(self.options):
-                        if option.pattern <= opt.pattern:
-                            self.options.insert(i, option)
-                            break
-                        elif option.pattern == opt.pattern:
-                            self.options[i] = option
-                            break
-                    else:
-                        self.options.append(option)
-                else:
-                    self.options.append(option)
-                break
-        else:
-            self.hashed_options[tuple(key)] = option
-
-        return option
-
-    def remove_option(self, pattern):
-        opt = self.select_by_pattern(pattern)
-        if opt is None:
-            raise NoMatchingOptionError(f'cannot find option "{pattern}" to remove')
-        opt.nullify()
-
-    def assign_option(self, pattern, resolution=None):
-        opt = self.select_by_pattern(pattern)
-        if opt is None:
-            return self.add_option(pattern, resolution)
-        opt.nullify()
-        opt.assign(resolution)
-        return opt
-
-    def select_and_bind(self, key):
-        match key:
-            case tuple() if key in self.hashed_options:
-                return self.hashed_options[key], {}
-            case Args(positional_arguments=tuple() as pos) if not (key.named_arguments or key.flags):
-                if pos in self.hashed_options:
-                    return self.hashed_options[pos], {}
-
-        option = bindings = None
-        high_score = 0
-        for opt in self.options:
-            score, saves = opt.pattern.match_zip(key)
-            if score == 1:
-                return opt, saves
-            if score > high_score:
-                high_score = score
-                option, bindings = opt, saves
-        return option, bindings
-
-    def select_by_pattern(self, patt, default=None):
-        # return [*[opt for opt in self.options if opt.pattern == patt], None][0]
-        for opt in self.options:
-            if opt.pattern == patt:
-                return opt
-        return default
+    # def add_option(self, pattern, resolution=None):
+    #     option = Option(pattern, resolution)
+    #
+    #     # try to hash option
+    #     key: list[Record] = []
+    #     for parameter in option.pattern.parameters:
+    #         t = parameter.matcher
+    #         if isinstance(t, ValueMatcher) and t.guard is None and not t.invert and t.value.hashable():
+    #             key.append(t.value)
+    #         else:
+    #             if Context.settings['sort_options']:
+    #                 for i, opt in enumerate(self.options):
+    #                     if option.pattern <= opt.pattern:
+    #                         self.options.insert(i, option)
+    #                         break
+    #                     elif option.pattern == opt.pattern:
+    #                         self.options[i] = option
+    #                         break
+    #                 else:
+    #                     self.options.append(option)
+    #             else:
+    #                 self.options.append(option)
+    #             break
+    #     else:
+    #         self.hashed_options[tuple(key)] = option
+    #
+    #     return option
+    #
+    # def remove_option(self, pattern):
+    #     opt = self.select_by_pattern(pattern)
+    #     if opt is None:
+    #         raise NoMatchingOptionError(f'cannot find option "{pattern}" to remove')
+    #     opt.nullify()
+    #
+    # def assign_option(self, pattern, resolution=None):
+    #     opt = self.select_by_pattern(pattern)
+    #     if opt is None:
+    #         return self.add_option(pattern, resolution)
+    #     else:
+    #         opt.resolution = resolution
+    #     return opt
+    #
+    # def select_and_bind(self, key):
+    #     match key:
+    #         case tuple() if key in self.hashed_options:
+    #             return self.hashed_options[key], {}
+    #         case Args(positional_arguments=pos) if not (key.named_arguments or key.flags):
+    #             if pos in self.hashed_options:
+    #                 return self.hashed_options[pos], {}
+    #
+    #     option = bindings = None
+    #     high_score = 0
+    #     for opt in self.options:
+    #         score, saves = opt.pattern.match_zip(key)
+    #         if score == 1:
+    #             return opt, saves
+    #         if score > high_score:
+    #             high_score = score
+    #             option, bindings = opt, saves
+    #     return option, bindings
+    #
+    # def select_by_pattern(self, patt, default=None):
+    #     # return [*[opt for opt in self.options if opt.pattern == patt], None][0]
+    #     for opt in self.options:
+    #         if opt.pattern == patt:
+    #             return opt
+    #     return default
 
     def upsert_field(self, field):
-        if field.name in self.field_ids:
-            fid = self.field_ids[field.name]
-            self.fields[fid] = field
-        else:
-            self.field_ids[field.name] = len(self.fields)
-            self.fields.append(field)
+        for i, f in self.fields:
+            if f.name == field.name:
+                self.fields[i] = field
+                return
+        self.fields.append(field)
+        # if field.name in self.field_ids:
+        #     fid = self.field_ids[field.name]
+        #     self.fields[fid] = field
+        # else:
+        #     self.field_ids[field.name] = len(self.fields)
+        #     self.fields.append(field)
 
-    def add_own_option(self, pattern, resolution=None):
-        if self.trait is None:
-            self.trait = Trait()
-        return self.trait.add_option(pattern, resolution)
+    # def add_own_option(self, pattern, resolution=None):
+    #     if self.trait is None:
+    #         self.trait = Trait()
+    #     return self.add_option(pattern, resolution)
 
     def __repr__(self):
-        match self.options, self.hashed_options:
-            case _ if self.name:
-                return f"Trait({self.name})"
-            case [], {}:
-                return "Trait()"
-            case [opt], {}:
-                return f"Trait({opt})"
-            case [], dict() as d if len(d) == 1:
-                return f"Trait({tuple(d.values())[0]})"
-            case list() as opts, dict() as hopts:
-                return f"Trait({len(opts) + len(hopts)})"
+        return f"Trait({self.name or self.fields})"
+        # match self.options, self.hashed_options:
+        #     case _ if self.name:
+        #         return f"Trait({self.name})"
+        #     case [], {}:
+        #         return "Trait()"
+        #     case [opt], {}:
+        #         return f"Trait({opt})"
+        #     case [], dict() as d if len(d) == 1:
+        #         return f"Trait({tuple(d.values())[0]})"
+        #     case list() as opts, dict() as hopts:
+        #         return f"Trait({len(opts) + len(hopts)})"
         # return f"OptionMap({self.table})"
 
 def flat_gen(*args):
@@ -733,14 +539,15 @@ class Table(Function):
     # getters = dict[str, tuple[int, Field]]
     # setters = dict[str, tuple[int, Field]]
     # fields = list[Field]
-    def __init__(self, *traits: Trait, fields=(), name: str = None):
+    # noinspection PyDefaultArgument
+    def __init__(self, *traits: Trait, name=None, fn_options={}, fn_fields=[]):
         self.traits = (Trait(), *traits)
         self.getters = {}
         self.setters = {}
         self.defaults = ()
-        for field in fields:
-            self.upsert_field(field)
-        super().__init__(name=name, table_name='Table')
+        # for field in fields:
+        #     self.fields.append(field)
+        super().__init__(fn_options, *fn_fields, name=name, table_name='Table', traits=traits)
         self.integrate_traits()
         match self:
             case VirtTable():
@@ -769,6 +576,10 @@ class Table(Function):
         #     case _:
         #         raise TypeError(f"Invalid argument type for fields: {type(fields)} {fields}")
 
+    @property
+    def trait(self):
+        return self.traits[0]
+
     def integrate_traits(self):
         defaults: dict[str, Function | None] = {}
         types: dict[str, Matcher] = {}
@@ -790,7 +601,6 @@ class Table(Function):
                         # if slot: allow adding of default
                         # if formula: skip (formula should overwrite slot)
                         # if setter: skip (setter overwrites slot, hopefully a formula will also be defined)
-
                         if name in defaults:
                             # this means a slot was already defined.  Add a default if none exists
                             if defaults[name] is None:
@@ -808,16 +618,17 @@ class Table(Function):
                             self.setters[name] = fn
 
         self.defaults = tuple(defaults[n] for n in defaults)
-        def fn(args: Args):
-            args = Args(Context.env.caller, *args.positional_arguments, flags=args.flags, **args.named_arguments)
-            return BuiltIns['new'](args)
-        self.trait.add_option(Pattern(*(Parameter(types[name], name, default=defaults[name]) for name in defaults)),
-                              Native(fn))
 
-    def get_field(self, name: str):
-        _, field = self.getters.get(name,
-                                    self.setters.get(name, (0, None)))
-        return field
+        self.assign_option(Pattern(*(Parameter(types[name], name, "?" * (defaults[name] is not None))
+                                     for name in defaults)),
+                           Native(lambda args: BuiltIns['new'](Args(Context.env.caller) + args)))
+
+        self.catalog = OptionCatalog({}, *self.traits)
+
+    # def get_field(self, name: str):
+    #     _, field = self.getters.get(name,
+    #                                 self.setters.get(name, (0, None)))
+    #     return field
 
     def __getitem__(self, item):
         raise NotImplementedError
@@ -830,16 +641,6 @@ class Table(Function):
 
     def truthy(self):
         return bool(self.records)
-
-    def upsert_field(self, field):
-        # TODO: if field is overwriting another traits field, check to make sure field.type <: existing_field.type
-        self.trait.upsert_field(field)
-        # if field.name in self.field_ids:
-        #     fid = self.field_ids[field.name]
-        #     self.fields[fid] = field
-        # else:
-        #     self.field_ids[field.name] = len(self.fields)
-        #     self.fields.append(field)
 
     def add_record(self, record: Record):
         match self:
@@ -884,10 +685,13 @@ class MetaTable(ListTable):
         self.traits = ()
         self.getters = {}
         self.setters = {}
-        self.defaults = []
+        self.defaults = ()
         self.slot_dict = {}
         self.formula_dict = {}
         self.setter_dict = {}
+        self.op_list = []
+        self.op_map = {}
+        self.catalog = OptionCatalog()
 
 
 class BootstrapTable(ListTable):
@@ -901,6 +705,8 @@ class BootstrapTable(ListTable):
         self.slot_dict = {}
         self.formula_dict = {}
         self.setter_dict = {}
+        self.op_list = []
+        self.op_map = {}
         Record.__init__(self, BuiltIns['Table'])
 
 
@@ -1015,24 +821,29 @@ class Field(Record):
                          # is_formula=py_value(formula is not None),
                          # default=default, formula=formula)
 
-    def get_data(self, rec, idx):
-        raise SlotErr(f"Line {Context.line}: getter not defined for {self.__class__.__name__} {self.name}")
-
-    def set_data(self, idx: int, value):
-        raise SlotErr(f"Line {Context.line}: setter not defined for {self.__class__.__name__} {self.name}")
+    # def get_data(self, rec, idx):
+    #     raise SlotErr(f"Line {Context.line}: getter not defined for {self.__class__.__name__} {self.name}")
+    #
+    # def set_data(self, idx: int, value):
+    #     raise SlotErr(f"Line {Context.line}: setter not defined for {self.__class__.__name__} {self.name}")
 
 
 class Slot(Field):
     def __init__(self, name, type, default=None):
+        match default:
+            case Function(op_list=[Option(pattern=Pattern(parameters=(Parameter(name='self'),)))]):
+                pass
+            case _:
+                assert default is None
         self.default = default
         super().__init__(name, type, default)
 
-    def get_data(self, rec, idx):
-        return rec.data[idx]
-
-    def set_data(self, rec, idx, value):
-        rec.data[idx] = value
-        return BuiltIns['blank']
+    # def get_data(self, rec, idx):
+    #     return rec.data[idx]
+    #
+    # def set_data(self, rec, idx, value):
+    #     rec.data[idx] = value
+    #     return BuiltIns['blank']
 
     def __repr__(self):
         return f"Slot({self.name}: {self.type}{' ('+str(self.default)+')' if self.default else ''})"
@@ -1043,8 +854,8 @@ class Formula(Field):
         self.formula = formula
         super().__init__(name, type, None, formula)
 
-    def get_data(self, rec, idx):
-        return self.formula.call(rec)
+    # def get_data(self, rec, idx):
+    #     return self.formula.call(rec)
 
     def __repr__(self):
         return f"Formula({self.name}: {str(self.formula)})"
@@ -1055,8 +866,8 @@ class Setter(Field):
         self.fn = fn
         super().__init__(name)
 
-    def set_data(self, rec, idx, value):
-        return self.fn.call(rec, value)
+    # def set_data(self, rec, idx, value):
+    #     return self.fn.call(rec, value)
 
     def __repr__(self):
         return f"Setter({self.name}: {self.fn})"
@@ -1271,9 +1082,6 @@ class UnionMatcher(Matcher):
     #     list[int] | int+
 
     def __init__(self, *matchers, name=None, guard=None, inverse=False):
-        for type in matchers:
-            if isinstance(type, Pattern):
-                pass
         self.matchers = frozenset(matchers)
         super().__init__(name, guard, inverse)
 
@@ -1367,7 +1175,7 @@ class EmptyMatcher(Matcher):
                 return False
             case PyValue(value=str() | tuple() | frozenset() | list() | set() as v) | Table(records=v):
                 return len(v) == 0
-            case Function(trait=Trait(options=options, hashed_options=hashed_options)):
+            case Function(op_list=options, op_map=hashed_options):
                 return bool(len(options) + len(hashed_options))
             case _:
                 return False
@@ -1414,9 +1222,11 @@ class Parameter:
             case Matcher():
                 self.matcher = matcher
             case Trait() as trait:
-                self.matcher: Matcher = TraitMatcher(trait)
+                matcher: Matcher = TraitMatcher(trait)
+                self.matcher = matcher
             case Table() as table:
-                self.matcher: Matcher = TableMatcher(table)
+                matcher: Matcher = TableMatcher(table)
+                self.matcher = matcher
             case _:
                 raise TypeError(f"Failed to create Parameter from: {repr(matcher)}")
         if default:
@@ -1651,142 +1461,11 @@ class Pattern(Record):
             return 1, {}
         if not self.min_len() <= len(args) <= self.max_len():
             return 0, {}
-        if isinstance(args, Args):
-            return MatchState(self.parameters, args).match_zip()
-        state = MatchState(self.parameters, args)
-        return self.match_zip_recursive(state)
-
-    # def match_zip_recursive(self, args: list, i_inst=0, i_arg=0, score=0, sub_score=0, saves=None):
-    #     if saves is None:
-    #         saves = {}
-    #     while True:
-    #         if not (i_inst < len(self.parameters) and i_arg < len(args)):
-    #             if i_inst == len(self.parameters) and i_arg == len(args):
-    #                 break
-    #             elif i_inst >= len(self.parameters):
-    #                 pass
-    #         alts: UnionParam
-    #         match self.parameters[i_inst]:
-    #             case Parameter() as param:
-    #                 pass
-    #             case UnionParam() as alts:
-    #                 for param in alts:
-    #                     sc, sa = patt.match_zip_recursive(args, i_inst, i_arg, score, sub_score, saves)
-    #
-    #         key: str|int = param.name or i_inst
-    #         sub_score *= param.multi
-    #         match_value = param.matcher.match_score(args[i_arg]) if i_arg < len(args) else 0
-    #         if not match_value and not param.optional:
-    #             return 0, saves
-    #         match param.quantifier:
-    #             case "":
-    #                 # match patt, save, and move on
-    #                 if not match_value:
-    #                     return 0, {}
-    #                 saves[key] = args[i_arg]
-    #                 score += match_value
-    #                 i_arg += 1
-    #                 i_inst += 1
-    #             case "?":
-    #                 # try match patt and save... move on either way
-    #                 if match_value:
-    #                     branch_saves = copy_bindings(saves)
-    #                     branch_saves[key] = args[i_arg]
-    #                     branch = self.match_zip_recursive(
-    #                         args, i_inst + 1, i_arg + 1, score + match_value, 0, branch_saves)
-    #                     if branch[0]:
-    #                         return branch
-    #                 # saves[key] = Value(None)  # for some reason this line causes error later on in the execution!  I have no idea why, but I'll have to debug later
-    #                 i_inst += 1
-    #             case "+":
-    #                 if key not in saves:
-    #                     if not match_value:
-    #                         return 0, {}
-    #                     saves[key] = piliize([])
-    #                 if match_value:
-    #                     branch_saves = copy_bindings(saves)
-    #                     branch_saves[key].value.append(args[i_arg])
-    #                     sub_score += match_value
-    #                     i_arg += 1
-    #                     branch = self.match_zip_recursive(args, i_inst, i_arg, score, sub_score, branch_saves)
-    #                     if branch[0]:
-    #                         return branch
-    #                 if sub_score:  #  if len(saves[key].value):
-    #                     score += sub_score / len(saves[key].value)
-    #                 i_inst += 1
-    #             case "*":
-    #                 if key not in saves:
-    #                     saves[key] = py_value([])
-    #                 if match_value:
-    #                     branch_saves = copy_bindings(saves)
-    #                     branch_saves[key].value.append(args[i_arg])
-    #                     branch = self.match_zip_recursive(args, i_inst, i_arg + 1, score, sub_score + match_value, branch_saves)
-    #                     if branch[0]:
-    #                         return branch
-    #                 if sub_score:  # if len(saves[key].value):
-    #                     score += sub_score / len(saves[key].value)
-    #                 else:
-    #                     score += 1/36
-    #                 i_inst += 1
-    #     return score/len(self.parameters), saves
-
-    def match_zip_recursive(self, state):
-        state: MatchState
-        while param := state.param:
-            # param = state.param
-            if isinstance(param, UnionParam):
-                for param in param.parameters:
-                    new_params = [*state.parameters[:state.i_param], param, *state.parameters[state.i_param + 1:]]
-                    score, bindings = self.match_zip_recursive(state.branch(parameters=new_params))
-                    if score:
-                        return score, bindings
-                return 0, {}
-
-            key: str | int = param.name or state.i_param
-            state.param_score *= param.multi
-            if state.i_arg < len(state.args):
-                match_value = param.matcher.match_score(state.arg)
-            else:
-                match_value = 0  # no arguments left to process match
-            if not match_value and not param.optional and not state.bindings.get(key):
-                return 0, {}
-            match param.quantifier:
-                case "":
-                    # match patt, save, and move on
-                    if not match_value:
-                        return 0, {}
-                    state.bindings[key] = state.arg
-                    state.score += match_value
-                    state.i_arg += 1
-                    state.i_param += 1
-                case "?":
-                    # try match patt and save... move on either way
-                    state.i_param += 1
-                    if match_value:
-                        branch = state.branch()
-                        branch.i_arg += 1
-                        branch.score += match_value
-                        branch.bindings[key] = state.arg
-                        score, bindings = self.match_zip_recursive(branch)
-                        if score:
-                            return score, bindings
-                case "+" | "*":
-                    if key not in state.bindings:
-                        state.bindings[key] = []
-                    if match_value:
-                        branch = state.branch()
-                        branch.i_arg += 1
-                        branch.param_score += match_value
-                        branch.bindings[key].append(state.arg)
-                        score, bindings = self.match_zip_recursive(branch)
-                        if score:
-                            return score, bindings
-                    if state.param_score:  #  if len(saves[key].value):
-                        state.score += state.param_score / len(state.bindings[key])
-                    state.i_param += 1
-        if state.success:
-            return state.score_and_bindings()
-        return 0, {}
+        if isinstance(args, tuple):
+            args = Args(*args)
+        return MatchState(self.parameters, args).match_zip()
+        # state = MatchState(self.parameters, args)
+        # return self.match_zip_recursive(state)
 
     def __lt__(self, other):
         if not isinstance(other, Pattern):
@@ -1913,7 +1592,7 @@ class MatchState:
 
             key: str | int = param.name or self.i_param
             self.param_score *= param.multi
-            if self.arg:
+            if self.arg is not None:
                 match_value = param.matcher.match_score(self.arg)
             else:
                 match_value = 0  # no arguments left to process match
@@ -2043,8 +1722,51 @@ class Args(Record):
     def __getitem__(self, item):
         return self.named_arguments.get(item, self.positional_arguments[item])
 
+    def __iter__(self):
+        if self.flags or self.named_arguments:
+            raise NotImplementedError
+        return iter(self.positional_arguments)
+
     def keys(self):
         return self.named_arguments.keys()
+
+    def __add__(self, other):
+        match other:
+            case Args(positional_arguments=pos, flags=flags, named_arguments=kwargs):
+                pass
+            case tuple() as pos:
+                flags = set()
+                kwargs = {}
+            case set() as flags:
+                pos = ()
+                kwargs = {}
+            case dict() as kwargs:
+                pos = ()
+                flags = set()
+            case _:
+                return NotImplemented
+        return Args(*self.positional_arguments, *pos,
+                    flags=self.flags.union(flags),
+                    **self.named_arguments, **kwargs)
+
+    def __radd__(self, other):
+        match other:
+            case Args(positional_arguments=pos, flags=flags, named_arguments=kwargs):
+                pass
+            case tuple() as pos:
+                flags = set()
+                kwargs = {}
+            case set() as flags:
+                pos = ()
+                kwargs = {}
+            case dict() as kwargs:
+                pos = ()
+                flags = set()
+            case _:
+                return NotImplemented
+        return Args(*pos, *self.positional_arguments,
+                    flags=self.flags.union(flags),
+                    **self.named_arguments, **kwargs)
 
     def __repr__(self):
         pos = map(str, self.positional_arguments)
@@ -2068,8 +1790,8 @@ class CodeBlock:
                 return closure.return_value or caller or fn
         else:
             def finish():  # noqa
-                return py_value(None)
-
+                return BuiltIns['blank']
+        line = Context.line
         for expr in self.exprs:
             Context.line = expr.line
             expr.evaluate()
@@ -2077,6 +1799,7 @@ class CodeBlock:
                 break
             if Context.break_loop or Context.continue_:
                 break
+        Context.line = line
         return finish()
 
     def __repr__(self):
@@ -2090,10 +1813,12 @@ class Native(CodeBlock):
     def execute(self, args=None, caller=None, bindings=None, *, fn=None):
         closure = Closure(self, args, caller, bindings, fn)
         Context.push(Context.line, closure)
+        line = Context.line
         if isinstance(args, tuple):
             closure.return_value = self.fn(*args)
         else:
             closure.return_value = self.fn(args)
+        Context.line = line
         Context.pop()
         return closure.return_value
 
@@ -2127,7 +1852,6 @@ class TopNamespace(Closure):
         self.names = bindings
 
 class Option(Record):
-    resolution = None
     value = None
     block = None
     fn = None
@@ -2146,28 +1870,27 @@ class Option(Record):
             case _:
                 raise TypeErr(f"Line {Context.line}: Invalid option pattern: {pattern}")
         if resolution is not None:
-            self.assign(resolution)
+            self.resolution = resolution
         super().__init__(BuiltIns['Option'])  # , signature=self.pattern, code_block=self.resolution)
 
-    def is_null(self):
-        return (self.value and self.block and self.fn and self.alias) is None
-    def not_null(self):
-        return (self.value or self.block or self.fn or self.alias) is not None
+    # def is_null(self):
+    #     return (self.value and self.block and self.fn and self.alias) is None
+    # def not_null(self):
+    #     return (self.value or self.block or self.fn or self.alias) is not None
     def nullify(self):
-        self.resolution = None
-        if self.value:
+        if self.value is not None:
             del self.value
-        if self.block:
+        if self.block is not None:
             del self.block
-        if self.fn:
+        if self.fn is not None:
             del self.fn
-        if self.alias:
+        if self.alias is not None:
             del self.alias
-    def assign(self, resolution):
+    def set_resolution(self, resolution):
         if self.alias:
-            return self.alias.assign(resolution)
+            self.alias.set_resolution(resolution)
+            return
         self.nullify()
-        self.resolution = resolution
         match resolution:
             case CodeBlock(): self.block = resolution
             # case PyFunction(): self.block = Native(resolution)
@@ -2176,19 +1899,26 @@ class Option(Record):
             case Record(): self.value = resolution
             case _:
                 raise ValueError(f"Line {Context.line}: Could not assign resolution {resolution} to option {self}")
+    def get_resolution(self):
+        if self.value is not None:
+            return self.value
+        return self.block or self.fn or self.alias
+
+    resolution = property(get_resolution, set_resolution, nullify)
+
     def resolve(self, args=None, caller=None, bindings=None):
         if self.alias:
             return self.alias.resolve(args, caller, bindings)
-        if self.value:
+        if self.value is not None:
             return self.value
         if self.fn:
-            if isinstance(args, Args) and args.named_arguments:
-                return self.fn(*args, **args)
+            if isinstance(args, Args):
+                return call(self.fn, args)
             return self.fn(*args)
         if self.dot_option:
             caller = args[0]
         if self.block is None:
-            raise NoMatchingOptionError("Could not resolve null option")
+            raise NoMatchingOptionError(f"Line {Context.line}: Could not resolve null option")
         return self.block.execute(args, caller, bindings)
 
     def __eq__(self, other):

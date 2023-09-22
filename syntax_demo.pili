@@ -295,7 +295,7 @@ table Dog @Animal
         return "Helo, my name is {self.name}!"
     formula print_bark:
         print self.bark
-    opt [int n]:
+    debug opt [int n]:
         return self.array[n]
     opt [int i, int j]:
         return self.array[i, j]
@@ -348,7 +348,7 @@ print rover.array
 print rover.species
 print rover.alive
 print rover.sound
-print rover[-1]
+print debug rover[-1]
 rover.make_sound
 print boulder.name
 print boulder.length
@@ -356,8 +356,10 @@ print boulder.array
 print boulder.species
 print "Boulder's Sound: "+  boulder.sound
 boulder.make_sound
-
-other = debug Dog[name='Boulder', 232, sound='Bark']  #, !big]
+print "OY"
+other = Dog[name='Boulder', 232, sound='B-b-b bark BaRk!']  #, !big]
+print "OY"
+print 'other sound is ' + other.sound
 other.make_sound
 
 # fn sum[num a+, DogType]
