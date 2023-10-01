@@ -1,9 +1,45 @@
-# var = "hi"
+func = {[]: print "it worked!", [any arg]: print arg}
+func[]
+func['so did this one!']
+
+
+
+table MyList
+	items = {}
+
+	[seq ls]:
+		rec = MyList.new
+		items[rec] = list[ls]
+		return rec
+
+	[]: MyList[[]]
+
+	opt [int index]:
+		return self.items[index]
+
+    .push[any element]:
+		self.items.push[element]
+
+    .str:
+        return str[self.items]
+
+
+myls = MyList[]
+myls.push[3]
+print myls.str
+
+
+exit
+debug var = "hi"
 # print self.var = "hello"
 # print var
 # print self.var
 # exit
+var = 'hello'
+al := var
 
+print al
+exit
 
 # basic values are numbers and strings
 print "string literals can use double quotes"
@@ -372,15 +408,27 @@ trait Details
         return 2020 - self.release_year
 
 table Movie @Details
+    local_var = []
+
     slot title str = ""
     slot director str = ""
     slot release_year int>0
     slot genre str
+    formula description:
+        return self.description
+    setter description[any val]:
+        self.genre = str[val]
+
     [str title, str director, int release_year, str genre]:
         return Movie.new[title, director, release_year, genre]
 
-    setter description[any val]:
-        self.genre = str[val]
+    opt [num n]:
+        return local_var[n]
+
+    .str:
+        return self.description
+
+
 
 table TokenType
     slot name str

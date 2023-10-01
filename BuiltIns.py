@@ -10,6 +10,7 @@ BuiltIns['Table'] = TableTable = MetaTable()
 BuiltIns['Trait'] = TraitTable = BootstrapTable('Trait')
 BuiltIns['Pattern'] = IntermediatePatternTable = BootstrapTable('Pattern')
 BuiltIns['Option'] = IntermediateOptionTable = BootstrapTable('Option')
+BuiltIns['Args'] = IntermediateArgsTable = BootstrapTable('Args')
 TableTable.traits = (Trait(),)
 TraitTable.traits = (Trait(),)
 
@@ -49,6 +50,8 @@ BuiltIns['Set'] = VirtTable(SetTrait, IterTrait)
 BuiltIns['List'] = VirtTable(ListTrait, SeqTrait, IterTrait)
 BuiltIns['Dictionary'] = VirtTable(DictTrait, IterTrait)
 BuiltIns['Args'] = VirtTable(SeqTrait, DictTrait, IterTrait)
+for rec in IntermediateArgsTable.records:
+    rec.table = BuiltIns['Args']
 
 BuiltIns['fn'] = FnTrait = Trait()
 BuiltIns['Function'] = ListTable(FnTrait)
@@ -134,11 +137,15 @@ BuiltIns['ratio'].assign_option(Pattern(NormalParam), lambda x: py_value(Fractio
 BuiltIns['float'].assign_option(Pattern(NormalParam), lambda x: py_value(float(BuiltIns['num'].call(x).value)))
 # BuiltIns['float'] = Function({Pattern(NormalParam), lambda x: py_value(float(BuiltIns['number'].call(x).value)))
 BuiltIns['str'].assign_option(Pattern(AnyParam), lambda x: x.to_string())
-BuiltIns['str'].assign_option(StringParam, lambda x: x)
+BuiltIns['str'].assign_option(Option(StringParam, lambda x: x))
 BuiltIns['str'].assign_option(Pattern(NumericParam, IntegralParam),
                               lambda n, b: py_value(write_number(n.value, b.value)))
-BuiltIns['iter'].assign_option(UnionMatcher(*(TraitMatcher(BuiltIns[t]) for t in ('tuple', 'list', 'set', 'frozenset', 'str'))),
-                               lambda x: x)
+BuiltIns['list'].assign_option(Pattern(SeqParam), lambda x: py_value(list(x.value)))
+BuiltIns['tuple'].assign_option(Pattern(SeqParam), lambda x: py_value(tuple(x.value)))
+BuiltIns['set'].assign_option(Pattern(SeqParam), lambda x: py_value(set(x.value)))
+BuiltIns['iter'].assign_option(Option(UnionMatcher(*(TraitMatcher(BuiltIns[t])
+                                                     for t in ('tuple', 'list', 'set', 'frozenset', 'str'))),
+                                      lambda x: x))
 
 
 bases = {'b': 2, 't': 3, 'q': 4, 'p': 5, 'h': 6, 's': 7, 'o': 8, 'n': 9, 'd': 10}

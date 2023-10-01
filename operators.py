@@ -11,8 +11,9 @@ from BuiltIns import *
 def eval_set_args(lhs: list[Node], rhs: list[Node]) -> (tuple[PyValue[str], Record]
                                                         | tuple[Function, List, Record]
                                                         | tuple[Record, PyValue[str], Record]):
-    rec = None
-    name = None
+    rec: Function | Record | None = None
+    name: str | None = None
+    key: PyValue[str | list]
     match lhs:
         case [Token(type=TokenType.Name, source_text=name)]:
             key = py_value(name)
@@ -40,8 +41,13 @@ def eval_set_args(lhs: list[Node], rhs: list[Node]) -> (tuple[PyValue[str], Reco
         return key, value
     return rec, key, value
 
-def eval_alias_args(lhs: list[Node], rhs: list[Node]) -> list[Record]:
-    left, right = eval_set_args(lhs, [])[:-1], eval_set_args(rhs, [])
+def eval_alias_args(lhs: list[Node], rhs: list[Node]) -> tuple[Record]:
+    left = eval_set_args(lhs, rhs)
+    right = eval_set_args(rhs, rhs)
+    match right[:-1]:
+        case (PyValue(value=str() as name),):
+            closure = Context.env
+            # option = Option(Pattern(), lambda : closure.)
     right_key = right[-2]
     if len(right) == 3:
         right_fn = right[-3]
@@ -50,17 +56,15 @@ def eval_alias_args(lhs: list[Node], rhs: list[Node]) -> list[Record]:
         right_fn = Context.env
         ascend = True
     # right_fn = right[-3] if len(right)==3 else Context.env
-    match right_key:  # right_key.value
+    match right_key.value:  # right_key.value
         case str() as name:
-            option = right_fn.select_by_name(name, ascend)
-        case [PyValue(value=str() as name)]:
             option = right_fn.select_by_name(name, ascend)
         case list() as args:
             option, _ = right_fn.select_and_bind(args, ascend_env=ascend)
         case _:
             raise TypeErr(f"Line {Context.line}: Sorry, I'm not sure how to alias {right_key}")
     # option = right_fn.select_by_name(right_key.value, ascend)
-    return [*left, option]
+    return (*left[:-1], option)
 
 
 def assign_option(fn: Function, args: PyValue[tuple] | Args, val: Record):

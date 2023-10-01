@@ -15,12 +15,12 @@ class OptionCatalog:
         self.op_map = {}
         if options:
             for patt, res in options.items():
-                self.assign_option(patt, res)
+                self.assign_option(Option(patt, res))
         for trait in traits:
             for option in trait.options:
                 self.assign_option(option)
 
-    def assign_option(self, pattern, resolution=None):
+    def assign_option(self, pattern, resolution=None, *, no_clobber=False):
         match pattern, resolution:
             case Option(pattern=pattern, resolution=resolution) as option, None:
                 pass
@@ -29,32 +29,59 @@ class OptionCatalog:
                     raise AssertionError("Why are you trying to add a null option?")
                 option = Option(pattern, resolution)
 
-        # try to hash option
-        key: list[Record] = []
-        for parameter in option.pattern.parameters:
-            t = parameter.matcher
-            if isinstance(t, ValueMatcher) and t.guard is None and not t.invert and t.value.hashable():
-                key.append(t.value)
+        key = pattern.to_args()
+        if key is not None:
+            if not no_clobber or key not in self.op_map:
+                self.op_map[key] = option
+                return option
             else:
-                if Context.settings['sort_options']:
-                    for i, opt in enumerate(self.op_list):
-                        if option.pattern <= opt.pattern:
-                            self.op_list.insert(i, option)
-                            break
-                        elif option.pattern == opt.pattern:
-                            self.op_list[i] = option
-                            break
-                    else:
-                        self.op_list.append(option)
-                elif opt := self.select_by_pattern(pattern):
-                    opt.resolution = resolution
-                else:
-                    self.op_list.append(option)
-                break
+                return self.op_map[key]
+
+        if Context.settings['sort_options']:
+            for i, opt in enumerate(self.op_list):
+                if option.pattern <= opt.pattern:
+                    self.op_list.insert(i, option)
+                    break
+                elif option.pattern == opt.pattern and not no_clobber:
+                    self.op_list[i] = option
+                    break
+            else:
+                self.op_list.append(option)
+        elif opt := self.select_by_pattern(pattern):
+            opt.resolution = resolution
         else:
-            self.op_map[tuple(key)] = option
+            self.op_list.append(option)
 
         return option
+
+        # # try to hash option
+        # # key: list[Record] | tuple[Record] = []
+        # for parameter in option.pattern.parameters:
+        #     t = parameter.matcher
+        #     if isinstance(t, ValueMatcher) and t.guard is None and not t.invert and t.value.hashable():
+        #         key.append(t.value)
+        #     else:
+        #         if Context.settings['sort_options']:
+        #             for i, opt in enumerate(self.op_list):
+        #                 if option.pattern <= opt.pattern:
+        #                     self.op_list.insert(i, option)
+        #                     break
+        #                 elif option.pattern == opt.pattern and not no_clobber:
+        #                     self.op_list[i] = option
+        #                     break
+        #             else:
+        #                 self.op_list.append(option)
+        #         elif opt := self.select_by_pattern(pattern):
+        #             opt.resolution = resolution
+        #         else:
+        #             self.op_list.append(option)
+        #         break
+        # else:
+        #     key = tuple(key)
+        #     if not no_clobber or key not in self.op_map:
+        #         self.op_map[key] = option
+        #
+        # return option
 
     def remove_option(self, pattern):
         opt = self.select_by_pattern(pattern)
@@ -71,12 +98,19 @@ class OptionCatalog:
     #     return opt
 
     def select_and_bind(self, key):
-        match key:
-            case tuple() if key in self.op_map:
-                return self.op_map[key], {}
-            case Args(positional_arguments=pos) if not (key.named_arguments or key.flags):
-                if pos in self.op_map:
-                    return self.op_map[pos], {}
+        if isinstance(key, tuple):
+            key = Args(*key)
+        if key in self.op_map:
+            return self.op_map[key], {}
+        # match key:
+        #     case tuple() if key in self.op_map:
+        #         return self.op_map[key], {}
+        #     case Args():
+        #         if key in self.op_map:
+        #             return self.op_map[key], {}
+        #     case Args(positional_arguments=pos) if not (key.named_arguments or key.flags):
+        #         if pos in self.op_map:
+        #             return self.op_map[pos], {}
 
         option = bindings = None
         high_score = 0
@@ -242,7 +276,7 @@ class Record:
     #     return True
 
 
-T = TypeVar('T', None, bool, int, Fraction, float, str, tuple, frozenset, list)
+T = TypeVar('T', None, bool, int, Fraction, float, str, tuple, frozenset, set, list)
 A = TypeVar('A')
 class PyValue(Record, Generic[T]):
     def __init__(self, table, value: T):
@@ -618,10 +652,10 @@ class Table(Function):
                             self.setters[name] = fn
 
         self.defaults = tuple(defaults[n] for n in defaults)
+        patt = Pattern(*(Parameter(types[name], name, "?" * (defaults[name] is not None))
+                         for name in defaults))
 
-        self.assign_option(Pattern(*(Parameter(types[name], name, "?" * (defaults[name] is not None))
-                                     for name in defaults)),
-                           Native(lambda args: BuiltIns['new'](Args(Context.env.caller) + args)))
+        self.assign_option(patt, Native(lambda args: BuiltIns['new'](Args(Context.env.caller) + args)), no_clobber=True)
 
         self.catalog = OptionCatalog({}, *self.traits)
 
@@ -707,6 +741,7 @@ class BootstrapTable(ListTable):
         self.setter_dict = {}
         self.op_list = []
         self.op_map = {}
+        self.catalog = OptionCatalog()
         Record.__init__(self, BuiltIns['Table'])
 
 
@@ -1180,23 +1215,6 @@ class EmptyMatcher(Matcher):
             case _:
                 return False
 
-    # def __lt__(self, other):
-    #     match other:
-    #         case ValueMatcher() | EmptyMatcher():
-    #             return False
-    #         case Intersection(matchers=matchers):
-    #             return all(m > self for m in matchers)
-    #         case Union(matchers=matchers):
-    #             return any(m >= self for m in matchers)
-    #         case Matcher():
-    #             return True
-    #         case _:
-    #             return NotImplemented
-
-    # def __eq__(self, other):
-    #     return isinstance(other, EmptyMatcher) and \
-    #             (self.name, self.invert, self.guard) == (other.name, other.invert, other.guard)
-
     def equivalent(self, other):
         return isinstance(other, EmptyMatcher) and self.guard == other.guard and self.invert == other.invert
 
@@ -1205,7 +1223,7 @@ class EmptyMatcher(Matcher):
 
 class Parameter:
     name: str | None
-    matcher: Matcher | None
+    matcher: Matcher | None = None
     quantifier: str  # "+" | "*" | "?" | "!" | ""
     count: tuple[int, int | float]
     optional: bool
@@ -1421,8 +1439,9 @@ class Pattern(Record):
     """
     a sequence of zero or more parameters, together with their quantifiers
     """
-    def __init__(self, *parameters):
+    def __init__(self, *parameters, **named_params):
         self.parameters = parameters
+        self.named_params = named_params
         super().__init__(BuiltIns['Pattern'])  # , parameters=py_value(parameters))
 
     def truthy(self):
@@ -1439,6 +1458,33 @@ class Pattern(Record):
 
     def __getitem__(self, item):
         return self.parameters[item]
+
+    def to_tuple(self):
+        key: list[Record] = []
+        for parameter in self.parameters:
+            t = parameter.matcher
+            if isinstance(t, ValueMatcher) and t.guard is None and not t.invert and t.value.hashable():
+                key.append(t.value)
+            else:
+                return None
+        return tuple(key)
+
+    def to_args(self):
+        pos_args = []
+        names = {}
+        for param in self.parameters:
+            t = param.matcher
+            if isinstance(t, ValueMatcher) and t.guard is None and not t.invert and t.value.hashable():
+                pos_args.append(t.value)
+            else:
+                return None
+        for name, param in self.named_params.items():
+            t = param.matcher
+            if isinstance(t, ValueMatcher) and t.guard is None and not t.invert and t.value.hashable():
+                names[name] = t.value
+            else:
+                return None
+        return Args(*pos_args, **names)
 
     @memoize
     def min_len(self) -> int:
@@ -1719,8 +1765,10 @@ class Args(Record):
     def __len__(self):
         return len(self.positional_arguments) + len(self.named_arguments) + len(self.flags)
 
-    def __getitem__(self, item):
-        return self.named_arguments.get(item, self.positional_arguments[item])
+    def __getitem__(self, key):
+        if key in self.flags:
+            return BuiltIns['true']
+        return self.named_arguments.get(key, self.positional_arguments[key])
 
     def __iter__(self):
         if self.flags or self.named_arguments:
@@ -1768,11 +1816,31 @@ class Args(Record):
                     flags=self.flags.union(flags),
                     **self.named_arguments, **kwargs)
 
+    def __eq__(self, other):
+        return isinstance(other, Args) and self.dict() == other.dict()
+
+    def dict(self):
+        d = dict(enumerate(self.positional_arguments))
+        d.update(self.named_arguments)
+        for s in self.flags:
+            d[s] = BuiltIns['true']
+        return d
+
+    def __hash__(self):
+        d = self.dict()
+        return hash((frozenset(d.keys()), frozenset(d.values())))
+
     def __repr__(self):
         pos = map(str, self.positional_arguments)
         names = (f"{k}={v}" for (k, v) in self.named_arguments.items())
         flags = ('!'+str(f) for f in self.flags)
         return f"Args({', '.join(pos)}; {', '.join(names)}; {' '.join(flags)})"
+
+
+# class Alias:
+#     function
+#     closure
+#     name
 
 class CodeBlock:
     exprs: list

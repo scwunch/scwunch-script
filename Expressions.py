@@ -611,7 +611,7 @@ def eval_node(node: Node) -> Record:
             return expressionize(statement).evaluate()
         case Token() as tok:
             return eval_token(tok)
-        case Block() | ListNode(list_type=ListType.Function) as block:
+        case Block() as block:
             return CodeBlock(block).execute(())
         case ListNode(list_type=list_type, items=items):
             match list_type:
@@ -623,6 +623,10 @@ def eval_node(node: Node) -> Record:
                     return Pattern(*map(make_param, items))
                 case ListType.Tuple:
                     return py_value(tuple(map(eval_node, items)))
+                case ListType.Function:
+                    fn = Function()
+                    CodeBlock(Block(items)).execute(fn=fn)
+                    return fn
                 case _:
                     raise NotImplementedError
         case StringNode(nodes=nodes):
