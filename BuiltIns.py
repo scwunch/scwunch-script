@@ -53,11 +53,11 @@ BuiltIns['Args'] = VirtTable(SeqTrait, DictTrait, IterTrait)
 for rec in IntermediateArgsTable.records:
     rec.table = BuiltIns['Args']
 
-BuiltIns['fn'] = FnTrait = Trait()
-BuiltIns['Function'] = ListTable(FnTrait)
+BuiltIns['func'] = FuncTrait = Trait()
+BuiltIns['Function'] = ListTable(FuncTrait)
 
-TableTable.traits += (FnTrait,)
-BuiltIns['Trait'].traits += (FnTrait,)
+TableTable.traits += (FuncTrait,)
+BuiltIns['Trait'].traits += (FuncTrait,)
 
 BuiltIns['Pattern'] = ListTable(SeqTrait, IterTrait)
 BuiltIns['Pattern'].records = IntermediatePatternTable.records
@@ -69,9 +69,9 @@ def upsert_field_fields(fields: list[Field]):
     fields.append(Slot('name', TraitMatcher(BuiltIns['str'])))
     fields.append(Slot('type', TableMatcher(BuiltIns['Pattern'])))
     fields.append(Slot('is_formula', TraitMatcher(BuiltIns['bool'])))
-    fields.append(Slot('default', UnionMatcher(TraitMatcher(FnTrait), AnyMatcher())))
-    fields.append(Slot('formula', TraitMatcher(FnTrait)))
-    fields.append(Slot('setter', TraitMatcher(FnTrait)))
+    fields.append(Slot('default', UnionMatcher(TraitMatcher(FuncTrait), AnyMatcher())))
+    fields.append(Slot('formula', TraitMatcher(FuncTrait)))
+    fields.append(Slot('setter', TraitMatcher(FuncTrait)))
 upsert_field_fields(BuiltIns['Field'].trait.fields)
 
 BuiltIns['Option'] = ListTable()
@@ -79,7 +79,7 @@ BuiltIns['Option'].records = IntermediateOptionTable.records
 BuiltIns['Option'].trait.fields.append(Slot('signature', TableMatcher(BuiltIns['Pattern'])))
 BuiltIns['Option'].trait.fields.append(Slot('code block', TableMatcher(BuiltIns['Block'])))
 
-FnTrait.fields.append(Slot('options', TraitMatcher(BuiltIns['seq'])))
+FuncTrait.fields.append(Slot('options', TraitMatcher(BuiltIns['seq'])))
 # the type should also have a specifier like `list[Option]` ... and also a default value: []
 
 # now redo the Field fields, since they weren't able to properly initialize while the fields were incomplete
@@ -106,7 +106,7 @@ NonStrSeqParam = Parameter(Intersection(TraitMatcher(SeqTrait), TraitMatcher(Str
 IterParam = Parameter(TraitMatcher(IterTrait))
 # TypeParam = Parameter(TableMatcher(BuiltIns["Type"]))
 PatternParam = Parameter(TableMatcher(BuiltIns["Pattern"]))
-FunctionParam = Parameter(TraitMatcher(BuiltIns["fn"]))
+FunctionParam = Parameter(TraitMatcher(BuiltIns["func"]))
 TableParam = Parameter(TableMatcher(BuiltIns['Table']))
 AnyParam = Parameter(AnyMatcher())
 NormalBinopPattern = Pattern(NormalParam, NormalParam)
@@ -292,6 +292,10 @@ BuiltIns['trim'] = Function({StringParam: lambda text: py_value(text.value.strip
                             Pattern(StringParam, StringParam): lambda t, c: py_value(t.value.strip(c.value))})
 BuiltIns['upper'] = Function({StringParam: lambda text: py_value(text.value.upper())})
 BuiltIns['lower'] = Function({StringParam: lambda text: py_value(text.value.lower())})
+BuiltIns['match'] = Function({Pattern(StringParam, StringParam):
+                                  lambda s, p: py_value(re.match(p.value, s.value)),
+                              Pattern(StringParam, StringParam, StringParam):
+                                  lambda s, p, f: py_value(re.match(p.value, s.value, f.value))})
 # BuiltIns['self'] = lambda: Context.env.caller or Context.env or py_value(None)
 # def Args(fn: Function):
 #     arg_list = piliize([opt.value for opt in fn.args])

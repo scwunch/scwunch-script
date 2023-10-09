@@ -42,10 +42,12 @@ class Context:
     def deref(name: str, *default):
         scope = Context.env
         while scope:
-            try:
-                return scope.names[name]
-            except KeyError:
-                scope = scope.scope
+            val = scope.locals.get(name, scope.vars.get(name, False))
+            if val:
+                return val
+            if val is None:
+                raise MissingNameErr(f"Line {Context.line}: '{name}' is not yet initialized.")
+            scope = scope.scope
         if default:
             return default[0]
         raise MissingNameErr(f"Line {Context.line}: Cannot find name '{name}' in current scope.")

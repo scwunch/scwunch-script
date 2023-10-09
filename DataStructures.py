@@ -424,7 +424,7 @@
 #     value = NotImplemented
 #     def __init__(self, opt_pattern=None, resolution=None, options=None, args=None, type=None, env=None, caller=None, name=None):
 #         self.name = name
-#         self.type = type or BuiltIns['fn']  # if isinstance(type, tuple) else (type or BuiltIns['fn'],)
+#         self.type = type or BuiltIns['func']  # if isinstance(type, tuple) else (type or BuiltIns['fn'],)
 #         self.mro = (self, *self.type.mro)
 #         self.env = env or Context.env
 #         self.caller = caller

@@ -1,3 +1,57 @@
+add_one[num x]:
+    return x + 1
+
+
+print add_one[4]
+
+
+add_one[str frederick]:
+    return frederick + "!"
+
+print add_one["bob"]
+
+print add_one["ryan"]
+
+print add_one["jordan"]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+exit
+print 'start'
 func = {[]: print "it worked!", [any arg]: print arg}
 func[]
 func['so did this one!']
@@ -5,7 +59,7 @@ func['so did this one!']
 
 
 table MyList
-	items = {}
+	var items = {}
 
 	[seq ls]:
 		rec = MyList.new
@@ -29,17 +83,6 @@ myls.push[3]
 print myls.str
 
 
-exit
-debug var = "hi"
-# print self.var = "hello"
-# print var
-# print self.var
-# exit
-var = 'hello'
-al := var
-
-print al
-exit
 
 # basic values are numbers and strings
 print "string literals can use double quotes"

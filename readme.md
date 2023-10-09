@@ -630,7 +630,7 @@ Boolean = 'bool'
 Integer = 'int'  
 Float = 'float'  
 String = 'str'  
-Function = 'fn'  
+Function = 'func'  
 List = 'list'
 Option?
 Block? — just made it a function

@@ -5,29 +5,6 @@ from Abstract_Syntax_Tree import Tokenizer, AST
 from BuiltIns import *
 import operators
 
-
-# d1 = [1, 2, 2, 3, 3, 4]
-# d2 = [1, 3, 4, 5, 6, 8]
-# sums = {}
-# freq = [0] * 13
-#
-# count = 0
-#
-# for i in range(6):
-#     for j in range(6):
-#         count += 1
-#         sum = d1[i] + d2[j]
-#         # sums[(d1[i], d2[j])] = sum
-#         freq[sum] += 1
-#         print(f"{d1[i]} + {d2[j]} = {sum}")
-#
-#
-# print(count)
-# print(freq)
-# print('\n'.join(list(map(str, zip(range(13), freq)))[2:]))
-# print(dict(zip(range(13), freq)))
-# exit()
-
 if len(sys.argv) == 1 and sys.executable == '/usr/bin/python3':  # test if running in console; pycharm executable is python3.10
     mode = 'shell'
 elif len(sys.argv) == 2:
@@ -41,6 +18,7 @@ else:
     # script_path = 'fibonacci.pili'
     # script_path = 'test.pili'
     # script_path = 'Tables.pili'
+    # script_path = 'pili_interpreter.pili'
     print('(test mode) running script', script_path, '...')
 
 # pili = Function({Pattern(): lambda: NotImplemented}, name='pili')

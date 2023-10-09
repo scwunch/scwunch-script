@@ -374,7 +374,10 @@ piliize = py_value
 class PyObj(Record, Generic[A]):
     def __init__(self, obj):
         self.obj = obj
-        super().__init__(BuiltIns['PyObj'])
+        super().__init__(BuiltIns['PythonObject'])
+
+    def to_string(self):
+        return py_value(repr(self.obj))
 
 List = py_value
 
@@ -1109,6 +1112,31 @@ class FieldMatcher(Matcher):
     def equivalent(self, other):
         return self.fields == getattr(other, 'fields', None) and self.guard == other.guard and self.invert == other.invert
 
+class FunctionMatcher(Matcher):
+    # pattern: Pattern
+    # return_type: Matcher
+    def __init__(self, pattern, return_type, name=None, guard=None, inverse=False):
+        self.pattern = pattern
+        self.return_type = return_type
+        super().__init__(name, guard, inverse)
+
+    def basic_score(self, arg):
+        if not hasattr(arg, 'op_list'):
+            return False
+        arg: Function
+
+        def options():
+            yield from arg.op_list
+            yield from arg.op_map.values()
+
+        if all((option.pattern.issubset(self.pattern) and option.return_type.issubset(self.return_type)
+                for option in options())):
+            return True
+
+
+    def __eq__(self, other): ...
+    def __hash__(self): ...
+
 class UnionMatcher(Matcher):
     matchers: frozenset[Matcher]
     # params: set[Parameter]  # this would make it more powerful, but not worth it for the added complexity
@@ -1246,7 +1274,7 @@ class Parameter:
                 matcher: Matcher = TableMatcher(table)
                 self.matcher = matcher
             case _:
-                raise TypeError(f"Failed to create Parameter from: {repr(matcher)}")
+                raise RuntimeErr(f"Line {Context.line}: Failed to create Parameter from: {repr(matcher)}")
         if default:
             if isinstance(default, Option):
                 self.default = default
@@ -1828,7 +1856,7 @@ class Args(Record):
 
     def __hash__(self):
         d = self.dict()
-        return hash((frozenset(d.keys()), frozenset(d.values())))
+        return hash((frozenset(d), frozenset(d.values())))
 
     def __repr__(self):
         pos = map(str, self.positional_arguments)
@@ -1896,7 +1924,9 @@ class Native(CodeBlock):
 class Closure:
     return_value = None
     def __init__(self, code_block, args=None, caller=None, bindings=None, fn=None):
-        self.names = bindings or {}
+        # self.names = bindings or {}
+        self.vars = bindings or {}
+        self.locals = {}
         self.code_block = code_block
         self.scope = code_block.scope
         self.args = args
@@ -1904,11 +1934,17 @@ class Closure:
         self.fn = fn
 
     def assign(self, name: str, value: Record):
-        self.names[name] = value
+        scope = self
+        while scope:
+            if name in scope.vars:
+                scope.vars[name] = value
+                return value
+            scope = scope.scope
+        self.locals[name] = value
         return value
 
     def __repr__(self):
-        return (f"Closure({len(self.names)} names; "
+        return (f"Closure({len(self.vars) + len(self.locals)} names; " 
                 f"{'running' if self.return_value is None else 'finished: ' + str(self.return_value)})")
 
 class TopNamespace(Closure):
@@ -1917,7 +1953,8 @@ class TopNamespace(Closure):
     args = None
     caller = None
     def __init__(self, bindings: dict[str, Record]):
-        self.names = bindings
+        self.vars = {}
+        self.locals = bindings
 
 class Option(Record):
     value = None
@@ -1925,6 +1962,7 @@ class Option(Record):
     fn = None
     alias = None
     dot_option = False
+    return_type = AnyMatcher()
     def __init__(self, pattern, resolution=None):
         match pattern:
             case Pattern():
@@ -1964,7 +2002,9 @@ class Option(Record):
             # case PyFunction(): self.block = Native(resolution)
             case PyFunction(): self.fn = resolution
             case Option(): self.alias = resolution
-            case Record(): self.value = resolution
+            case Record():
+                self.value = resolution
+                self.return_type = ValueMatcher(resolution)
             case _:
                 raise ValueError(f"Line {Context.line}: Could not assign resolution {resolution} to option {self}")
     def get_resolution(self):

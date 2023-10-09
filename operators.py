@@ -178,6 +178,9 @@ Operator('??=',
                    Pattern(AnyParam): lambda x: x}),
          binop=2, associativity='right')
 Op['??='].eval_args = eval_set_args
+Operator('=>',
+         Function({Pattern(AnyParam, FunctionParam): lambda x, fn: BuiltIns['call'](Args(fn, x))}),
+         binop=2)
 Operator(',',
          Function({Pattern(Parameter(AnyMatcher(), quantifier='+')): lambda *args: py_value(tuple(args)),
                   AnyParam: lambda x: py_value((x,))}),
@@ -450,7 +453,7 @@ def dot_fn(a: Record, b: Record):
             except SlotErr as e:
                 pass
             fn = Context.deref(name)
-            # if not fn.instanceof(BuiltIns['fn']):
+            # if not fn.instanceof(BuiltIns['func']):
             #     raise OperatorError(f"Line {Context.line}: '{name}' is not an option or function.")
             # assert isinstance(fn.value, Record)
             return fn.call(a)
@@ -478,7 +481,7 @@ Operator('.',
                    AnyBinopPattern: dot_fn,
                    StringParam: lambda a: Context.deref(a.value),
                    Pattern(Parameter(TableMatcher(BuiltIns['PythonObject'])),
-                           Parameter(UnionMatcher(TraitMatcher(FnTrait), TableMatcher(BuiltIns['Table'])))):
+                           Parameter(UnionMatcher(TraitMatcher(FuncTrait), TableMatcher(BuiltIns['Table'])))):
                        py_dot}),
          binop=16, prefix=16)
 BuiltIns['call'] = BuiltIns['.']

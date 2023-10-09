@@ -214,6 +214,13 @@ class FieldMatcher(Matcher):
     fields: dict[str, Matcher]
     def __init__(self, fields: dict[str, Matcher], name=None, guard=None, inverse=False): ...
 
+class FunctionMatcher(Matcher):
+    pattern: Pattern
+    return_type: Matcher
+    def __init__(self, pattern: Pattern, return_type: Matcher, name=None, guard=None, inverse=False): ...
+    def __eq__(self, other): ...
+    def __hash__(self): ...
+
 class UnionMatcher(Matcher):
     matchers: frozenset[Matcher]
     # params: set[Parameter]  # this would make it more powerful, but not worth it for the added complexity
@@ -329,8 +336,11 @@ class Native(CodeBlock):
     fn: PyFunction  # fn must accept one argument of type Args
     def __init__(self, fn: PyFunction): ...
 
+
 class Closure:
-    names: dict[str, Record]
+    # names: dict[str, Record]
+    vars: dict[str, Record]
+    locals: dict[str, Record]
     code_block: CodeBlock
     scope: Closure
     args: tuple[Record, ...]
@@ -353,7 +363,7 @@ class TopNamespace(Closure):
 
 opt_resolution = Record | CodeBlock | PyFunction | None
 class Option(Record):
-    env: Closure
+    # env: Closure
     pattern: Pattern
     resolution: opt_resolution
     value: Record
@@ -361,6 +371,7 @@ class Option(Record):
     fn: PyFunction
     alias: Option
     dot_option: bool
+    return_type: Matcher
     def __init__(self, pattern: FlexiPatt, resolution: opt_resolution = None): ...
     def is_null(self) -> bool: ...
     def not_null(self) -> bool: ...

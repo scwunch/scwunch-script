@@ -240,7 +240,7 @@ class ForLoop(ExprWithBlock):
         # variable = Option
         for val in iterator:
             # variable.assign(val)
-            Context.env.names[var_name] = val
+            Context.env.locals[var_name] = val
             self.block.execute()
             if Context.break_loop:
                 Context.break_loop -= 1
@@ -334,7 +334,7 @@ class CommandWithExpr(Command):
                 a = importlib.import_module(module_name)
                 globals()[var_name or module_name] = a
                 # Context.env.assign_option(var_name or module_name, piliize(a))
-                Context.env.names[var_name or module_name] = piliize(a)
+                Context.env.locals[var_name or module_name] = piliize(a)
                 return piliize(a)
             # case 'inherit':
             #     result = self.expr.evaluate()
@@ -565,6 +565,70 @@ class OptExpr(Command):
         trait.options.append(Option(pattern, CodeBlock(self.block)))
         return BuiltIns['blank']
 
+class Declaration(Command):
+    var_name: str
+    # context_expr: None | Expression = None
+    value_expr: None | Expression = None
+
+    def __init__(self, cmd: str, nodes: list[Node], line: int | None, source: str):
+        super().__init__(cmd, line, source)
+        match nodes:
+            case [Token(type=TokenType.Name, source_text=name)]:
+                self.var_name = name
+            case [Token(type=TokenType.Name, source_text=name), Token(source_text='='), *other_nodes]:
+                self.var_name = name
+                if other_nodes:
+                    self.value_expr = expressionize(other_nodes)
+                else:
+                    raise SyntaxErr(f"Line {self.line}: Missing right-hand-side expression for value")
+            case _:
+                raise SyntaxErr(f"Line {self.line}: invalid syntax for declaration.  "
+                                f"Expected `[local|var] var_name [= <expression>]`")
+            # case _:
+            #     for i, node in enumerate(nodes):
+            #         if node.type == TokenType.Operator and node.source_text == '=':
+            #             self.value_expr = expressionize(nodes[i + 1:])
+            #     else:
+            #         i = len(nodes)
+            #         # HOLD ON A SECOND... what does it mean to set `local foo.bar = "something"`
+            #         # or `local (foo or bar).prop = "something"`
+            #         # or `local foo(arg1, 2).prop = "something"`
+            #         # ? should I just raise an error in this case?
+            #     name_tok = nodes[i - 1]
+            #     if name_tok.type != TokenType.Name:
+            #         raise SyntaxErr(f"Line {self.line}: Expected name token before = in local expression.")
+            #     self.var_name = name_tok.source_text
+            #     context_nodes = nodes[:i - 1]
+            #     if not context_nodes or context_nodes.pop().source_text != '.':
+            #         raise SyntaxErr(f"Line {self.line}: Invalid left-hand-side for assignment.")
+            #     self.context_expr = expressionize(context_nodes)
+
+class LocalExpr(Declaration):
+    def evaluate(self):
+        value = self.value_expr.evaluate() if self.value_expr else None
+        # if self.context_expr:
+        #     if value is None:
+        #         raise SyntaxErr(f"Line {self.line}: I guess I should have caught this error in the parsing phase...")
+        #     rec = self.context_expr.evaluate()
+        #     rec: Record
+        #     rec.set(self.var_name, value)
+        #     # also raise an error here
+        # else:
+        Context.env.locals[self.var_name] = value
+        return value or BuiltIns['blank']
+
+class VarExpr(Declaration):
+    def evaluate(self):
+        if self.value_expr is None:
+            value = None
+        else:
+            value = self.value_expr.evaluate()
+
+        Context.env.vars[self.var_name] = value
+        return value or BuiltIns['blank']
+
+class FnExpr(VarExpr):
+    pass
 
 expressions = {
     'if': Conditional,
@@ -572,10 +636,13 @@ expressions = {
     'while': WhileLoop,
     'trait': TraitExpr,
     'table': TableExpr,
+    'fn': FnExpr,
     'slot': SlotExpr,
     'formula': FormulaExpr,
     'opt': OptExpr,
-    'setter': SetterExpr
+    'setter': SetterExpr,
+    'local': LocalExpr,
+    'var': VarExpr,
 }
 
 def piliize(val):
@@ -612,7 +679,7 @@ def eval_node(node: Node) -> Record:
         case Token() as tok:
             return eval_token(tok)
         case Block() as block:
-            return CodeBlock(block).execute(())
+            return CodeBlock(block).execute(fn=Function())
         case ListNode(list_type=list_type, items=items):
             match list_type:
                 case ListType.List:
@@ -991,9 +1058,9 @@ def read_option(nodes: list[Node]) -> tuple[Function, Pattern, bool]:
             if context_fn is None:
                 context_fn = Function(name=name)
                 if dot_option:
-                    Context.root.names[name] = context_fn
+                    Context.root.locals[name] = context_fn
                 else:
-                    Context.env.names[name] = context_fn
+                    Context.env.locals[name] = context_fn
         case _:
             context_fn = expressionize(nodes).evaluate()
 
