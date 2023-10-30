@@ -21,13 +21,13 @@ else:
     # script_path = 'pili_interpreter.pili'
     print('(test mode) running script', script_path, '...')
 
-# pili = Function({Pattern(): lambda: NotImplemented}, name='pili')
+# pili = Function({ArgsMatcher(): lambda: NotImplemented}, name='pili')
 # BuiltIns['pili'] = pili
 # for key, builtin in BuiltIns.items():
 #     if not getattr(builtin, 'name', False):
 #         builtin.name = key
 #     pili.names[key] = builtin
-#     # pili.add_option(Pattern(Parameter(Matcher(key))), builtin)
+#     # pili.add_option(ArgsMatcher(Parameter(Matcher(key))), builtin)
 # Context.root = pili
 # Context.push(0, pili, Option(Any))
 
@@ -44,7 +44,7 @@ def execute_code(code: str) -> Function:
     return block.execute(())
     # if len(block.exprs) == 1:
     #     return block.exprs[0].evaluate()
-    # Context.env.assign_option(Pattern(Parameter('main')), block)
+    # Context.env.assign_option(ArgsMatcher(Parameter('main')), block)
     # return Context.deref('main')
     # fn = block.make_function({}, root)
     # Context.push(Context.line, fn, Option(Any))
@@ -85,7 +85,7 @@ def execute_script(path):
     ast = AST(tokenizer)
     # print(ast)
     # print('**********************************')
-    # pili.assign_option(Pattern(), CodeBlock(ast.block))
+    # pili.assign_option(ArgsMatcher(), CodeBlock(ast.block))
     main_block = CodeBlock(ast.block)
     # BuiltIns['pili'] = root
     # for key, builtin in BuiltIns.items():

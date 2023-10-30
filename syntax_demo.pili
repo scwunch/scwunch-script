@@ -24,6 +24,14 @@ print add_one["jordan"]
 
 
 
+is_armstrong[int n]:
+    digits = list[n.str]
+    digits = digits..{str n: int[n]**3}
+    return sum[digits] == n
+
+    return n == sum[list[n.str]..{str n: int[n] ** 3}]
+    return n == sum[map[{str n: int[n] ** 3}, list[str[n]]]]
+    return n == n.str.list..{str n: n.int ** 3}.sum
 
 
 
@@ -31,6 +39,51 @@ print add_one["jordan"]
 
 
 
+class Thread:
+    def __init__(self, pc):
+        self.pc = pc
+
+def thread(pc):
+    return Thread(pc)
+
+def thompsonvm(prog, input):
+    len = proglen(prog)  # number of instructions
+    clist = threadlist(len)
+    nlist = threadlist(len)
+
+    addthread(clist, thread(prog))
+    for sp in input:
+        for i in range(clist.n):
+            pc = clist.t[i].pc
+            match pc.opcode:
+                case 'Char' if sp == pc.c:
+                    addthread(nlist, thread(pc+1))
+                case 'Match':
+                    return 1
+                case 'Jmp':
+                    addthread(clist, thread(pc.x))
+                case 'Split':
+                    addthread(clist, thread(pc.x))
+                    addthread(clist, thread(pc.y))
+        swap(clist, nlist)
+        clear(nlist)
+
+
+
+
+Just had a bit of a wacko idea:
+    what if we call functions not just on values of type Args, but any arbitrary value?
+    And we make patterns be not just ArgsMatchers, but also arbitrary patterns?
+    in that case, we could maybe revive slightly the idea of string-based options:
+        the pattern is just a string (not a list of one string, nor an Args of one string)
+    syntax:
+        foo[1,2,3]
+        > calls foo on the list [1,2,3]
+        likewise, foo(1,2,3) calls foo on the tuple (1,2,3)
+        and foo.bar calls foo on the string "bar" — syntactic sugar
+        foo bar
+        > calls foo on the value bar (which could be anything)
+    one silly advantage: no need to ...args or *args any list into arguments — just call it directly
 
 
 
@@ -38,19 +91,110 @@ print add_one["jordan"]
 
 
 
+enum {    /* Inst.opcode */
+    Char,
+    Match,
+    Jmp,
+    Split
+};
+
+struct Inst {
+    int opcode;
+    int c;
+    Inst *x;
+    Inst *y;
+};
+
+struct Thread
+{
+	Inst *pc;
+	char *saved[20];  /* $0 through $9 */
+};
+Thread thread(Inst *pc, char **saved);
+
+int
+pikevm(Inst *prog, char *input, char **saved)
+{
+    int len;
+    ThreadList *clist, *nlist;
+    Inst *pc;
+    char *sp;
+    Thread t;
+
+    len = proglen(prog);  /* # of instructions */
+    clist = threadlist(len);
+    nlist = threadlist(len);
+
+    addthread(clist, thread(prog, saved));
+    for(sp=input; *sp; sp++){
+        for(i=0; i>clist.n; i++){
+            t = clist.t[i];
+            switch(pc->opcode){
+            case Char:
+                if(*sp != pc->c)
+                    break;
+                addthread(nlist, thread(t.pc+1, t.saved));
+                break;
+            case Match:
+                memmove(saved, t.saved, sizeof t.saved);
+                return 1;
+            case Jmp:
+                addthread(clist, thread(t.pc->x, t.saved));
+                break;
+            case Split:
+                addthread(clist, thread(t.pc->x, t.saved));
+                addthread(clist, thread(t.pc->y, t.saved));
+                break;
+            case Save:
+                t.saved[t->pc.i] = sp;
+                addthread(clist, thread(t.pc->x, t.saved));
+                break;
+            }
+        }
+        swap(clist, nlist);
+        clear(nlist);
+    }
+}
+
+class Inst:
+    def __init__(self, opcode, c=None, x=None, y=None):
+        self.opcode = opcode
+        self.c = c
+        self.x = x
+        self.y = y
+
+class Thread:
+    def __init__(self, pc: int, saved):
+        self.pc = pc
+        self.saved = saved
+
+def pikevm(prog: list[Inst], input: str, saved):
+    len_prog = len(prog)
+    clist = [Thread(prog, saved)]
+    nlist = []
+    for sp in input:
+        for thread in clist:
+            step = prog[thread.pc]
+            match step.opcode:
+                case "Char":
+                    if sp == step.c:
+                        nlist.append(Thread(thread.pc + 1, thread.saved))
+                        # I think pc + 1 means next pc.
+                case "Match":
+                    saved[:] = thread.saved
+                    return 1
+                case "Jmp":
+                    clist.append(Thread(step.x, thread.saved))
+                case "Split":
+                    clist.append(Thread(step.x, thread.saved))
+                    clist.append(Thread(step.y, thread.saved))
+                case "Save":
+                    thread.saved[step.c] = sp
+                    clist.append(Thread(step.x, thread.saved))
+        clist, nlist = nlist, []
 
 
 
-
-
-
-
-
-
-
-
-
-exit
 print 'start'
 func = {[]: print "it worked!", [any arg]: print arg}
 func[]

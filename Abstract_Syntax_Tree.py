@@ -1,4 +1,3 @@
-# import re
 import Env
 from Syntax import *
 

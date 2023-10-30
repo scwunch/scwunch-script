@@ -47,7 +47,7 @@ def eval_alias_args(lhs: list[Node], rhs: list[Node]) -> tuple[Record]:
     match right[:-1]:
         case (PyValue(value=str() as name),):
             closure = Context.env
-            # option = Option(Pattern(), lambda : closure.)
+            # option = Option(ArgsMatcher(), lambda : closure.)
     right_key = right[-2]
     if len(right) == 3:
         right_fn = right[-3]
@@ -69,7 +69,7 @@ def eval_alias_args(lhs: list[Node], rhs: list[Node]) -> tuple[Record]:
 
 def assign_option(fn: Function, args: PyValue[tuple] | Args, val: Record):
     params = (Parameter(ValueMatcher(rec)) for rec in args)
-    fn.assign_option(Pattern(*params), val)
+    fn.assign_option(ArgsMatcher(*params), val)
     return val
 
 
@@ -86,7 +86,7 @@ def augment_assign_fn(op: str):
 Operator(';',
          Function({AnyBinopPattern: lambda x, y: y}),
          binop=1)
-def assign_fn(fn: Function, patt: Pattern, block: CodeBlock, dot_option: PyValue[bool]) -> PyValue:
+def assign_fn(fn: Function, patt: ArgsMatcher, block: CodeBlock, dot_option: PyValue[bool]) -> PyValue:
     option = fn.select_by_pattern(patt)
     if option is None:
         option = fn.assign_option(patt, block)
@@ -95,7 +95,7 @@ def assign_fn(fn: Function, patt: Pattern, block: CodeBlock, dot_option: PyValue
     option.dot_option = dot_option.value
     return py_value(None)
 Operator(':',
-         Function({Pattern(AnyParam, PatternParam, AnyParam, BoolParam): assign_fn}),
+         Function({ArgsMatcher(AnyParam, PatternParam, AnyParam, BoolParam): assign_fn}),
          binop=2, associativity='right')
 def eval_assign_fn_args(lhs: list[Node], rhs: list[Node]) -> list[Record]:
     blk_nd = rhs[0]
@@ -110,15 +110,15 @@ Op[':'].eval_args = eval_assign_fn_args
 
 Operator(':=', binop=2, associativity='right')
 Operator('=',
-         Function({Pattern(StringParam, AnyParam): lambda name, val: Context.env.assign(name, val),
-                   Pattern(FunctionParam, NonStrSeqParam, AnyParam): assign_option,
-                   Pattern(AnyParam, StringParam, AnyParam): lambda rec, name, val: rec.set(name.value, val)}),
+         Function({ArgsMatcher(StringParam, AnyParam): lambda name, val: Context.env.assign(name, val),
+                   ArgsMatcher(FunctionParam, NonStrSeqParam, AnyParam): assign_option,
+                   ArgsMatcher(AnyParam, StringParam, AnyParam): lambda rec, name, val: rec.set(name.value, val)}),
          binop=2, associativity='right')
 Op['='].eval_args = eval_set_args
 Op[':='].fn = Op['='].fn
 for op in ('+', '-', '*', '/', '//', '**', '%'):
     Operator(op+'=', Function({AnyBinopPattern: augment_assign_fn(op),
-                              Pattern(AnyParam, AnyParam, AnyParam): lambda *args: BuiltIns['set'].call(*args)}),
+                              ArgsMatcher(AnyParam, AnyParam, AnyParam): lambda *args: BuiltIns['set'].call(*args)}),
              binop=2, associativity='right')
     Op[op+'='].eval_args = eval_set_args
 Op[':='].eval_args = eval_alias_args
@@ -167,22 +167,22 @@ def null_assign(key: PyValue[str], val: Record):
 
 def null_assign_option(fn: Function, key: PyValue[list], val: Record):
     params = (Parameter(ValueMatcher(rec)) for rec in key.value)
-    fn.assign_option(Pattern(*params), val)
+    fn.assign_option(ArgsMatcher(*params), val)
     return val
 
 
 Operator('??=',
-         Function({Pattern(StringParam, AnyParam): lambda name, val: Context.env.assign(name, val),
-                   Pattern(FunctionParam, NonStrSeqParam, AnyParam): assign_option,
-                   Pattern(AnyParam, StringParam, AnyParam): lambda rec, name, val: rec.set(name.value, val),
-                   Pattern(AnyParam): lambda x: x}),
+         Function({ArgsMatcher(StringParam, AnyParam): lambda name, val: Context.env.assign(name, val),
+                   ArgsMatcher(FunctionParam, NonStrSeqParam, AnyParam): assign_option,
+                   ArgsMatcher(AnyParam, StringParam, AnyParam): lambda rec, name, val: rec.set(name.value, val),
+                   ArgsMatcher(AnyParam): lambda x: x}),
          binop=2, associativity='right')
 Op['??='].eval_args = eval_set_args
 Operator('=>',
-         Function({Pattern(AnyParam, FunctionParam): lambda x, fn: BuiltIns['call'](Args(fn, x))}),
+         Function({ArgsMatcher(AnyParam, FunctionParam): lambda x, fn: BuiltIns['call'](Args(fn, x))}),
          binop=2)
 Operator(',',
-         Function({Pattern(Parameter(AnyMatcher(), quantifier='+')): lambda *args: py_value(tuple(args)),
+         Function({ArgsMatcher(Parameter(AnyMatcher(), quantifier='+')): lambda *args: py_value(tuple(args)),
                   AnyParam: lambda x: py_value((x,))}),
          binop=2, postfix=2, associativity='right')
 def eval_tuple_args(lhs: list[Node], rhs: list[Node]) -> list[Record]:
@@ -208,7 +208,7 @@ def eval_if_args(lhs: list[Node], rhs: list[Node]) -> list[Record]:
     else:
         return [py_value(None), py_value(False), expressionize(rhs).evaluate()]
 Operator('if',
-         Function({Pattern(AnyParam, AnyParam, AnyParam):
+         Function({ArgsMatcher(AnyParam, AnyParam, AnyParam):
                   lambda consequent, condition, alt: consequent if condition.value else alt}),
          binop=3, ternary='else')
 Op['if'].eval_args = eval_if_args
@@ -221,7 +221,7 @@ def nullish_or(*args: Record):
 
 
 Operator('??',
-         Function({Pattern(Parameter(AnyMatcher(), "", "+")): nullish_or}),
+         Function({ArgsMatcher(Parameter(AnyMatcher(), "", "+")): nullish_or}),
          binop=4)
 def eval_nullish_args(lhs: list[Node], rhs: list[Node]) -> list[Record]:
     first = expressionize(lhs).evaluate()
@@ -259,11 +259,11 @@ def eval_and_args(lhs: list[Node], rhs: list[Node]) -> list[Record]:
 Op['and'].eval_args = eval_and_args
 
 Operator('not',
-         Function({Pattern(AnyParam): lambda a: py_value(not BuiltIns['bool'].call(a).value)}),
+         Function({ArgsMatcher(AnyParam): lambda a: py_value(not BuiltIns['bool'].call(a).value)}),
          prefix=7)
 Operator('in',
          Function({AnyBinopPattern: lambda a, b: py_value(a in (opt.value for opt in b.options if hasattr(opt, 'value'))),
-                   Pattern(AnyParam, IterParam): lambda a, b: py_value(a in b.value)}),
+                   ArgsMatcher(AnyParam, IterParam): lambda a, b: py_value(a in b.value)}),
          binop=8)
 Operator('==',
          Function({AnyBinopPattern: lambda a, b: py_value(a == b)}),
@@ -288,9 +288,9 @@ Operator('is not',
 #     params = (param for patt in patts for param in patt.try_get_params())
 #     try:
 #         matchers = (m for p in params for m in p.try_get_matchers())
-#         return Pattern(Parameter(Union(*matchers)))
+#         return ArgsMatcher(Parameter(Union(*matchers)))
 #     except TypeError:
-#         return Pattern(UnionParam(*params))
+#         return ArgsMatcher(UnionParam(*params))
 def union_patterns(*values_or_patterns: Record):
     patterns = map(patternize, values_or_patterns)
     params = []
@@ -305,12 +305,12 @@ def union_patterns(*values_or_patterns: Record):
     matchers = []
     for param in params:
         if param.quantifier or param.name is not None:
-            return Pattern(UnionParam(*params))
+            return ArgsMatcher(UnionParam(*params))
         if isinstance(param.matcher, UnionMatcher):
             matchers.extend(param.matcher.matchers)
         else:
             matchers.append(param.matcher)
-    return Pattern(Parameter(UnionMatcher(*matchers)))
+    return ArgsMatcher(Parameter(UnionMatcher(*matchers)))
 
 
 Operator('|',
@@ -332,37 +332,37 @@ Operator('>=',
          binop=11, chainable=True)
 Operator('+',
          Function({NormalBinopPattern: lambda a, b: py_value(a.value + b.value),
-                   Pattern(AnyParam): lambda a: BuiltIns['num'].call(a),
-                   Pattern(StringParam, StringParam): lambda a, b: py_value(a.value + b.value),
-                   Pattern(ListParam, ListParam): lambda a, b: py_value(a.value + b.value),
-                   Pattern(*(Parameter(TraitMatcher(TupTrait)),) * 2): lambda a, b: py_value(a.value + b.value),
-                   # Pattern(SeqParam, SeqParam): lambda a, b: py_value(a.value + b.value)
+                   ArgsMatcher(AnyParam): lambda a: BuiltIns['num'].call(a),
+                   ArgsMatcher(StringParam, StringParam): lambda a, b: py_value(a.value + b.value),
+                   ArgsMatcher(ListParam, ListParam): lambda a, b: py_value(a.value + b.value),
+                   ArgsMatcher(*(Parameter(TraitMatcher(TupTrait)),) * 2): lambda a, b: py_value(a.value + b.value),
+                   # ArgsMatcher(SeqParam, SeqParam): lambda a, b: py_value(a.value + b.value)
                    }),
          binop=12, prefix=14)
 Operator('-',
          Function({NormalBinopPattern: lambda a, b: py_value(a.value - b.value),
-                  Pattern(AnyParam): lambda a: py_value(-BuiltIns['num'].call(a).value)}),
+                  ArgsMatcher(AnyParam): lambda a: py_value(-BuiltIns['num'].call(a).value)}),
          binop=12, chainable=False, prefix=14)
 Operator('*',
-         Function({Pattern(NumericParam, NumericParam): lambda a, b: py_value(a.value * b.value),
-                  Pattern(StringParam, IntegralParam): lambda a, b: py_value(a.value * b.value)}),
+         Function({ArgsMatcher(NumericParam, NumericParam): lambda a, b: py_value(a.value * b.value),
+                  ArgsMatcher(StringParam, IntegralParam): lambda a, b: py_value(a.value * b.value)}),
          binop=13)
 Operator('/',
-         Function({Pattern(NumericParam, NumericParam): lambda a, b: py_value(a.value / b.value),
-                  Pattern(RationalParam, RationalParam): lambda a, b:
+         Function({ArgsMatcher(NumericParam, NumericParam): lambda a, b: py_value(a.value / b.value),
+                  ArgsMatcher(RationalParam, RationalParam): lambda a, b:
                   py_value(Fraction(a.value.numerator * b.value.denominator, a.value.denominator * b.value.numerator))}),
          binop=13, chainable=False)
 Operator('//',
-         Function({Pattern(NumericParam, NumericParam): lambda a, b: py_value(a.value // b.value)}),
+         Function({ArgsMatcher(NumericParam, NumericParam): lambda a, b: py_value(a.value // b.value)}),
          binop=13, chainable=False)
 Operator('%',
-         Function({Pattern(NumericParam, NumericParam): lambda a, b: py_value(a.value % b.value)}),
+         Function({ArgsMatcher(NumericParam, NumericParam): lambda a, b: py_value(a.value % b.value)}),
          binop=13, chainable=False)
 Operator('**',
-         Function({Pattern(NumericParam, NumericParam): lambda a, b: py_value(a.value ** b.value)}),
+         Function({ArgsMatcher(NumericParam, NumericParam): lambda a, b: py_value(a.value ** b.value)}),
          binop=14, chainable=False, associativity='right')
 Operator('^',
-         Function({Pattern(NumericParam, NumericParam): lambda a, b: py_value(a.value ** b.value)}),
+         Function({ArgsMatcher(NumericParam, NumericParam): lambda a, b: py_value(a.value ** b.value)}),
          binop=14, chainable=False, associativity='right')
 Operator('?',
          Function({AnyParam: lambda p: union_patterns(p, BuiltIns['blank'])}),
@@ -391,9 +391,9 @@ def has_option(fn: Record, arg: Record = None) -> PyValue:
             raise TypeErr(f"Line {Context.line}: "
                           f"The right-hand term of the `has` operator must be a string or sequence of arguments.")
 Operator('has',
-         Function({Pattern(AnyParam, NonStrSeqParam): has_option,
+         Function({ArgsMatcher(AnyParam, NonStrSeqParam): has_option,
                    AnyBinopPattern: has_option,
-                   Pattern(NormalParam): has_option}),
+                   ArgsMatcher(NormalParam): has_option}),
          binop=15, prefix=15)
 def add_guard_fn(fn: Record, guard: Function):
     patt = patternize(fn)
@@ -404,8 +404,8 @@ def add_guard_expr(fn: Record, expr: Expression):
     patt.exprs.append(expr)  # noqa
     return patt
 Operator('&',
-         Function({Pattern(AnyParam, AnyParam): add_guard_expr,
-                   Pattern(FunctionParam, AnyParam): add_guard_expr}),
+         Function({ArgsMatcher(AnyParam, AnyParam): add_guard_expr,
+                   ArgsMatcher(FunctionParam, AnyParam): add_guard_expr}),
          binop=15)
 # def eval_patt_guard_args(lhs: list[Node], rhs: list[Node]) -> [Record, Expression]:
 #     return [expressionize(lhs).evaluate(), expressionize(rhs)]
@@ -477,22 +477,22 @@ def py_dot(a: PyObj, b: PyValue):
 
 
 Operator('.',
-         Function({Pattern(AnyParam, NonStrSeqParam): dot_fn,
+         Function({ArgsMatcher(AnyParam, NonStrSeqParam): dot_fn,
                    AnyBinopPattern: dot_fn,
                    StringParam: lambda a: Context.deref(a.value),
-                   Pattern(Parameter(TableMatcher(BuiltIns['PythonObject'])),
+                   ArgsMatcher(Parameter(TableMatcher(BuiltIns['PythonObject'])),
                            Parameter(UnionMatcher(TraitMatcher(FuncTrait), TableMatcher(BuiltIns['Table'])))):
                        py_dot}),
          binop=16, prefix=16)
 BuiltIns['call'] = BuiltIns['.']
 Operator('.?',
          Function({AnyBinopPattern: lambda a, b: BuiltIns['.'].call(a,b) if BuiltIns['has'].call(a, b).value else py_value(None),
-                  Pattern(StringParam): lambda a: BuiltIns['.'].call(a) if BuiltIns['has'].call(a).value else py_value(None),}),
+                  ArgsMatcher(StringParam): lambda a: BuiltIns['.'].call(a) if BuiltIns['has'].call(a).value else py_value(None),}),
          binop=16, prefix=16)
 # map-dot / swizzle operator
 Operator('..',
-         Function({Pattern(SeqParam, StringParam): lambda ls, name: List([dot_fn(el, name) for el in ls.value]),
-                   Pattern(NumericParam, NumericParam): lambda a, b: piliize(range(a.value, b.value))}),
+         Function({ArgsMatcher(SeqParam, StringParam): lambda ls, name: List([dot_fn(el, name) for el in ls.value]),
+                   ArgsMatcher(NumericParam, NumericParam): lambda a, b: piliize(range(a.value, b.value))}),
          binop=16, prefix=16)
 Op['.'].eval_args = Op['.?'].eval_args = Op['..'].eval_args = eval_call_args
 
@@ -500,51 +500,51 @@ Op['.'].eval_args = Op['.?'].eval_args = Op['..'].eval_args = eval_call_args
 # pattern generator options for int, str, float, etc
 def make_lambda_guard(type_name: str):
     if type_name == 'str':
-        return lambda a, b: Pattern(Parameter(TableMatcher(BuiltIns[type_name], guard=lambda x: py_value(a.value <= len(x.value) <= b.value))))
+        return lambda a, b: ArgsMatcher(Parameter(TableMatcher(BuiltIns[type_name], guard=lambda x: py_value(a.value <= len(x.value) <= b.value))))
     else:
-        return lambda a, b: Pattern(Parameter(TableMatcher(BuiltIns[type_name], guard=lambda x: py_value(a.value <= x.value <= b.value))))
+        return lambda a, b: ArgsMatcher(Parameter(TableMatcher(BuiltIns[type_name], guard=lambda x: py_value(a.value <= x.value <= b.value))))
 
 
 for type_name in ('num', 'ratio', 'float', 'int', 'str'):
     if type_name == 'int':
         pass
-    pass # BuiltIns[type_name].add_option(Pattern(NumericParam, NumericParam), make_lambda_guard(type_name))
+    pass # BuiltIns[type_name].add_option(ArgsMatcher(NumericParam, NumericParam), make_lambda_guard(type_name))
 
 
-# BuiltIns['str'].add_option(Pattern(StringParam),
-#                            lambda regex: Pattern(Parameter(TraitMatcher(
+# BuiltIns['str'].add_option(ArgsMatcher(StringParam),
+#                            lambda regex: ArgsMatcher(Parameter(TraitMatcher(
 #                                BuiltIns['str'], guard=lambda s: py_value(bool(re.fullmatch(regex.value, s.value)))))))
-# BuiltIns['num'].add_option(Pattern(NumericParam, NumericParam), lambda a, b: py_value(TableMatcher(BuiltIns['num'], guard=lambda x: py_value(a.value <= x.value <= b.value))))
+# BuiltIns['num'].add_option(ArgsMatcher(NumericParam, NumericParam), lambda a, b: py_value(TableMatcher(BuiltIns['num'], guard=lambda x: py_value(a.value <= x.value <= b.value))))
 
 # Add shortcut syntax for adding function guards to type checks.  Eg `int > 0` or `float < 1.0`
 def number_guard(op_sym: str):
     # assert a.value == b.type
-    return lambda t, n: Pattern(Parameter(TraitMatcher(t, guard=lambda x: Op[op_sym].fn.call(x, n))))
+    return lambda t, n: ArgsMatcher(Parameter(TraitMatcher(t, guard=lambda x: Op[op_sym].fn.call(x, n))))
 
 # generating functions with syntax like `str > 5` => `[str x]: len(x) > 5`
 def string_guard(op_sym: str):
     # assert a.value == BuiltIns['str'] and b.type in (BuiltIns['int'], BuiltIns['float'])
-    return lambda t, n: Pattern(Parameter(TraitMatcher(t, guard=lambda s: Op[op_sym].fn.call(py_value(len(s.value)), n))))
+    return lambda t, n: ArgsMatcher(Parameter(TraitMatcher(t, guard=lambda s: Op[op_sym].fn.call(py_value(len(s.value)), n))))
     # def guard(x, y):
-    #     return Pattern(Parameter(TableMatcher(BuiltIns['str'], guard=lambda s: Op[op_sym].fn.call(py_value(len(s.value)), b))))
+    #     return ArgsMatcher(Parameter(TableMatcher(BuiltIns['str'], guard=lambda s: Op[op_sym].fn.call(py_value(len(s.value)), b))))
     # # return guard
-    # return Pattern(Parameter(TableMatcher(BuiltIns['str'], guard=lambda s: Op[op_sym].fn.call(py_value(len(s.value)), b))))
+    # return ArgsMatcher(Parameter(TableMatcher(BuiltIns['str'], guard=lambda s: Op[op_sym].fn.call(py_value(len(s.value)), b))))
 
 # def add_guards(op_sym: str):
-#     Op[op_sym].fn.add_option(Pattern(Parameter(ValueMatcher(BuiltIns['int'])), NumericParam),
+#     Op[op_sym].fn.add_option(ArgsMatcher(Parameter(ValueMatcher(BuiltIns['int'])), NumericParam),
 #                                 number_guard(op_sym))
-#     Op[op_sym].fn.assign_option(Pattern(Parameter(ValueMatcher(BuiltIns['float'])), NumericParam),
+#     Op[op_sym].fn.assign_option(ArgsMatcher(Parameter(ValueMatcher(BuiltIns['float'])), NumericParam),
 #                                 lambda a, b: number_guard(a, b, op_sym))
-#     Op[op_sym].fn.assign_option(Pattern(Parameter(ValueMatcher(BuiltIns['ratio'])), NumericParam),
+#     Op[op_sym].fn.assign_option(ArgsMatcher(Parameter(ValueMatcher(BuiltIns['ratio'])), NumericParam),
 #                                 lambda a, b: number_guard(a, b, op_sym))
-#     Op[op_sym].fn.assign_option(Pattern(Parameter(ValueMatcher(BuiltIns['str'])), NumericParam),
+#     Op[op_sym].fn.assign_option(ArgsMatcher(Parameter(ValueMatcher(BuiltIns['str'])), NumericParam),
 #                                 lambda a, b: string_guard(a, b, op_sym))
 
 
 for op_sym in ('>', '<', '>=', '<='):
     for type_name in ('int', 'ratio', 'float', 'num'):
-        Op[op_sym].fn.assign_option(Pattern(Parameter(ValueMatcher(BuiltIns[type_name])), NumericParam),
+        Op[op_sym].fn.assign_option(ArgsMatcher(Parameter(ValueMatcher(BuiltIns[type_name])), NumericParam),
                                     number_guard(op_sym))
-    Op[op_sym].fn.assign_option(Pattern(Parameter(ValueMatcher(BuiltIns['str'])), NumericParam),
+    Op[op_sym].fn.assign_option(ArgsMatcher(Parameter(ValueMatcher(BuiltIns['str'])), NumericParam),
                                 string_guard(op_sym))
     # add_guards(op)

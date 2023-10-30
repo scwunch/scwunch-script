@@ -5,32 +5,6 @@ from tables import *
 from Env import *
 
 
-# def expressionize_OLD(nodes: list[Node] | Statement):
-#     if isinstance(nodes, Statement):
-#         line = nodes.pos[0]
-#         src = nodes.source_text
-#         nodes = nodes.nodes
-#     else:
-#         line = None
-#         src = " ".join(n.source_text for n in nodes)
-#     if not nodes:
-#         return EmptyExpr()
-#     if nodes[0].type == TokenType.Command:
-#         return Command(nodes[0].source_text, nodes[1:], line, src)
-#     if len(nodes) == 1:
-#         return SingleNode(nodes[0], line, src)
-#     match nodes[0].source_text:
-#         case 'if':
-#             return Conditional(nodes, line, src)
-#         case 'for':
-#             return ForLoop(nodes, line, src)
-#         case 'while':
-#             return WhileLoop(nodes, line, src)
-#         # case 'try':
-#         #     return TryCatch(nodes, line, src)
-#
-#     return Mathological(nodes, line, src)
-
 def expressionize(nodes: list[Node] | Statement):
     if isinstance(nodes, Statement):
         line = nodes.pos[0]
@@ -431,7 +405,7 @@ class SlotExpr(Command):
 
     def evaluate(self):
         match patternize(self.slot_type.evaluate()):
-            case Pattern(parameters=(Parameter(matcher=slot_type),)):
+            case ArgsMatcher(parameters=(Parameter(matcher=slot_type),)):
                 pass
             case _:
                 raise TypeErr(f"Line {Context.line}: Invalid type: {self.slot_type.evaluate()}.  "
@@ -478,7 +452,7 @@ class FormulaExpr(Command):
 
     def evaluate(self):
         match patternize(self.formula_type.evaluate()):
-            case Pattern(parameters=(Parameter(matcher=formula_type), )):
+            case ArgsMatcher(parameters=(Parameter(matcher=formula_type), )):
                 pass
             case _:
                 raise TypeErr(f"Line {Context.line}: Invalid type: {self.formula_type.evaluate()}.  "
@@ -515,7 +489,7 @@ class SetterExpr(Command):
                                 f"Eg, `setter description[str desc]: self._description = trim[desc]`")
 
     def evaluate(self):
-        fn = Function({Pattern(Parameter(AnyMatcher(), 'self'), make_param(self.param_nodes)):
+        fn = Function({ArgsMatcher(Parameter(AnyMatcher(), 'self'), make_param(self.param_nodes)):
                            CodeBlock(self.block)})
         setter = Setter(self.field_name, fn)
         match Context.env.fn:
@@ -547,12 +521,12 @@ class OptExpr(Command):
 
     def evaluate(self):
         match patternize(self.return_type.evaluate()):
-            case Pattern(parameters=(Parameter(matcher=return_type), )):
+            case ArgsMatcher(parameters=(Parameter(matcher=return_type), )):
                 pass
             case _:
                 raise TypeErr(f"Line {Context.line}: Invalid type: {self.return_type.evaluate()}.  "
                               f"Expected value, table, trait, or single-parameter pattern.")
-        pattern = Pattern(*map(make_param, self.params))
+        pattern = ArgsMatcher(*map(make_param, self.params))
         match Context.env.fn:
             case Trait() as trait:
                 pass
@@ -687,7 +661,7 @@ def eval_node(node: Node) -> Record:
                 case ListType.Args:
                     return eval_args_list(items)
                 case ListType.Params:
-                    return Pattern(*map(make_param, items))
+                    return ArgsMatcher(*map(make_param, items))
                 case ListType.Tuple:
                     return py_value(tuple(map(eval_node, items)))
                 case ListType.Function:
@@ -913,9 +887,9 @@ def split(nodes: list[Node], splitter: TokenType) -> list[list[Node]]:
 #         definite_env = not is_value
 #     params = map(make_param if not is_value else make_value_param, param_list)
 #     if dot_option:
-#         patt = Pattern(Parameter(TableMatcher(Context.env)), *params)
+#         patt = ArgsMatcher(Parameter(TableMatcher(Context.env)), *params)
 #     else:
-#         patt = Pattern(*params)
+#         patt = ArgsMatcher(*params)
 #     # try:
 #     #     # option = fn.select(patt, walk_prototype_chain=False, ascend_env=not definite_env)
 #     #     option = fn.select_by_pattern(patt, walk_prototype_chain=False, ascend_env=not definite_env)
@@ -926,7 +900,7 @@ def split(nodes: list[Node], splitter: TokenType) -> list[list[Node]]:
 #     option.dot_option = dot_option
 #     return option
 
-def read_option2(nodes: list[Node]) -> tuple[Function, Pattern, bool]:
+def read_option2(nodes: list[Node]) -> tuple[Function, ArgsMatcher, bool]:
     nodes = nodes[:]
     dot_option = nodes[0].source_text == '.'
     if dot_option:
@@ -1010,14 +984,14 @@ def read_option2(nodes: list[Node]) -> tuple[Function, Pattern, bool]:
 
     params = map(make_param, param_list)
     if dot_option:
-        # patt = Pattern(Parameter(TableMatcher(Context.env)), *params)
+        # patt = ArgsMatcher(Parameter(TableMatcher(Context.env)), *params)
         raise NotImplementedError
     else:
-        patt = Pattern(*params)
+        patt = ArgsMatcher(*params)
     return fn, patt, dot_option
 
 
-def read_option(nodes: list[Node]) -> tuple[Function, Pattern, bool]:
+def read_option(nodes: list[Node]) -> tuple[Function, ArgsMatcher, bool]:
     nodes = nodes[:]
     dot_option = nodes[0].source_text == '.'
     if dot_option:
@@ -1074,9 +1048,9 @@ def read_option(nodes: list[Node]) -> tuple[Function, Pattern, bool]:
             case _:
                 raise RuntimeErr(f"Line {Context.line}: "
                          f"Dot options can only be declared in a scope which is a function, table, or trait.")
-        patt = Pattern(Parameter(matcher, name='self'), *params)
+        patt = ArgsMatcher(Parameter(matcher, name='self'), *params)
     else:
-        patt = Pattern(*params)
+        patt = ArgsMatcher(*params)
     return context_fn, patt, dot_option
 
 

@@ -119,8 +119,16 @@ def read_number(text: str, base) -> int | float | Fraction:
             raise TypeErr(f"Line {Context.line}: {e}")
 
 
-def write_number(num: int|float|Fraction, base, precision=12, sep="_", grouping=4) -> str:
+def write_number(num: int|float|Fraction, base, precision=12, sep="_", grouping=None) -> str:
     """ take a number and convert to a string of digits, possibly separated by / or . """
+    if grouping is None:
+        if base < 7:
+            grouping = 4
+        elif base < 16:
+            grouping = 3
+        else:
+            grouping = 2
+
     if base == 10:
         grouping = 3
         # return str(num)
@@ -135,21 +143,21 @@ def write_number(num: int|float|Fraction, base, precision=12, sep="_", grouping=
     if sep:
         for i in range(len(digits)-grouping, 0, -grouping):
             digits.insert(i, sep)
-    ls = sign + ''.join(digits)
+    ls = sign + ''.join(map(str, digits))
     if isinstance(num, int):
         return ls
-    rs = frac_from_base(frac, base, precision)
-    return f"{ls}.{''.join(str(d) for d in rs)}"
+    rs = fractional_digits(frac, base, precision)
+    return f"{ls}.{''.join(map(str, rs))}"
 
-def get_digits(num: int, base) -> list[str]:
+def get_digits(num: int, base) -> list[int]:
     if num < base:
-        return [str(num)]
+        return [num]
     else:
         result = get_digits(num // base, base)
-        result.append(str(num % base))
+        result.append(num % base)
         return result
 
-def frac_from_base(num: float, base, precision=12):
+def fractional_digits(num: float, base, precision=12) -> list[int]:
     digits = []
     # remainders = []
     for i in range(precision):
