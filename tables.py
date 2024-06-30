@@ -1,7 +1,9 @@
 import math
 from fractions import Fraction
 from Env import *
-from typing import TypeVar, Generic
+from typing import TypeVar, Generic, overload
+
+print(f"loading module: {__name__} ...")
 
 PyFunction = type(lambda: None)
 
@@ -53,12 +55,22 @@ def dependencies(*slots: str):
         return wrapper
     return memoize
 
+
 class frozendict(dict):
+    hash: int
     def __hash__(self):
         try:
-            return hash((frozenset(self), frozenset(self.values())))
-        except TypeError:
-            return hash(frozenset(self))
+            return self.hash
+        except AttributeError:
+            try:
+                self.hash = hash(frozenset(self.items()))
+            except TypeError:
+                self.hash = hash(frozenset(self))
+            return self.hash
+
+    def __setitem__(self, key, value):
+        raise ValueError('Cannot change values of immutable frozendict: ', self)
+
 
 class OptionCatalog:
     op_list: list
@@ -71,26 +83,31 @@ class OptionCatalog:
             for patt, res in options.items():
                 self.assign_option(Option(patt, res))
         for trait in traits:
-            for option in trait.options:
+            for option in trait.op_list:
                 self.assign_option(option)
+            self.op_map.update(trait.op_map)
 
     def assign_option(self, pattern, resolution=None, *, no_clobber=False):
         match pattern, resolution:
             case Option(pattern=pattern, resolution=resolution) as option, None:
-                pass
+                key = pattern.to_args()
             case _:
                 if resolution is None:
                     raise AssertionError("Why are you trying to add a null option?")
                 option = Option(pattern, resolution)
+                if isinstance(pattern, Args):
+                    key = pattern
+                else:
+                    key = option.pattern.to_args()
                 pattern = option.pattern
 
-        key = pattern.to_args()
         if key is not None:
-            if not no_clobber or key not in self.op_map:
+            if no_clobber and key in self.op_map:
+                # don't overwrite existing key
+                return self.op_map[key]
+            else:
                 self.op_map[key] = option
                 return option
-            else:
-                return self.op_map[key]
 
         if Context.settings['sort_options']:
             for i, opt in enumerate(self.op_list):
@@ -117,7 +134,7 @@ class OptionCatalog:
 
     def select_and_bind(self, key):
         if isinstance(key, tuple):
-            key = Args(*key)
+            key = Args(*key)  # I don't think this should happen anymore
         if key in self.op_map:
             return self.op_map[key], {}
         # match key:
@@ -194,14 +211,17 @@ class Record:
     #             raise RuntimeErr
     # key = property(get_key, set_key)
 
-    def get(self, name: str, *default):
+    def get(self, name: str, *default, search_table_frame_too=True):
         if name in self.table.getters:
             match self.table.getters[name]:
                 case int() as idx:
                     return self.data[idx]
                 case Function() as fn:
                     return fn.call(self)
-
+        if search_table_frame_too and self.table.frame:
+            val = self.table.frame[name]
+            if val is not None:
+                return val
         if not default:
             raise SlotErr(f"Line {Context.line}: no field found with name '{name}'.")
         return default[0]
@@ -211,14 +231,37 @@ class Record:
             case int() as idx:
                 # TODO: check for type agreement
                 self.data[idx] = value
-                return BuiltIns['blank']
+                return value
             case Function() as fn:
                 return fn.call(self, value)
             case None:
                 raise SlotErr(f"Line {Context.line}: no field found with name '{name}'.")
 
+    # @overload
+    # def call(self, *args, flags: set = None, **kwargs): ...
+    # @overload
+    # def call(self, args): ...
+    # @overload
+    # def call(self, *args: Record, flags: set[Record] = None, **kwargs: Record) -> Record: ...
+    # @overload
+    # def call(self, args: Args) -> Record: ...
+    """ A Record can be called on multiple values (like calling a regular function) with flags and kwargs, in which 
+    case it will build an Args object.  Or, it can be called on an already built Args object. """
     def call(self, *args, flags=None, **kwargs):
-        return self(Args(*args, flags=flags, **kwargs))
+        match args:
+            case [Args()] if flags is None and not kwargs:
+                args = args[0]
+            case [Args() as args]:
+                print("WARNING: this might be dangerous, I'm not sure yet.")
+                args += Args(flags=flags, **kwargs)
+            case _:
+                args = Args(*args, flags=flags, **kwargs)
+
+        option, bindings = self.select(args)
+        if option:
+            return option.resolve(args, self, bindings)
+        raise NoMatchingOptionError(f"Line {Context.line}: {args} not found in {self.name or self}")
+
         # if not isinstance(args, Args):
         #     args = Args(args)
         # option, bindings = self.select_by_args(args)
@@ -231,11 +274,12 @@ class Record:
         #     return option.resolve(key, self, bindings)
         # raise NoMatchingOptionError(f"Line {Context.line}: key {key} not found in {self.name or self}")
 
-    def __call__(self, args):
-        option, bindings = self.select(args)
-        if option:
-            return option.resolve(args, self, bindings)
-        raise NoMatchingOptionError(f"Line {Context.line}: {args} not found in {self.name or self}")
+    # I should not make Records python callable... that's just confusing
+    # def __call__(self, args):
+    #     option, bindings = self.select(args)
+    #     if option:
+    #         return option.resolve(args, self, bindings)
+    #     raise NoMatchingOptionError(f"Line {Context.line}: {args} not found in {self.name or self}")
 
     def select(self, args):
         return self.table.catalog.select_and_bind(args)
@@ -357,7 +401,7 @@ class PyValue(Record, Generic[T]):
 class2table = dict(bool='Bool', int="Integer", Fraction='Fraction', float="Float", str='String', tuple="Tuple",
                    list='List', set='Set', frozenset='FrozenSet', dict='Dictionary')
 
-def py_value(value: T):
+def py_value(value: T | object):
     match value:
         case None:
             return BuiltIns['blank']
@@ -400,12 +444,15 @@ class PyObj(Record, Generic[A]):
 List = py_value
 
 class Function(Record, OptionCatalog):
-    def __init__(self, options=None, *fields, name=None, table_name='Function', traits=()):
+    frame = None
+    def __init__(self, options=None, *fields, name=None, table_name='Function', traits=(), frame=None):
         if name:
             self.name = name
-        self.slot_dict = {}
-        self.formula_dict = {}
-        self.setter_dict = {}
+        # self.slot_dict = {}
+        # self.formula_dict = {}
+        # self.setter_dict = {}
+        if frame:
+            self.frame = frame
         for f in fields:
             self.update_field(f)
         # self.trait = Trait(options, *fields)
@@ -420,6 +467,7 @@ class Function(Record, OptionCatalog):
     #     # return self.trait, *super().mro
 
     def update_field(self, field):
+        raise DeprecationWarning("This is being replaced by simple get and set for locals/vars within the functions frame.")
         name = field.name
         match field:
             case Slot(default=default):
@@ -429,19 +477,30 @@ class Function(Record, OptionCatalog):
             case Setter(fn=fn):
                 self.setter_dict[name] = fn
 
-    def get(self, name: str, *default):
-        if name in self.slot_dict:
-            return self.slot_dict[name]
-        if name in self.formula_dict:
-            return self.formula_dict[name].call(self)
-        return super().get(name, *default)
+    def get(self, name: str, *default, search_table_frame_too=True):
+        if self.frame:
+            val = self.frame.vars.get(name, self.frame.locals.get(name, None))
+            if val:
+                return val
+        # if name in self.slot_dict:
+        #     return self.slot_dict[name]
+        # if name in self.formula_dict:
+        #     return self.formula_dict[name].call(self)
+        return super().get(name, *default, search_table_frame_too=search_table_frame_too)
 
     def set(self, name: str, value: Record):
-        if name in self.slot_dict:
-            self.slot_dict[name] = value
+        if self.frame:
+            if name in self.frame.vars:
+                self.frame.vars[name] = value
+            else:
+                self.frame.locals[name] = value
             return value
-        if name in self.setter_dict:
-            return self.setter_dict[name].call(self, value)
+        # if name in self.slot_dict:
+        #     self.slot_dict[name] = value
+        #     raise NotImplementedError("How can I set the value of the local var in the closure associated with this function?")
+        #     return value
+        # if name in self.setter_dict:
+        #     return self.setter_dict[name].call(self, value)
         return super().set(name, value)
 
     def select(self, args):
@@ -596,7 +655,7 @@ class Table(Function):
     # fields = list[Field]
     # noinspection PyDefaultArgument
     def __init__(self, *traits: Trait, name=None, fn_options={}, fn_fields=[]):
-        self.traits = (Trait(), *traits)
+        self.traits = (Trait(name=name), *traits)
         self.getters = {}
         self.setters = {}
         self.defaults = ()
@@ -644,11 +703,13 @@ class Table(Function):
                 name = trait_field.name
                 pattern: Pattern = getattr(trait_field, 'type', None)
                 if pattern:
-                    assert pattern.binding == name
+                    if isinstance(pattern, Parameter):
+                        assert pattern.binding == name
                     if name in types and not types[name].issubset(pattern):
                         raise SlotErr(f"Line {Context.line}: Could not integrate table {self.name}; "
-                                      f"Field {name}'s type ({types[name]}) "
-                                      f"doesn't match {trait_field.__class__.__name__} {name} of {trait.name}.")
+                                      f"type of Field \"{name}\" ({types[name]}) "
+                                      f"doesn't match type of {trait_field.__class__.__name__} \"{name}\" "
+                                      f"of trait {trait.name}.")
                     else:
                         types[name] = pattern
 
@@ -679,7 +740,9 @@ class Table(Function):
                                        "?" * (defaults[name] is not None))
                                 for name in defaults))
 
-        self.assign_option(patt, Native(lambda args: BuiltIns['new'](Args(Context.env.caller) + args)), no_clobber=True)
+        self.assign_option(patt,
+                           Native(lambda args: BuiltIns['new'].call(Args(Context.env.caller) + args)),
+                           no_clobber=True)
 
         self.catalog = OptionCatalog({}, *self.traits)
 
@@ -819,7 +882,7 @@ class Slot(Field):
     def __init__(self, name, type, default=None):
         match default:
             case Function(op_list=[Option(pattern=
-                                          ArgsMatcher(parameters=(Parameter(pattern=Pattern(binding='self')), ))
+                                          ArgsMatcher(parameters=(Parameter(binding='self'),))
                                           )]):
                 pass  # assert that default is a function whose sole option is [<patt> self]: ...
             case _:
@@ -861,642 +924,328 @@ class Setter(Field):
     def __repr__(self):
         return f"Setter({self.name}: {self.fn})"
 
-class Matcher:
-    guard = None
-    invert = False
-    def match_score(self, arg: Record) -> bool | float:
-        return self.basic_score(arg)
-        # score = self.basic_score(arg)
-        # if self.invert:
-        #     score = not score
-        # if score and self.guard:
-        #     result = self.guard.call(arg)
-        #     return score * BuiltIns['bool'].call(result).value
-        # return score
 
-    def basic_score(self, arg):
-        # implemented by subclasses
-        raise NotImplementedError
-
-    def issubset(self, other):
-        print('WARNING: Matcher.issubset method not implemented properly yet.')
-        return self.equivalent(other)
-
-    def equivalent(self, other):
-        return True
-        # return (other.guard is None or self.guard == other.guard) and self.invert == other.invert
-
-    # def call_guard(self, arg: Record) -> bool:
-    #     if self.guard:
-    #         result = self.guard.call(arg)
-    #         return BuiltIns['bool'].call(result).value
-    #     return True
-
-    def get_rank(self):
-        return self.rank
-        # rank = self.rank
-        # if self.invert:
-        #     rank = tuple(100 - n for n in rank)
-        # if self.guard:
-        #     rank = (rank[0], rank[1] - 1, *rank[1:])
-        # return rank
-
-    def __lt__(self, other):
-        return self.get_rank() < other.get_rank()
-
-    def __le__(self, other):
-        return self.get_rank() <= other.get_rank()
-
-    # def __eq__(self, other):
-    #     return self.get_rank() == other.get_rank()
-
-class TableMatcher(Matcher):
-    table: Table
-    rank = 5, 0
-
-    def __init__(self, table, name=None, guard=None, inverse=False):
-        assert isinstance(table, Table)
-        self.table = table
-        super().__init__(name, guard, inverse)
-
-    def basic_score(self, arg: Record) -> bool:
-        return arg.table == self.table or self.table in arg.table.traits
-
-    def issubset(self, other):
-        match other:
-            case TableMatcher(table=table):
-                return table == self.table
-            case TraitMatcher(trait=trait):
-                return trait in self.table.traits
-        return False
-
-    def equivalent(self, other):
-        return isinstance(other, TableMatcher) and self.table == other.table
-
-    def __repr__(self):
-        return f"TableMatcher({self.table})"
-
-class TraitMatcher(Matcher):
-    trait: Trait
-    rank = 6, 0
-
-    def __init__(self, trait):
-        self.trait = trait
-
-    def basic_score(self, arg: Record) -> bool:
-        return self.trait in arg.table.traits
-
-    def issubset(self, other):
-        return isinstance(other, TraitMatcher) and other.trait == self.trait
-
-    def equivalent(self, other):
-        return isinstance(other, TraitMatcher) and other.trait == self.trait
-
-    def __repr__(self):
-        return f"TraitMatcher({self.trait})"
-
-
-class ValueMatcher(Matcher):
-    value: Record
-    rank = 1, 0
-
-    def __init__(self, value):
-        self.value = value
-
-    def basic_score(self, arg: Record) -> bool:
-        return arg == self.value
-
-    def issubset(self, other):
-        match other:
-            case ValueMatcher(value=value):
-                return value == self.value
-            case TableMatcher(table=table):
-                return self.value.table == table
-            case TraitMatcher(trait=trait):
-                return trait in self.value.table.traits
-        return False
-
-    def equivalent(self, other):
-        return isinstance(other, ValueMatcher) and other.value == self.value
-
-    def __repr__(self):
-        return f"ValueMatcher({self.value})"
-
-
-class FunctionMatcher(Matcher):
-    # pattern: ArgsMatcher
-    # return_type: Matcher
-    def __init__(self, pattern, return_type, name=None, guard=None, inverse=False):
-        self.pattern = pattern
-        self.return_type = return_type
-        super().__init__(name, guard, inverse)
-
-    def basic_score(self, arg):
-        if not hasattr(arg, 'op_list'):
-            return False
-        arg: Function
-
-        def options():
-            yield from arg.op_list
-            yield from arg.op_map.values()
-
-        if all((option.pattern.issubset(self.pattern) and option.return_type.issubset(self.return_type)
-                for option in options())):
-            return True
-
-    def issubset(self, other):
-        match other:
-            case FunctionMatcher(pattern=patt, return_type=ret):
-                return self.pattern.issubset(patt) and self.return_type.issubset(ret)
-            case TraitMatcher(trait=BuiltIns.get('fn')) | TableMatcher(table=BuiltIns.get('Function')):
-                return True
-        return False
-
-    def equivalent(self, other):
-        return (isinstance(other, FunctionMatcher)
-                and other.pattern == self.pattern
-                and other.return_type == self.return_type)
-
-
-class AnyMatcher(Matcher):
-    rank = 100, 0
-    def basic_score(self, arg: Record) -> True:
-        return True
-
-    def issubset(self, other):
-        return isinstance(other, AnyMatcher)
-
-    def equivalent(self, other):
-        return isinstance(other, AnyMatcher)
-
-    def __repr__(self):
-        return f"AnyMatcher()"
-
-class EmptyMatcher(Matcher):
-    rank = 3, 0
-    def basic_score(self, arg: Record) -> bool:
-        match arg:
-            case VirtTable():
-                return False
-            case PyValue(value=str() | tuple() | frozenset() | list() | set() as v) | Table(records=v):
-                return len(v) == 0
-            case Function(op_list=options, op_map=hashed_options):
-                return bool(len(options) + len(hashed_options))
-            case _:
-                return False
-
-    def issubset(self, other):
-        return isinstance(other, EmptyMatcher)
-
-    def equivalent(self, other):
-        return isinstance(other, EmptyMatcher)
-
-    def __repr__(self):
-        return f"EmptyMatcher()"
-
-
-class ExprMatcher(Matcher):
-    def __init__(self, expr):
-        self.expression = expr
-    def basic_score(self, arg):
-        print(f"Line {Context.line}: WARNING: expr pattern not fully implemented yet.")
-        return self.expression.evaluate().truthy
-
-
-class IterMatcher(Matcher):
-    parameters: tuple
-    def __init__(self, *params):
-        self.parameters = params
-
-    def basic_score(self, arg: Record):
-        return self.match_zip(arg)[0]
-
-    def match_zip(self, arg: Record):
-        try:
-            it = iter(arg)  # noqa
-        except TypeError:
-            return 0, {}
-        state = MatchState(self.parameters, list(it))
-        return state.match_zip()
-
-
-class FieldMatcher(Matcher):
-    fields: dict
-
-    def __init__(self, **fields):
-        self.fields = fields
-
-    def basic_score(self, arg: Record):
-        for name, param in self.fields.items():
-            prop = arg.get(name, None)
-            if prop is None:
-                if not param.optional:
-                    return False
-                continue
-            if not param.pattern.match_score(prop):
-                return False
-        return True
-
-    def match_zip(self, arg: Record):
-        raise NotImplementedError
-        # state = MatchState((), Args(**dict(((name, arg.get(name)) for name in self.fields))))
-        # return state.match_zip()
-
-
-class ArgsMatcher(Matcher):
-    parameters: tuple
-    named_params: frozendict
-    def __init__(self, *parameters, **named_params):
-        self.parameters = parameters
-        self.named_params = frozendict(named_params)
-        super().__init__(BuiltIns['ArgsMatcher'])  # , parameters=py_value(parameters))
-
-    def match_score(self, *values: Record) -> int | float:
-        return self.match_zip(values)[0]
-
-    def issubset(self, other):
-        return (isinstance(other, ArgsMatcher)
-                and all(p1.issubset(p2) for (p1, p2) in zip(self.parameters, other.parameters))
-                and all(self.named_params[k].issubset(other.named_params[k])
-                        for k in set(self.named_params).union(other.named_params)))
-
-    def __len__(self):
-        return len(self.parameters) + len(self.named_params)
-
-    def __getitem__(self, item):
-        return self.named_params.get(item, self.parameters[item])
-
-    def to_tuple(self):
-        if self.named_params:
-            return None
-        key: list[Record] = []
-        for parameter in self.parameters:
-            match parameter.pattern.matchers:
-                case (ValueMatcher(value=value), ) if value.hashable():
-                    key.append(value)
-                case _:
-                    return None
-        return tuple(key)
-
-    def to_args(self):
-        pos_args = []
-        names = {}
-        for id, param in self:
-            match param.pattern.matchers:
-                case (ValueMatcher(value=value), ) if value.hashable():
-                    if isinstance(id, int):
-                        pos_args.append(value)
-                    else:
-                        names[id] = value
-                case _:
-                    return None
-        # for param in self.parameters:
-        #     match param.pattern.matchers:
-        #         case (ValueMatcher(value=value),) if value.hashable():
-        #             pos_args.append(value)
-        #         case _:
-        #             return None
-        # for name, param in self.named_params.items():
-        #     match param.pattern.matchers:
-        #         case (ValueMatcher(value=value),) if value.hashable():
-        #             names[name] = value
-        #         case _:
-        #             return None
-        return Args(*pos_args, **names)
-
-    def __iter__(self):
-        yield from enumerate(self.parameters)
-        yield from self.named_params.items()
-
-    @memoize
-    def min_len(self) -> int:
-        count = 0
-        for param in self.parameters:
-            count += not param.optional
-        return count
-
-    @memoize
-    def max_len(self) -> int | float:
-        for param in self.parameters:
-            if param.quantifier in ("+", "*"):
-                return math.inf
-        return len(self.parameters)
-
-    def match_zip(self, args=None) -> tuple[float | int, dict[str, Record]]:
-        if args is None:
-            return 1, {}
-        if len(args) == 0 == self.min_len():
-            return 1, {}
-        if not self.min_len() <= len(args) <= self.max_len():
-            return 0, {}
-        if isinstance(args, tuple):
-            args = Args(*args)
-        return MatchState(self.parameters, args).match_zip()
-        # state = MatchState(self.parameters, args)
-        # return self.match_zip_recursive(state)
-
-    @memoize
-    def min_len(self) -> int:
-        count = 0
-        for param in self.parameters:
-            count += not param.optional
-        return count
-
-    @memoize
-    def max_len(self) -> int | float:
-        for param in self.parameters:
-            if param.quantifier in ("+", "*"):
-                return math.inf
-        return len(self.parameters)
-
-    def __lt__(self, other):
-        if not isinstance(other, ArgsMatcher):
-            return NotImplemented
-        return self.parameters < other.parameters
-
-    def __le__(self, other):
-        if not isinstance(other, ArgsMatcher):
-            return NotImplemented
-        return self.parameters <= other.parameters
-
-    def __eq__(self, other):
-        return (isinstance(other, ArgsMatcher)
-                and self.parameters == other.parameters
-                and self.named_params == other.named_params)
-
-    def __hash__(self):
-        return hash((self.parameters, self.named_params))
-
-    def __gt__(self, other):
-        if not isinstance(other, ArgsMatcher):
-            return NotImplemented
-        return self.parameters > other.parameters
-
-    def __ge__(self, other):
-        if not isinstance(other, ArgsMatcher):
-            return NotImplemented
-        return self.parameters >= other.parameters
-
-    def __repr__(self):
-        return f"ArgsMatcher({', '.join(self.parameters)}{'; ' + str(self.named_params) if self.named_params else ''})"
-
-class Pattern(Record):
-    binding: str | None = None
-    def __init__(self, binding=None):
-        if binding is not None:
-            self.binding = binding
-        super().__init__(BuiltIns['Pattern'])
-
-class Intersection(Pattern):
-    matchers: tuple[Matcher, ...]  # acts as an intersection of matchers
-    binding: str | None = None
-
-    def __init__(self, *matchers: Matcher, binding=None):
-        self.matchers = matchers
-        super().__init__(binding)
-
-    def match_score(self, arg: Record):
-        return all(m.match_score(arg) for m in self.matchers)
-
-    def issubset(self, other):
-        match other:
-            case Matcher() as other_matcher:
-                return any(m.issubset(other_matcher) for m in self.matchers)
-            case Intersection() as patt:
-                return any(matcher.issubset(patt) for matcher in self.matchers)
-            case Union(patterns=patterns):
-                return any(self.issubset(patt) for patt in patterns)
-            case Parameter(pattern=pattern):
-                return self.issubset(pattern)
-        return False
-
-    def __lt__(self, other):
-        match other:
-            case Intersection(matchers=other_matchers):
-                return (len(self.matchers) > len(other_matchers)
-                        or len(self.matchers) == len(other_matchers) and self.matchers < other_matchers)
-            case Union(patterns=patterns):
-                return any(self <= p for p in patterns)
-            case _:
-                raise NotImplementedError
-
-    def __le__(self, other):
-        match other:
-            case Intersection(matchers=other_matchers):
-                return (len(self.matchers) > len(other_matchers)
-                        or len(self.matchers) == len(other_matchers) and self.matchers <= other_matchers)
-            case Union(patterns=patterns):
-                return any(self <= p for p in patterns)
-            case _:
-                raise NotImplementedError
-
-    def __eq__(self, other):
-        match other:
-            case Intersection(matchers=matchers):
-                return matchers == self.matchers
-            case Union(patterns=(Pattern() as patt, )):
-                return self == patt
-            case Matcher() as m:
-                return len(self.matchers) == 1 and self.matchers[0] == m
-        return False
-
-
-class Union(Pattern):
-    patterns: tuple[Pattern, ...]
-    def __init__(self, *patterns, binding=None):
-        self.patterns = patterns
-        super().__init__(binding)
-
-    def match_score(self, arg: Record):
-        return any(p.match_score(arg) for p in self.patterns)
-
-    def issubset(self, other):
-        return all(p.issubset(other) for p in self.patterns)
-
-    def __lt__(self, other):
-        match other:
-            case Intersection():
-                return all(p < other for p in self.patterns)
-            case Union(patterns=patterns):
-                return self.patterns < patterns
-            case _:
-                raise NotImplementedError
-
-    def __le__(self, other):
-        match other:
-            case Intersection():
-                return all(p <= other for p in self.patterns)
-            case Union(patterns=patterns):
-                return self.patterns <= patterns
-            case _:
-                raise NotImplementedError
-
-    def __eq__(self, other):
-        match self.patterns:
-            case ():
-                return isinstance(other, Union) and other.patterns == ()
-            case (Pattern() as patt, ):
-                return patt == other
-        return isinstance(other, Union) and self.patterns == other.patterns
-
-
-class Parameter:
-    pattern: Pattern | None = None
-    quantifier: str  # "+" | "*" | "?" | "!" | ""
-    count: tuple[int, int | float]
-    optional: bool
-    required: bool
-    multi: bool
-    default = None
-
-    @property
-    def binding(self): return self.pattern.binding
-
-    def __init__(self, pattern, quantifier="", default=None):
-        self.pattern = patternize(pattern)
-        # self.name = self.pattern.binding
-        if default:
-            if isinstance(default, Option):
-                self.default = default
-            else:
-                self.default = Option(ArgsMatcher(), default)
-            match quantifier:
-                case "":
-                    quantifier = '?'
-                case "+":
-                    quantifier = "*"
-        self.quantifier = quantifier
-
-    def issubset(self, other):
-        if not isinstance(other, Parameter):
-            raise NotImplementedError(f"Not yet implemented Parameter.issubset({other.__class__})")
-        if self.count[1] > other.count[1] or self.count[0] < other.count[0]:
-            return False
-        return self.pattern.issubset(other.pattern)
-
-    def _get_quantifier(self) -> str:
-        return self._quantifier
-    def _set_quantifier(self, quantifier: str):
-        self._quantifier = quantifier
-        match quantifier:
-            case "":
-                self.count = (1, 1)
-            case "?":
-                self.count = (0, 1)
-            case "+":
-                self.count = (1, math.inf)
-            case "*":
-                self.count = (0, math.inf)
-            case "!":
-                self.count = (1, 1)
-                # union matcher with `nonempty` pattern
-        self.optional = quantifier in ("?", "*")
-        self.required = quantifier in ("", "+")
-        self.multi = quantifier in ("+", "*")
-    quantifier = property(_get_quantifier, _set_quantifier)
-
-    def match_score(self, value) -> int | float: ...
-
-    def compare_quantifier(self, other):
-        return "_?+*".find(self.quantifier) - "_?+*".find(other.quantifier)
-
-    def __lt__(self, other):
-        match other:
-            case Parameter():
-                q = self.compare_quantifier(other)
-                return q < 0 or q == 0 and self.pattern < other.pattern
-        return NotImplemented
-
-    def __le__(self, other):
-        match other:
-            case Parameter():
-                q = self.compare_quantifier(other)
-                return q < 0 or q == 0 and self.pattern <= other.pattern
-        return NotImplemented
-
-    def __eq__(self, other):
-        match other:
-            case Parameter() as param:
-                pass
-            case Matcher() | Pattern():
-                param = Parameter(other)
-            case ArgsMatcher(parameters=(param, ), named_params={}):
-                pass
-            case _:
-                return False
-        return self.quantifier == param.quantifier and self.pattern == param.pattern and self.default == param.default
-
-    def __hash__(self):
-        return hash((self.pattern, self.quantifier, self.default))
-
-    def __gt__(self, other):
-        match other:
-            case Parameter():
-                q = self.compare_quantifier(other)
-                return q < 0 or q == 0 and self.pattern > other.pattern
-        return NotImplemented
-
-    def __ge__(self, other):
-        match other:
-            case Parameter():
-                q = self.compare_quantifier(other)
-                return q < 0 or q == 0 and self.pattern >= other.pattern
-        return NotImplemented
-
-    def __repr__(self):
-        return f"Parameter({self.pattern} {self.binding or ''}{self.quantifier})"
-
-
-# class OLDPattern(Record):
-#     """
-#     a sequence of zero or more parameters, together with their quantifiers
-#     """
+# class Pattern(Record):
+#     def __init__(self):
+#         super().__init__(BuiltIns['Pattern'])
+#
+#
+# class Matcher(Pattern):
+#     guard = None
+#     invert = False
+#     def __init__(self, name: str = None, guard: Function | PyFunction = None, inverse=False):
+#         if name is not None or guard is not None or inverse:
+#             raise Exception("Check this out.  Can we get rid of these properties entirely?")
+#         self.name = name
+#         self.guard = guard
+#         self.invert = inverse
+#         super().__init__()
+#
+#     def match_score(self, arg: Record) -> bool | float:
+#         return self.basic_score(arg)
+#         # score = self.basic_score(arg)
+#         # if self.invert:
+#         #     score = not score
+#         # if score and self.guard:
+#         #     result = self.guard.call(arg)
+#         #     return score * BuiltIns['bool'].call(result).value
+#         # return score
+#
+#     def basic_score(self, arg):
+#         # implemented by subclasses
+#         raise NotImplementedError
+#
+#     def issubset(self, other):
+#         print('WARNING: Matcher.issubset method not implemented properly yet.')
+#         return self.equivalent(other)
+#
+#     def equivalent(self, other):
+#         return True
+#         # return (other.guard is None or self.guard == other.guard) and self.invert == other.invert
+#
+#     # def call_guard(self, arg: Record) -> bool:
+#     #     if self.guard:
+#     #         result = self.guard.call(arg)
+#     #         return BuiltIns['bool'].call(result).value
+#     #     return True
+#
+#     def get_rank(self):
+#         return self.rank
+#         # rank = self.rank
+#         # if self.invert:
+#         #     rank = tuple(100 - n for n in rank)
+#         # if self.guard:
+#         #     rank = (rank[0], rank[1] - 1, *rank[1:])
+#         # return rank
+#
+#     def __lt__(self, other):
+#         return self.get_rank() < other.get_rank()
+#
+#     def __le__(self, other):
+#         return self.get_rank() <= other.get_rank()
+#
+#     # def __eq__(self, other):
+#     #     return self.get_rank() == other.get_rank()
+#
+# class TableMatcher(Matcher):
+#     table: Table
+#     rank = 5, 0
+#
+#     def __init__(self, table, name=None, guard=None, inverse=False):
+#         assert isinstance(table, Table)
+#         self.table = table
+#         super().__init__(name, guard, inverse)
+#
+#     def basic_score(self, arg: Record) -> bool:
+#         return arg.table == self.table or self.table in arg.table.traits
+#
+#     def issubset(self, other):
+#         match other:
+#             case TableMatcher(table=table):
+#                 return table == self.table
+#             case TraitMatcher(trait=trait):
+#                 return trait in self.table.traits
+#         return False
+#
+#     def equivalent(self, other):
+#         return isinstance(other, TableMatcher) and self.table == other.table
+#
+#     def __repr__(self):
+#         return f"TableMatcher({self.table})"
+#
+# class TraitMatcher(Matcher):
+#     trait: Trait
+#     rank = 6, 0
+#
+#     def __init__(self, trait):
+#         self.trait = trait
+#
+#     def basic_score(self, arg: Record) -> bool:
+#         return self.trait in arg.table.traits
+#
+#     def issubset(self, other):
+#         return isinstance(other, TraitMatcher) and other.trait == self.trait
+#
+#     def equivalent(self, other):
+#         return isinstance(other, TraitMatcher) and other.trait == self.trait
+#
+#     def __repr__(self):
+#         return f"TraitMatcher({self.trait})"
+#
+#
+# class ValueMatcher(Matcher):
+#     value: Record
+#     rank = 1, 0
+#
+#     def __init__(self, value):
+#         self.value = value
+#
+#     def basic_score(self, arg: Record) -> bool:
+#         return arg == self.value
+#
+#     def issubset(self, other):
+#         match other:
+#             case ValueMatcher(value=value):
+#                 return value == self.value
+#             case TableMatcher(table=table):
+#                 return self.value.table == table
+#             case TraitMatcher(trait=trait):
+#                 return trait in self.value.table.traits
+#         return False
+#
+#     def equivalent(self, other):
+#         return isinstance(other, ValueMatcher) and other.value == self.value
+#
+#     def __repr__(self):
+#         return f"ValueMatcher({self.value})"
+#
+#
+# class FunctionMatcher(Matcher):
+#     # pattern: ArgsMatcher
+#     # return_type: Matcher
+#     def __init__(self, pattern, return_type, name=None, guard=None, inverse=False):
+#         self.pattern = pattern
+#         self.return_type = return_type
+#         super().__init__(name, guard, inverse)
+#
+#     def basic_score(self, arg):
+#         if not hasattr(arg, 'op_list'):
+#             return False
+#         arg: Function
+#
+#         def options():
+#             yield from arg.op_list
+#             yield from arg.op_map.values()
+#
+#         if all((option.pattern.issubset(self.pattern) and option.return_type.issubset(self.return_type)
+#                 for option in options())):
+#             return True
+#
+#     def issubset(self, other):
+#         match other:
+#             case FunctionMatcher(pattern=patt, return_type=ret):
+#                 return self.pattern.issubset(patt) and self.return_type.issubset(ret)
+#             case TraitMatcher(trait=BuiltIns.get('fn')) | TableMatcher(table=BuiltIns.get('Function')):
+#                 return True
+#         return False
+#
+#     def equivalent(self, other):
+#         return (isinstance(other, FunctionMatcher)
+#                 and other.pattern == self.pattern
+#                 and other.return_type == self.return_type)
+#
+#
+# class AnyMatcher(Matcher):
+#     rank = 100, 0
+#     def basic_score(self, arg: Record) -> True:
+#         return True
+#
+#     def issubset(self, other):
+#         return isinstance(other, AnyMatcher)
+#
+#     def equivalent(self, other):
+#         return isinstance(other, AnyMatcher)
+#
+#     def __repr__(self):
+#         return f"AnyMatcher()"
+#
+# class EmptyMatcher(Matcher):
+#     rank = 3, 0
+#     def basic_score(self, arg: Record) -> bool:
+#         match arg:
+#             case VirtTable():
+#                 return False
+#             case PyValue(value=str() | tuple() | frozenset() | list() | set() as v) | Table(records=v):
+#                 return len(v) == 0
+#             case Function(op_list=options, op_map=hashed_options):
+#                 return bool(len(options) + len(hashed_options))
+#             case _:
+#                 return False
+#
+#     def issubset(self, other):
+#         return isinstance(other, EmptyMatcher)
+#
+#     def equivalent(self, other):
+#         return isinstance(other, EmptyMatcher)
+#
+#     def __repr__(self):
+#         return f"EmptyMatcher()"
+#
+#
+# class ExprMatcher(Matcher):
+#     def __init__(self, expr):
+#         self.expression = expr
+#     def basic_score(self, arg):
+#         print(f"Line {Context.line}: WARNING: expr pattern not fully implemented yet.")
+#         return self.expression.evaluate().truthy
+#
+#
+# class IterMatcher(Matcher):
+#     parameters: tuple
+#     def __init__(self, *params):
+#         self.parameters = params
+#
+#     def basic_score(self, arg: Record):
+#         return self.match_zip(arg)[0]
+#
+#     def match_zip(self, arg: Record):
+#         try:
+#             it = iter(arg)  # noqa
+#         except TypeError:
+#             return 0, {}
+#         state = MatchState(self.parameters, list(it))
+#         return state.match_zip()
+#
+#
+# class FieldMatcher(Matcher):
+#     fields: dict
+#
+#     def __init__(self, **fields):
+#         self.fields = fields
+#
+#     def basic_score(self, arg: Record):
+#         for name, param in self.fields.items():
+#             prop = arg.get(name, None)
+#             if prop is None:
+#                 if not param.optional:
+#                     return False
+#                 continue
+#             if not param.pattern.match_score(prop):
+#                 return False
+#         return True
+#
+#     def match_zip(self, arg: Record):
+#         raise NotImplementedError
+#         # state = MatchState((), Args(**dict(((name, arg.get(name)) for name in self.fields))))
+#         # return state.match_zip()
+#
+#
+# class ArgsMatcher(Matcher):
+#     parameters: tuple
+#     # machine: VM
+#     named_params: frozendict
 #     def __init__(self, *parameters, **named_params):
 #         self.parameters = parameters
-#         self.named_params = named_params
-#         super().__init__(BuiltIns['ArgsMatcher'])  # , parameters=py_value(parameters))
-#
-#     def truthy(self):
-#         return bool(self.parameters)
+#         self.named_params = frozendict(named_params)
+#         # self.vm = VM(parameters)
+#         super().__init__()
+#         # super().__init__(BuiltIns['ArgsMatcher'])  # , parameters=py_value(parameters))
 #
 #     def match_score(self, *values: Record) -> int | float:
 #         return self.match_zip(values)[0]
 #
 #     def issubset(self, other):
-#         return all(p1.issubset(p2) for (p1, p2) in zip(self.parameters, other.parameters))
+#         return (isinstance(other, ArgsMatcher)
+#                 and all(p1.issubset(p2) for (p1, p2) in zip(self.parameters, other.parameters))
+#                 and all(self.named_params[k].issubset(other.named_params[k])
+#                         for k in set(self.named_params).union(other.named_params)))
 #
 #     def __len__(self):
-#         return len(self.parameters)
+#         return len(self.parameters) + len(self.named_params)
 #
 #     def __getitem__(self, item):
-#         return self.parameters[item]
+#         return self.named_params.get(item, self.parameters[item])
 #
 #     def to_tuple(self):
+#         if self.named_params:
+#             return None
 #         key: list[Record] = []
 #         for parameter in self.parameters:
-#             t = parameter.matcher
-#             if isinstance(t, ValueMatcher) and t.guard is None and not t.invert and t.value.hashable():
-#                 key.append(t.value)
-#             else:
-#                 return None
+#             match parameter.pattern.matchers:
+#                 case (ValueMatcher(value=value), ) if value.hashable():
+#                     key.append(value)
+#                 case _:
+#                     return None
 #         return tuple(key)
 #
 #     def to_args(self):
 #         pos_args = []
 #         names = {}
-#         for param in self.parameters:
-#             t = param.matcher
-#             if isinstance(t, ValueMatcher) and t.guard is None and not t.invert and t.value.hashable():
-#                 pos_args.append(t.value)
+#         for id, param in self:
+#             match param:
+#                 case Parameter(quantifier='', pattern=ValueMatcher(value=val)):
+#                     pass
+#                 case _:
+#                     return None
+#             # if (val := param.pattern.value) is None:
+#             #     return None
+#             if isinstance(id, int):
+#                 pos_args.append(val)
 #             else:
-#                 return None
-#         for name, param in self.named_params.items():
-#             t = param.matcher
-#             if isinstance(t, ValueMatcher) and t.guard is None and not t.invert and t.value.hashable():
-#                 names[name] = t.value
-#             else:
-#                 return None
+#                 names[id] = val
+#             # match param.pattern.matchers:
+#             #     case (ValueMatcher(value=value), ) if value.hashable():
+#             #         if isinstance(id, int):
+#             #             pos_args.append(value)
+#             #         else:
+#             #             names[id] = value
+#             #     case _:
+#             #         return None
 #         return Args(*pos_args, **names)
+#
+#     def __iter__(self):
+#         yield from enumerate(self.parameters)
+#         yield from self.named_params.items()
 #
 #     @memoize
 #     def min_len(self) -> int:
@@ -1512,7 +1261,7 @@ class Parameter:
 #                 return math.inf
 #         return len(self.parameters)
 #
-#     def match_zip(self, args=None) -> tuple[float|int, dict[str, Record]]:
+#     def match_zip(self, args=None) -> tuple[float | int, dict[str, Record]]:
 #         if args is None:
 #             return 1, {}
 #         if len(args) == 0 == self.min_len():
@@ -1525,6 +1274,20 @@ class Parameter:
 #         # state = MatchState(self.parameters, args)
 #         # return self.match_zip_recursive(state)
 #
+#     @memoize
+#     def min_len(self) -> int:
+#         count = 0
+#         for param in self.parameters:
+#             count += not param.optional
+#         return count
+#
+#     @memoize
+#     def max_len(self) -> int | float:
+#         for param in self.parameters:
+#             if param.quantifier in ("+", "*"):
+#                 return math.inf
+#         return len(self.parameters)
+#
 #     def __lt__(self, other):
 #         if not isinstance(other, ArgsMatcher):
 #             return NotImplemented
@@ -1536,25 +1299,12 @@ class Parameter:
 #         return self.parameters <= other.parameters
 #
 #     def __eq__(self, other):
-#         if not isinstance(other, ArgsMatcher):
-#             return False
-#         return self.parameters == other.parameters
-#         # if isinstance(other, ArgsMatcher):
-#         #     for p1, p2 in zip(self.parameters, other.parameters):
-#         #         if p1 != p2:
-#         #             return False
-#         #     return True
-#         # if len(self.parameters) != 1:
-#         #     return False
-#         # param1 = self.parameters[0]
-#         # if isinstance(other, Matcher):
-#         #     param2 = Parameter(other)
-#         # else:
-#         #     param2 = other
-#         # return param1 == param2
+#         return (isinstance(other, ArgsMatcher)
+#                 and self.parameters == other.parameters
+#                 and self.named_params == other.named_params)
 #
 #     def __hash__(self):
-#         return hash(self.parameters)
+#         return hash((self.parameters, self.named_params))
 #
 #     def __gt__(self, other):
 #         if not isinstance(other, ArgsMatcher):
@@ -1567,50 +1317,249 @@ class Parameter:
 #         return self.parameters >= other.parameters
 #
 #     def __repr__(self):
-#         return f"ArgsMatcher{self.parameters}"
-#     # def __len__(self): ...
-#     # def __getitem__(self, item): ...
-#     # # def __eq__(self, other): ...
-#     # def __hash__(self): ...
-
+#         return f"ArgsMatcher({', '.join(self.parameters)}{'; ' + str(self.named_params) if self.named_params else ''})"
+#
+# class Intersection(Pattern):
+#     patterns: tuple[Pattern, ...]
+#     def __init__(self, *patterns: Pattern, binding=None):
+#         if binding is not None:
+#             raise Exception("This should be a parameter, not an Intersection.")
+#         self.patterns = patterns
+#         super().__init__()
+#
+#     @property
+#     def matchers(self):
+#         return self.patterns
+#
+#     def match_score(self, arg: Record):
+#         return all(m.match_score(arg) for m in self.matchers)
+#
+#     def issubset(self, other):
+#         match other:
+#             case Matcher() as other_matcher:
+#                 return any(m.issubset(other_matcher) for m in self.matchers)
+#             case Intersection() as patt:
+#                 return any(matcher.issubset(patt) for matcher in self.matchers)
+#             case Union(patterns=patterns):
+#                 return any(self.issubset(patt) for patt in patterns)
+#             case Parameter(pattern=pattern):
+#                 return self.issubset(pattern)
+#         return False
+#
+#     def __lt__(self, other):
+#         match other:
+#             case Intersection(matchers=other_matchers):
+#                 return (len(self.matchers) > len(other_matchers)
+#                         or len(self.matchers) == len(other_matchers) and self.matchers < other_matchers)
+#             case Union(patterns=patterns):
+#                 return any(self <= p for p in patterns)
+#             case _:
+#                 raise NotImplementedError
+#
+#     def __le__(self, other):
+#         match other:
+#             case Intersection(matchers=other_matchers):
+#                 return (len(self.matchers) > len(other_matchers)
+#                         or len(self.matchers) == len(other_matchers) and self.matchers <= other_matchers)
+#             case Union(patterns=patterns):
+#                 return any(self <= p for p in patterns)
+#             case _:
+#                 raise NotImplementedError
+#
+#     def __hash__(self):
+#         return hash(self.patterns)
+#
+#     def __eq__(self, other):
+#         match other:
+#             case Intersection(matchers=matchers):
+#                 return matchers == self.matchers
+#             case Union(patterns=(Pattern() as patt, )):
+#                 return self == patt
+#             case Matcher() as m:
+#                 return len(self.matchers) == 1 and self.matchers[0] == m
+#         return False
+#
+#
+# class Union(Pattern):
+#     patterns: tuple[Pattern, ...]
+#     def __init__(self, *patterns, binding=None):
+#         self.patterns = patterns
+#         if binding is not None:
+#             raise Exception("Shoulda been a Parameter!")
+#         super().__init__()
+#
+#     def match_score(self, arg: Record):
+#         return any(p.match_score(arg) for p in self.patterns)
+#
+#     def issubset(self, other):
+#         return all(p.issubset(other) for p in self.patterns)
+#
+#     def __lt__(self, other):
+#         match other:
+#             case Intersection():
+#                 return all(p < other for p in self.patterns)
+#             case Union(patterns=patterns):
+#                 return self.patterns < patterns
+#             case _:
+#                 raise NotImplementedError
+#
+#     def __le__(self, other):
+#         match other:
+#             case Intersection():
+#                 return all(p <= other for p in self.patterns)
+#             case Union(patterns=patterns):
+#                 return self.patterns <= patterns
+#             case _:
+#                 raise NotImplementedError
+#
+#     def __eq__(self, other):
+#         match self.patterns:
+#             case ():
+#                 return isinstance(other, Union) and other.patterns == ()
+#             case (Pattern() as patt, ):
+#                 return patt == other
+#         return isinstance(other, Union) and self.patterns == other.patterns
+#
+#
+# class Parameter(Pattern):
+#     pattern: Pattern | None = None
+#     binding: str = None  # property
+#     quantifier: str  # "+" | "*" | "?" | "!" | ""
+#     count: tuple[int, int | float]
+#     optional: bool
+#     required: bool
+#     multi: bool
+#     default = None
+#
+#     # @property
+#     # def binding(self): return self.pattern.binding
+#
+#     def __init__(self, pattern, binding: str = None, quantifier="", default=None):
+#         self.pattern = patternize(pattern)
+#         self.binding = binding
+#         # self.name = self.pattern.binding
+#         if default:
+#             if isinstance(default, Option):
+#                 self.default = default
+#             else:
+#                 self.default = Option(ArgsMatcher(), default)
+#             match quantifier:
+#                 case "":
+#                     quantifier = '?'
+#                 case "+":
+#                     quantifier = "*"
+#         self.quantifier = quantifier
+#         super().__init__()
+#
+#     def issubset(self, other):
+#         if not isinstance(other, Parameter):
+#             raise NotImplementedError(f"Not yet implemented Parameter.issubset({other.__class__})")
+#         if self.count[1] > other.count[1] or self.count[0] < other.count[0]:
+#             return False
+#         return self.pattern.issubset(other.pattern)
+#
+#     def _get_quantifier(self) -> str:
+#         return self._quantifier
+#     def _set_quantifier(self, quantifier: str):
+#         self._quantifier = quantifier
+#         match quantifier:
+#             case "":
+#                 self.count = (1, 1)
+#             case "?":
+#                 self.count = (0, 1)
+#             case "+":
+#                 self.count = (1, math.inf)
+#             case "*":
+#                 self.count = (0, math.inf)
+#             case "!":
+#                 self.count = (1, 1)
+#                 # union matcher with `nonempty` pattern
+#         self.optional = quantifier in ("?", "*")
+#         self.required = quantifier in ("", "+")
+#         self.multi = quantifier in ("+", "*")
+#     quantifier = property(_get_quantifier, _set_quantifier)
+#
+#     def match_score(self, value) -> int | float: ...
+#
+#     def compare_quantifier(self, other):
+#         return "_?+*".find(self.quantifier) - "_?+*".find(other.quantifier)
+#
+#     def __lt__(self, other):
+#         match other:
+#             case Parameter():
+#                 q = self.compare_quantifier(other)
+#                 return q < 0 or q == 0 and self.pattern < other.pattern
+#         return NotImplemented
+#
+#     def __le__(self, other):
+#         match other:
+#             case Parameter():
+#                 q = self.compare_quantifier(other)
+#                 return q < 0 or q == 0 and self.pattern <= other.pattern
+#         return NotImplemented
+#
+#     def __eq__(self, other):
+#         match other:
+#             case Parameter() as param:
+#                 pass
+#             case Matcher() | Pattern():
+#                 param = Parameter(other)
+#             case ArgsMatcher(parameters=(param, ), named_params={}):
+#                 pass
+#             case _:
+#                 return False
+#         return self.quantifier == param.quantifier and self.pattern == param.pattern and self.default == param.default
+#
+#     def __hash__(self):
+#         return hash((self.pattern, self.quantifier, self.default))
+#
+#     def __gt__(self, other):
+#         match other:
+#             case Parameter():
+#                 q = self.compare_quantifier(other)
+#                 return q < 0 or q == 0 and self.pattern > other.pattern
+#         return NotImplemented
+#
+#     def __ge__(self, other):
+#         match other:
+#             case Parameter():
+#                 q = self.compare_quantifier(other)
+#                 return q < 0 or q == 0 and self.pattern >= other.pattern
+#         return NotImplemented
+#
+#     def __repr__(self):
+#         return f"Parameter({self.pattern} {self.binding or ''}{self.quantifier})"
+#
+#
 class MatchState:
-    def __init__(self, parameters, args, i_param=0, i_arg=0, score=0, param_score=0, bindings=None):
-        if isinstance(parameters, ArgsMatcher):
-            self.parameters = parameters
-        else:
-            self.parameters = ArgsMatcher(*parameters)
+    def __init__(self, pattern, args, i_param=0, i_arg=0, named_params=None, score=0, param_score=0, bindings=None):
+        self.pattern = pattern
         self.args = args
         self.i_param = i_param
         self.i_arg = i_arg
         self.score = score
         self.param_score = param_score
         self.bindings = bindings or {}
+        # self.satisfied_named_params = satisfied_named_params or set()
+        self.named_params = named_params or self.pattern.named_params.copy()
         # self.done = i_param == len(parameters) and i_arg == len(args)
-        if i_param > len(parameters) or i_arg > len(args):
+        if i_param > len(pattern.parameters) or i_arg > len(args.positional_arguments):
             raise RuntimeErr(f"Line {Context.line}: ArgsMatcher error: i_param or i_arg went out of bounds.")
-
-    # @property
-    # def done(self):
-    #     if self.i_param > len(self.parameters) or self.i_arg > len(self.args):
-    #         raise RuntimeErr(f"Line {Context.line}: ArgsMatcher error: i_param or i_arg went out of bounds.")
-    #     return self.i_param == len(self.parameters) and self.i_arg == len(self.args)
 
     @property
     def success(self):
-        if self.i_param > len(self.parameters) or self.i_arg > len(self.args):
+        if self.i_param > len(self.pattern.parameters) or self.i_arg > len(self.args.positional_arguments):
             raise RuntimeErr(f"Line {Context.line}: ArgsMatcher error: i_param or i_arg went out of bounds.")
-        if isinstance(self.args, Args):
-            if self.i_arg < len(self.args.positional_arguments):
-                return False
-            else:
-                return self.i_param == len(self.parameters) and self.score
-        return self.i_param == len(self.parameters) and self.i_arg == len(self.args) and self.score
-        # return self.done and self.score
+        return (self.i_param == len(self.pattern.parameters)
+                and self.i_arg == len(self.args.positional_arguments)
+                # and used up named arguments
+                and self.score)
+
 
     @property
     def param(self):
-        if self.i_param < len(self.parameters):
-            return self.parameters[self.i_param]
+        if self.i_param < len(self.pattern.parameters):
+            return self.pattern.parameters[self.i_param]
 
     @property
     def arg(self):
@@ -1618,87 +1567,32 @@ class MatchState:
             return self.args[self.i_arg]
 
     def branch(self, **kwargs):
-        bindings = self.bindings.copy().update(kwargs.get('binding', {}))
+        bindings = self.bindings.copy().update(kwargs.get('bind', {}))
+        named_params = self.named_params.copy().update(kwargs.get('named_params', {}))
         for key in self.__dict__:
             if key not in kwargs:
                 kwargs[key] = self.__dict__[key]
-        return MatchState(**kwargs, bindings=bindings)
+        return MatchState(**kwargs, bindings=bindings, named_params=named_params)
 
-    def match_zip_OLD(self):
-        while param := self.param:
-            name = param.pattern.binding
-            if name in self.args.named_arguments and name not in self.bindings:
-                branch = self.branch()
-                branch.bindings[name] = self.args.named_arguments[name]
-                branch.i_param += 1
+    def match_zip(self):
+        # first, match all the required named parameters (since those can't be matched by positional args)
+        for name, param in self.named_params.items():
+            arg = self.args.try_get(name)
+            if arg is None or not param.match_score(arg):
+                if param.required:
+                    return 0, {}
+            elif param.optional:
+                branch = self.branch(bind={name: arg})
+                del branch.named_params[name]
                 score, bindings = branch.match_zip()
                 if score:
                     return score, bindings
-            if name in self.args.flags and name not in self.bindings:
-                self.bindings[name] = BuiltIns['true']
-                self.i_param += 1
-                continue
-            if isinstance(param, UnionParam):
-                for param in param.parameters:
-                    new_params = [*self.parameters[:self.i_param], param, *self.parameters[self.i_param + 1:]]
-                    score, bindings = self.branch(parameters=new_params).match_zip()
-                    if score:
-                        return score, bindings
-                return 0, {}
-
-            key: str | int = param.name or self.i_param
-            self.param_score *= param.multi
-            if self.arg is not None:
-                match_value = param.matcher.match_score(self.arg)
             else:
-                match_value = 0  # no arguments left to process match
-            if not match_value and not param.optional and not self.bindings.get(key):
-                return 0, {}
-            match param.quantifier:
-                case "":
-                    # match patt, save, and move on
-                    if not match_value:
-                        return 0, {}
-                    self.bindings[key] = self.arg
-                    self.score += match_value
-                    self.i_arg += 1
-                    self.i_param += 1
-                case "?":
-                    # try match patt and save... move on either way
-                    self.i_param += 1
-                    if match_value:
-                        branch = self.branch()
-                        branch.i_arg += 1
-                        branch.score += match_value
-                        branch.bindings[key] = self.arg
-                        score, bindings = branch.match_zip()
-                        if score:
-                            return score, bindings
-                    elif param.default:
-                        self.bindings[key] = param.default.resolve()
-                case "+" | "*":
-                    if key not in self.bindings:
-                        self.bindings[key] = []
-                        if not match_value and param.default:
-                            self.bindings[key] = param.default.resolve()
-                    if match_value:
-                        branch = self.branch()
-                        branch.i_arg += 1
-                        branch.param_score += match_value
-                        branch.bindings[key].append(self.arg)
-                        score, bindings = branch.match_zip()
-                        if score:
-                            return score, bindings
-                    if self.param_score:  #  if len(saves[key].value):
-                        self.score += self.param_score / len(self.bindings[key])
-                    self.i_param += 1
-        if self.success:
-            return self.score_and_bindings()
-        return 0, {}
+                del self.named_params[name]
+                self.bindings[name] = arg
 
-    def match_zip(self):
         while param := self.param:
-            name = param.pattern.binding
+            name = param.binding
             if name in self.args.named_arguments and name not in self.bindings:
                 branch = self.branch()
                 branch.bindings[name] = self.args.named_arguments[name]
@@ -1797,25 +1691,24 @@ def patternize(val):
         case Pattern():
             return val
         case Table():
-            return Pattern(TableMatcher(val))
+            return TableMatcher(val)
         case Trait():
-            return Pattern(TraitMatcher(val))
+            return TraitMatcher(val)
         case Record():
-            return Pattern(ValueMatcher(val))
-        case Matcher() as matcher:
-            return Pattern(matcher)
+            return ValueMatcher(val)
         case _:
             raise TypeErr(f"Line {Context.line}: Could not patternize {val}")
 
 
 class Args(Record):
+    # I tried to make Args no longer child of Record, but then the dot-operator fails to pattern match on it
     positional_arguments: list[Record] | tuple[Record, ...]
     named_arguments: dict[str, Record]
     flags: set[str]
-    def __init__(self, *args: Record, flags: set[str] = None, **kwargs: Record):
+    def __init__(self, *args: Record, flags: set[str] = None, named_arguments: dict[str, Record] = None, **kwargs: Record):
         self.positional_arguments = args
         self.flags = flags or set()
-        self.named_arguments = kwargs
+        self.named_arguments = named_arguments or kwargs
         super().__init__(BuiltIns['Args'])
 
     def __len__(self):
@@ -1825,6 +1718,17 @@ class Args(Record):
         if key in self.flags:
             return BuiltIns['true']
         return self.named_arguments.get(key, self.positional_arguments[key])
+
+    def try_get(self, key):
+        match key:
+            case str():
+                return BuiltIns['true'] if key in self.flags else self.named_arguments.get(key, None)
+            case int():
+                try:
+                    return self.positional_arguments[key]
+                except IndexError:
+                    return None
+        raise TypeError(key)
 
     def __iter__(self):
         if self.flags or self.named_arguments:
@@ -1893,70 +1797,87 @@ class Args(Record):
         return f"Args({', '.join(pos)}; {', '.join(names)}; {' '.join(flags)})"
 
 
-# class Alias:
-#     function
-#     closure
-#     name
-
-class CodeBlock:
-    exprs: list
+class Closure:
+    """ essentially just a block of code together with the context (Frame) in which it was bound to a function-option """
+    # block: Block  # Block class not yet defined
     scope = None
     def __init__(self, block):
-        self.exprs = list(map(Context.make_expr, block.nodes))
+        self.block = block
         self.scope = Context.env
-    def execute(self, args=None, caller=None, bindings=None, *, fn=None):
-        if args is not None or fn is not None:
-            closure = Closure(self, args, caller, bindings, fn)
-            Context.push(Context.line, closure)
 
-            def finish():
-                Context.pop()
-                return closure.return_value or caller or fn
-        else:
-            def finish():  # noqa
-                return BuiltIns['blank']
-        line = Context.line
-        for expr in self.exprs:
-            Context.line = expr.line
-            expr.evaluate()
-            if Context.env.return_value:
-                break
-            if Context.break_loop or Context.continue_:
-                break
-        Context.line = line
-        return finish()
+    # def execute(self, args=None, caller=None, bindings=None, *, fn=None):
+    #     if args is not None or fn is not None:
+    #         closure = Frame(self.scope, args, caller, bindings, fn)
+    #         Context.push(Context.line, closure)
+    #
+    #         def finish():
+    #             Context.pop()
+    #             return closure.return_value or caller or fn
+    #     else:
+    #         def finish():  # noqa
+    #             return BuiltIns['blank']
+    #         closure = Context.env
+    #
+    #     for tbl in self.block.table_names:
+    #         closure.locals[tbl] = ListTable(name=tbl)
+    #     for trait in self.block.trait_names:
+    #         closure.locals[trait] = Trait(name=trait)
+    #     for fn in self.block.function_names:
+    #         closure.locals[fn] = Function(name=fn)
+    #     self.block.execute()
+    #     return finish()
+
+    def execute(self, args=None, caller=None, bindings=None, *, fn=None):
+        if args is None and fn is None:
+            assert args is not None or fn is not None
+        env = Frame(self.scope, args, caller, bindings, fn)
+        if fn:
+            fn.frame = env
+        Context.push(Context.line, env)
+
+        for tbl in self.block.table_names:
+            env.locals[tbl] = ListTable(name=tbl)
+        for trait in self.block.trait_names:
+            env.locals[trait] = Trait(name=trait)
+        for fn in self.block.function_names:
+            env.locals[fn] = Function(name=fn)
+        self.block.execute()
+        Context.pop()
+        return env.return_value or caller or fn
 
     def __repr__(self):
-        return f"CodeBlock({len(self.exprs)})"
+        return f"Closure({len(self.block.statements)})"
 
-class Native(CodeBlock):
+class Native(Closure):
     def __init__(self, fn: PyFunction):
         self.fn = fn
         self.scope = Context.env
 
     def execute(self, args=None, caller=None, bindings=None, *, fn=None):
-        closure = Closure(self, args, caller, bindings, fn)
-        Context.push(Context.line, closure)
+        assert args is not None or fn is not None
+        env = Frame(self.scope, args, caller, bindings, fn)
+        Context.push(Context.line, env)
         line = Context.line
         if isinstance(args, tuple):
-            closure.return_value = self.fn(*args)
+            env.return_value = self.fn(*args)
         else:
-            closure.return_value = self.fn(args)
+            env.return_value = self.fn(args)
         Context.line = line
         Context.pop()
-        return closure.return_value
+        return env.return_value or caller or fn
 
     def __repr__(self):
         return f"Native({self.fn})"
 
-class Closure:
+class Frame:
     return_value = None
-    def __init__(self, code_block, args=None, caller=None, bindings=None, fn=None):
+    def __init__(self, scope, args=None, caller=None, bindings=None, fn=None):
         # self.names = bindings or {}
         self.vars = bindings or {}
         self.locals = {}
-        self.code_block = code_block
-        self.scope = code_block.scope
+        # self.block = block
+        # self.scope = code_block.scope
+        self.scope = scope
         self.args = args
         self.caller = caller
         self.fn = fn
@@ -1969,17 +1890,23 @@ class Closure:
                 return value
             scope = scope.scope
         self.locals[name] = value
+        # if isinstance(self.fn, Function):
+        #     self.fn.slot_dict[name] = value
         return value
 
+    def __getitem__(self, key: str):
+        return self.vars.get(key, self.locals.get(key, None))
+
     def __repr__(self):
-        return (f"Closure({len(self.vars) + len(self.locals)} names; " 
+        return (f"Frame({len(self.vars) + len(self.locals)} names; " 
                 f"{'running' if self.return_value is None else 'finished: ' + str(self.return_value)})")
 
-class TopNamespace(Closure):
-    code_block = None
+class GlobalFrame(Frame):
+    block = None
     scope = None
     args = None
     caller = None
+    fn = None
     def __init__(self, bindings: dict[str, Record]):
         self.vars = {}
         self.locals = bindings
@@ -1990,7 +1917,7 @@ class Option(Record):
     fn = None
     alias = None
     dot_option = False
-    return_type = AnyMatcher()
+    return_type = None
     def __init__(self, pattern, resolution=None):
         match pattern:
             case ArgsMatcher():
@@ -2022,13 +1949,15 @@ class Option(Record):
             return
         self.nullify()
         match resolution:
-            case CodeBlock(): self.block = resolution
-            # case PyFunction(): self.block = Native(resolution)
+            case Closure():
+                self.block = resolution
             case PyFunction(): self.fn = resolution
             case Option(): self.alias = resolution
             case Record():
                 self.value = resolution
                 self.return_type = ValueMatcher(resolution)
+            # case _:  # assume type Block (not defined yet)
+            #     self.block = resolution
             case _:
                 raise ValueError(f"Line {Context.line}: Could not assign resolution {resolution} to option {self}")
     def get_resolution(self):
@@ -2039,6 +1968,8 @@ class Option(Record):
     resolution = property(get_resolution, set_resolution, nullify)
 
     def resolve(self, args=None, caller=None, bindings=None):
+        if isinstance(args, tuple):
+            print("WARNING: encountered tuple of args rather than Args object.")
         if self.alias:
             return self.alias.resolve(args, caller, bindings)
         if self.value is not None:
@@ -2049,9 +1980,14 @@ class Option(Record):
             return self.fn(*args)
         if self.dot_option:
             caller = args[0]
-        if self.block is None:
-            raise NoMatchingOptionError(f"Line {Context.line}: Could not resolve null option")
-        return self.block.execute(args, caller, bindings)
+        if self.block:
+            return self.block.execute(args, caller, bindings)
+            # closure = Closure(self.block, args, caller, bindings)
+            # Context.push(Context.line, closure, self)
+            # res = self.block.evaluate()
+            # Context.pop()
+            # return res
+        raise NoMatchingOptionError(f"Line {Context.line}: Could not resolve null option")
 
     def __eq__(self, other):
         return isinstance(other, Option) and (self.pattern, self.resolution) == (other.pattern, other.resolution)
@@ -2066,32 +2002,34 @@ class Option(Record):
         return f"Opt({self.pattern} -> null)"
 
 
-class Operator:
-    def __init__(self, text, fn=None,
-                 prefix=None, postfix=None, binop=None, ternary=None,
-                 associativity='left',
-                 chainable=False,
-                 static=False):
-        Op[text] = self
-        self.text = text
-        # self.precedence = precedence
-        if fn:
-            if not fn.name:
-                fn.name = text
-            BuiltIns[text] = fn
-        self.fn = fn
-        self.associativity = associativity  # 'right' if 'right' in flags else 'left'
-        self.prefix = prefix  # 'prefix' in flags
-        self.postfix = postfix  # 'postfix' in flags
-        self.binop = binop  # 'binop' in flags
-        self.ternary = ternary
-        self.static = static  # 'static' in flags
-        self.chainable = chainable
+# class Operator:
+#     def __init__(self, text, fn=None,
+#                  prefix=None, postfix=None, binop=None, ternary=None,
+#                  associativity='left',
+#                  chainable=False,
+#                  static=False):
+#         Op[text] = self
+#         self.text = text
+#         # self.precedence = precedence
+#         if fn:
+#             if not fn.name:
+#                 fn.name = text
+#             BuiltIns[text] = fn
+#         self.fn = fn
+#         self.associativity = associativity  # 'right' if 'right' in flags else 'left'
+#         self.prefix = prefix  # 'prefix' in flags
+#         self.postfix = postfix  # 'postfix' in flags
+#         self.binop = binop  # 'binop' in flags
+#         self.ternary = ternary
+#         self.static = static  # 'static' in flags
+#         self.chainable = chainable
+#
+#         assert self.binop or self.prefix or self.postfix or self.ternary
+#
+#     def eval_args(self, lhs, rhs) -> Args:
+#         raise NotImplementedError('Operator.prepare_args not implemented')
+#
+#     def __repr__(self):
+#         return self.text
 
-        assert self.binop or self.prefix or self.postfix or self.ternary
-
-    def eval_args(self, lhs, rhs) -> list[Record]:
-        raise NotImplementedError('Operator.prepare_args not implemented')
-
-    def __repr__(self):
-        return self.text
+from patterns import *

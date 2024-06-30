@@ -1,0 +1,26 @@
+# from fractions import Fraction
+# from typing import Generic, TypeVar
+# class Record: ...
+# class Args: ...
+# class Parameter:
+#     matcher: any
+# class Function: ...
+# class ArgsMatcher: ...
+# class CodeBlock:
+#     execute: any
+# class Table:
+#     traits: any
+#
+#
+# T = TypeVar('T', None, bool, int, Fraction, float, str, tuple, frozenset, set, list)
+# class PyValue(Record, Generic[T]):
+#     value: T
+#     def __init__(self, table: Table, value: T): ...
+#
+#
+# A = TypeVar('A')
+# class PyObj(Record, Generic[A]):
+#     obj: any
+#     def __init__(self, obj): ...
+# def py_value(value: T) -> PyValue: ...
+# def piliize(value: any) -> Record: ...

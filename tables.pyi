@@ -1,12 +1,15 @@
 from fractions import Fraction
 from Env import *
-from Syntax import Block
-from Expressions import Expression
-from typing import TypeVar, Generic
+# from Syntax import Block
+# from Expressions import Expression
+from typing import TypeVar, Generic, overload
+from patterns import *
 
 FlexiPatt = ArgsMatcher | Parameter | Matcher | str
 PyFunction = type(lambda : None)
 
+
+class frozendict(dict): ...
 
 class OptionCatalog:
     """
@@ -32,12 +35,16 @@ class Record:
     truthy: bool = True
     mro: tuple[Trait, ...]
     def __init__(self, table, *data_tuple: Record, **data_dict: Record): ...
-    def get(self, name: str, *default) -> Record: ...
+    def get(self, name: str, *default, search_table_frame_too=True) -> Record: ...
     # def get_by_index(self, index: int) -> Record: ...
     def set(self, name: str, value: Record): ...
     # def set_by_index(self, index: int, value: Record): ...
+    @overload
     def call(self, *args: Record, flags: set[Record] = None, **kwargs: Record) -> Record: ...
-    def __call__(self, args: Args): ...
+    @overload
+    def call(self, args: Args) -> Record: ...
+    # def __call__(self, args: Args): ...
+    # I should not make Records python callable... that's just confusing
     def select(self, args: Args) -> tuple[Option | None, dict | None]: ...
     def hashable(self) -> bool: ...
     def to_string(self) -> PyValue[str]: ...
@@ -60,17 +67,19 @@ def py_value(value: T) -> PyValue: ...
 def piliize(value: any) -> Record: ...
 
 class Function(Record, OptionCatalog):
-    slot_dict: dict[str, Record]
-    formula_dict: dict[str, Function]
-    setter_dict: dict[str, Function]
+    # slot_dict: dict[str, Record]
+    # formula_dict: dict[str, Function]
+    # setter_dict: dict[str, Function]
+    frame: Frame | None
     def __init__(self,
                  options: dict[FlexiPatt, opt_resolution] = None,
                  *fields: Field,
                  name: str = None,
                  table_name: str = 'Function',
-                 traits: tuple[Trait, ...] = ()): ...
+                 traits: tuple[Trait, ...] = (),
+                 frame: Frame = None): ...
     def update_field(self, field: Field): ...
-    def get(self, name: str, *default): ...
+    def get(self, name: str, *default, search_table_frame_too=True) -> Record: ...
     def set(self, name: str, value: Record): ...
     def select(self, args): ...
     # def add_option(self, pattern: FlexiPatt, resolution: opt_resolution = None) -> Option: ...
@@ -179,7 +188,12 @@ class Setter(Field):
     def __init__(self, name: str, fn: Function): ...
     # def set_data(self, rec: Record, idx: int, value): ...
 
-class Matcher:
+class Pattern(Record):
+    def __init__(self): ...
+    def issubset(self, other: Pattern) -> bool: ...
+    def match_score(self, arg: Record) -> bool | int | float: ...
+
+class Matcher(Pattern):
     rank: tuple[int, int, ...]  # for sorting
     def __init__(self, name: str = None, guard: Function | PyFunction = None, inverse=False): ...
     def issubset(self, other: Matcher) -> bool: ...
@@ -198,9 +212,6 @@ class TraitMatcher(Matcher):
     trait: Trait
     def __init__(self, trait: Trait, name: str = None, guard: Function | PyFunction = None, inverse=False): ...
 
-# class SliceMatcher(Matcher):
-#     slices: tuple[Slice, ...]
-#     def __init__(self, *slices: Slice, name=None, guard=None, inverse=False): ...
 class ValueMatcher(Matcher):
     value: Record
     def __init__(self, value: Record, name: str = None, guard: Function | PyFunction = None, inverse=False): ...
@@ -218,32 +229,34 @@ class AnyMatcher(Matcher):
     def __eq__(self, other): ...
     def __hash__(self): ...
 
-class Pattern(Record):
-    binding: str | None = None
-    def __init__(self, binding=None): ...
-    def issubset(self, other: Pattern) -> bool: ...
-    def match_score(self, arg: Record) -> bool | int | float: ...
+class EmptyMatcher(Matcher):
+    rank = 3, 0
+    def __eq__(self, other): ...
+    def __hash__(self): ...
+
 class Intersection(Pattern):
-    matchers: tuple[Matcher, ...]  # acts as an intersection of matchers
+    patterns: tuple[Pattern, ...]  # acts as an intersection of matchers
     def __init__(self, *matchers: Matcher, binding: str = None, ): ...
 
 class Union(Pattern):
     patterns: tuple[Pattern, ...]
     def __init__(self, *patterns: Pattern, binding: str = None): ...
 
-class Parameter:
+class Parameter(Pattern):
     pattern: Pattern
+    binding: str | None
     quantifier: str  #  "+" | "*" | "?" | ""
+    default: Option | None
     count: tuple[int, int | float]
     optional: bool
     required: bool
     multi: bool
-    default: Option | None
 
     def __init__(self, pattern: Pattern, quantifier: str = "", default: Record | Option = None): ...
     def issubset(self, other: Parameter) -> bool: ...
     def try_get_matchers(self) -> tuple[Matcher, ...] | list[Matcher]: ...
     def compare_quantifier(self, other: Parameter) -> int: ...
+    def bytecode(self) -> VM: ...
     def match_score(self, value: Record) -> int | float: ...
 
 class ArgsMatcher(Matcher):
@@ -269,14 +282,16 @@ class ArgsMatcher(Matcher):
     def __hash__(self): ...
 
 class MatchState:
-    parameters: ArgsMatcher
+    pattern: ArgsMatcher
     args: Args
     i_param: int
     i_arg: int
     score: int | float
     param_score: int | float
     bindings: dict[str, Record | list[Record]]
-    def __init__(self, parameters, args: list[Record] | Args, i_param=0, i_arg=0, score=0, param_score=0, bindings=None): ...
+    satisfied_named_params: set[str]
+    named_params: dict[str, Parameter]
+    def __init__(self, pattern: ArgsMatcher, args: Args, i_param=0, i_arg=0, named_params=None, score=0, param_score=0, bindings=None): ...
     @property
     def success(self) -> int | float: ...
     @property
@@ -297,13 +312,14 @@ class MatchState:
 
 def patternize(value: Record) -> Pattern: ...
 
-class Args(Record):
+class Args:
     positional_arguments: list[Record] | tuple[Record]
     named_arguments: dict[str, Record]
     flags: set[str]
-    def __init__(self, *args: Record, flags: set[str] = None, **kwargs: Record): ...
+    def __init__(self, *args: Record, flags: set[str] = None, named_arguments: dict[str, Record] = None, **kwargs: Record): ...
     def __len__(self): ...
-    def __getitem__(self, item: int | str): ...
+    def __getitem__(self, item: int | str) -> Record: ...
+    def try_get(self, key: str | int) -> Record | None: ...
     def __iter__(self): ...
     def keys(self): ...
     def __add__(self, other: Args | tuple[Record] | set[str] | dict[str, Record]): ...
@@ -314,52 +330,60 @@ class Args(Record):
     def __repr__(self): ...
 
 
-class CodeBlock:
-    exprs: list[Expression]
-    scope: Closure | None
-    native: PyFunction
+class Block:
+    """ not implemented in tables.py """
+    statements: list[Node]
+    table_names: set[str]
+    trait_names: set[str]
+    function_names: set[str]
+
+class Closure:
+    block: Block
+    # exprs: tuple[Node, ...]
+    scope: Frame | None
     def __init__(self, block: Block | PyFunction): ...
-    def execute(self, args: tuple[Record, ...] = None,
+    def execute(self, args: Args = None,
                 caller: Record = None,
                 bindings: dict[str, Record] = None,
                 *, fn: Function = None): ...
 
-class Native(CodeBlock):
+class Native(Closure):
     fn: PyFunction  # fn must accept one argument of type Args
     def __init__(self, fn: PyFunction): ...
 
 
-class Closure:
+class Frame:
     # names: dict[str, Record]
     vars: dict[str, Record]
     locals: dict[str, Record]
-    code_block: CodeBlock
-    scope: Closure
-    args: tuple[Record, ...]
+    # block: Block
+    scope: Frame
+    args: Args
     caller: Record
     fn: Function
     return_value: Record = None
-    def __init__(self, code_block: CodeBlock | None,
-                 args: tuple[Record, ...] = None,
+    def __init__(self, scope: Frame,
+                 args: Args = None,
                  caller: Record = None,
                  bindings: dict[str, Record] = None,
                  fn: Function = None): ...
+    def __getitem__(self, key: str) -> Record | None: ...
     def assign(self, name: str, value: Record): ...
 
-class TopNamespace(Closure):
+class GlobalFrame(Frame):
     code_block = None
     scope = None
     args = None
     caller = None
     def __init__(self, bindings: dict[str, Record]): ...
 
-opt_resolution = Record | CodeBlock | PyFunction | None
+opt_resolution = Record | Closure | PyFunction | None
 class Option(Record):
     # env: Closure
     pattern: ArgsMatcher
     resolution: opt_resolution
     value: Record
-    block: CodeBlock
+    block: Closure
     fn: PyFunction
     alias: Option
     dot_option: bool
@@ -375,16 +399,16 @@ class Option(Record):
             -> Record: ...
 
 
-class Operator:
-    text: str
-    prefix: int | None
-    postfix: int | None
-    binop: int | None
-    ternary: str | None
-    associativity: str
-    fn: Function
-    chainable: bool
-    static: bool | PyFunction
-    def __init__(self, text, fn:Function=None, prefix:int=None, postfix:int=None, binop:int=None,
-                 ternary:str=None, associativity='left', chainable:bool=False, static=False): ...
-    def eval_args(self, lhs, rhs) -> list[Record]: ...
+# class Operator:
+#     text: str
+#     prefix: int | None
+#     postfix: int | None
+#     binop: int | None
+#     ternary: str | None
+#     associativity: str
+#     fn: Function
+#     chainable: bool
+#     static: bool | PyFunction
+#     def __init__(self, text, fn:Function=None, prefix:int=None, postfix:int=None, binop:int=None,
+#                  ternary:str=None, associativity='left', chainable:bool=False, static=False): ...
+#     def eval_args(self, lhs, rhs) -> Args: ...

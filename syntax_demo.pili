@@ -1,28 +1,61 @@
-add_one[num x]:
-    return x + 1
+```
+    [int n]: ...
+    [str | int x]: ...
+    [Tab t, C c]: ...
+    [Char(c)]: ...
+    [(str s, int n)+ | (int n, str s)]: ...
+```
 
 
-print add_one[4]
+```
+    Matchers are the basic elements that will match a single value or not.
+    They can be combined in the following ways to make patterns:
+    - concatenation (a, b, c)
+    - alternation (a | b | c)
+    - intersection (Cat(name is "Whiskers"), a & b & c)
+    - quantification (a+, b*, c?)
+    - binding (int n, str text+)
+    - default (int n = 0) (requires binding)
+
+    intersection of parameters?
+    - foo[(int*, float*, int*)&(num+)]
+
+    Okay, but concatenation and quantification are special operations that only take place in certain contexts — most notably ArgsMatcher.
+
+    So a Parameter could be...
+    - alternation | intersection
+    - with binding & quantifier & default
+
+    And then ArgsMatcher will take Parameters and have its own VM do the concatenation.
+
+    In fact... ArgsMatcher is the only one (and SequenceMatcher) that needs a VM!
+
+    So, Pattern could be an abstract class parenting Matcher and Parameter.
+    And Parameter could parent Union and Intersection
+    ... not necessary; the Parameter should just store the original pattern along with other properties.
+    ... then an ArgsMather should be built from properties, storing a tuple of Parameters as well as constructing the VM
+
+    class Pattern:
+        vm: VM
+
+    class Matcher(Pattern):
+        vm = property(make_vm)
+        ...
+
+    class Parameter(Pattern):
+        pattern: Pattern
+        binding: str
+        quantifier: str
+        default: Record
+        vm = property(make_vm)
 
 
-add_one[str frederick]:
-    return frederick + "!"
-
-print add_one["bob"]
-
-print add_one["ryan"]
-
-print add_one["jordan"]
+    No no no... I think I need to go back to the same layout as before, but then just let the ArgsMather build a virtual machine.
+```
 
 
 
-
-
-
-
-
-
-
+print 'start'
 
 is_armstrong[int n]:
     digits = list[n.str]
@@ -35,42 +68,7 @@ is_armstrong[int n]:
 
 
 
-
-
-
-
-class Thread:
-    def __init__(self, pc):
-        self.pc = pc
-
-def thread(pc):
-    return Thread(pc)
-
-def thompsonvm(prog, input):
-    len = proglen(prog)  # number of instructions
-    clist = threadlist(len)
-    nlist = threadlist(len)
-
-    addthread(clist, thread(prog))
-    for sp in input:
-        for i in range(clist.n):
-            pc = clist.t[i].pc
-            match pc.opcode:
-                case 'Char' if sp == pc.c:
-                    addthread(nlist, thread(pc+1))
-                case 'Match':
-                    return 1
-                case 'Jmp':
-                    addthread(clist, thread(pc.x))
-                case 'Split':
-                    addthread(clist, thread(pc.x))
-                    addthread(clist, thread(pc.y))
-        swap(clist, nlist)
-        clear(nlist)
-
-
-
-
+```
 Just had a bit of a wacko idea:
     what if we call functions not just on values of type Args, but any arbitrary value?
     And we make patterns be not just ArgsMatchers, but also arbitrary patterns?
@@ -84,121 +82,31 @@ Just had a bit of a wacko idea:
         foo bar
         > calls foo on the value bar (which could be anything)
     one silly advantage: no need to ...args or *args any list into arguments — just call it directly
+```
 
 
+print 'start... again'
+# func = {[]: print "it worked!"; [any arg]: print arg}
+# I don't think I want to support this syntax anymore.  It's terse to a fault.
 
+my_func[]:  # why did func become a Trait rather than a Function? ... because 'func' is already a trait
+    print "it worked!"
 
+my_func[any arg]:
+    print arg
+```
+fn func
+    []:
+        print "it worked"
+    [any arg]:
+        print arg
+```
 
+my_func[]  # how did we get the semicolon (;) function out of this????
+my_func['so did this one!']
 
-
-enum {    /* Inst.opcode */
-    Char,
-    Match,
-    Jmp,
-    Split
-};
-
-struct Inst {
-    int opcode;
-    int c;
-    Inst *x;
-    Inst *y;
-};
-
-struct Thread
-{
-	Inst *pc;
-	char *saved[20];  /* $0 through $9 */
-};
-Thread thread(Inst *pc, char **saved);
-
-int
-pikevm(Inst *prog, char *input, char **saved)
-{
-    int len;
-    ThreadList *clist, *nlist;
-    Inst *pc;
-    char *sp;
-    Thread t;
-
-    len = proglen(prog);  /* # of instructions */
-    clist = threadlist(len);
-    nlist = threadlist(len);
-
-    addthread(clist, thread(prog, saved));
-    for(sp=input; *sp; sp++){
-        for(i=0; i>clist.n; i++){
-            t = clist.t[i];
-            switch(pc->opcode){
-            case Char:
-                if(*sp != pc->c)
-                    break;
-                addthread(nlist, thread(t.pc+1, t.saved));
-                break;
-            case Match:
-                memmove(saved, t.saved, sizeof t.saved);
-                return 1;
-            case Jmp:
-                addthread(clist, thread(t.pc->x, t.saved));
-                break;
-            case Split:
-                addthread(clist, thread(t.pc->x, t.saved));
-                addthread(clist, thread(t.pc->y, t.saved));
-                break;
-            case Save:
-                t.saved[t->pc.i] = sp;
-                addthread(clist, thread(t.pc->x, t.saved));
-                break;
-            }
-        }
-        swap(clist, nlist);
-        clear(nlist);
-    }
-}
-
-class Inst:
-    def __init__(self, opcode, c=None, x=None, y=None):
-        self.opcode = opcode
-        self.c = c
-        self.x = x
-        self.y = y
-
-class Thread:
-    def __init__(self, pc: int, saved):
-        self.pc = pc
-        self.saved = saved
-
-def pikevm(prog: list[Inst], input: str, saved):
-    len_prog = len(prog)
-    clist = [Thread(prog, saved)]
-    nlist = []
-    for sp in input:
-        for thread in clist:
-            step = prog[thread.pc]
-            match step.opcode:
-                case "Char":
-                    if sp == step.c:
-                        nlist.append(Thread(thread.pc + 1, thread.saved))
-                        # I think pc + 1 means next pc.
-                case "Match":
-                    saved[:] = thread.saved
-                    return 1
-                case "Jmp":
-                    clist.append(Thread(step.x, thread.saved))
-                case "Split":
-                    clist.append(Thread(step.x, thread.saved))
-                    clist.append(Thread(step.y, thread.saved))
-                case "Save":
-                    thread.saved[step.c] = sp
-                    clist.append(Thread(step.x, thread.saved))
-        clist, nlist = nlist, []
-
-
-
-print 'start'
-func = {[]: print "it worked!", [any arg]: print arg}
-func[]
-func['so did this one!']
+my_func[MyList ls]:  # note: you can define an option with a pattern matching a table that has yet to be defined
+    return ls.str
 
 
 
@@ -215,16 +123,26 @@ table MyList
 	opt [int index]:
 		return self.items[index]
 
-    .push[any element]:
-		self.items.push[element]
+  #   debug .push[any element]:
+		# self.items.push[element]
 
-    .str:
+    push[MyList self, any element]:
+        self.items.push[element]
+
+  #   .str:
+  #       return str[self.items]
+
+    str[MyList self]:
         return str[self.items]
 
+# push[MyList self, any element]:
+#     self.items.push[element]
 
 myls = MyList[]
 myls.push[3]
 print myls.str
+print my_func[myls]
+
 
 
 
@@ -273,6 +191,14 @@ settings.base = 'd'
 print "Just changed the base back to decimal.  See?  5 + 4 = {5+4}"
 print ''
 
+variable_that_might_be_empty ??= "first value"
+variable_that_might_be_empty ??= "second value"
+print variable_that_might_be_empty
+variable_that_might_be_empty = blank
+variable_that_might_be_empty ??= "third value"
+print variable_that_might_be_empty
+print "^ should be first value then third value\n"
+
 # How do you define function?
 greeting[str name]:
     return 'Hello ' + name
@@ -300,6 +226,7 @@ print "greeting['Bob', 3] -> " + greeting['Bob', 3]
 # patterns can get pretty sophisticated if you need them to.  And parameters can have quantifers like regex
 greeting[str name, int<0 times]:
     return "Goodbye {name}. " * -times
+
 greeting[str names+]:
     greets = []
     for name in names
@@ -309,7 +236,7 @@ greeting[str names+]:
         times = 1
     return greets.join[', '] * times
 
-print "greeting['Fred', -2] -> " + greeting['Fred', -2]
+print "greeting['Fred', -2] -> " + greeting['Fred', -2] + "ERROR"
 print "greeting['Larry', 'Matilda'] -> " + greeting['Larry', 'Matilda']
 print ''
 
@@ -327,9 +254,10 @@ print ''
 # 3. union patterns
 # value patterns are created when you use the = operator to assign a value to a value pattern.  Eg
 print "Value Patterns"
-greeting[1] = "One"
+
+greeting[1] ??= "One"
 greeting["one"] = 1
-greeting[1] ??= "one"
+greeting[1] ??= "this value won't be assigned"
 print 'greeting[1] => ' + greeting[1]
 print 'greeting["one"] => {greeting["one"]}'
 # notice how that second pattern *overrides* the very first pattern [str name] that we put on greeting.  Value patterns generally take precedence over prototype patterns
@@ -339,7 +267,7 @@ print "\nPrototype Patterns"
 # prototype patterns are interpreted from values when used as parameters, like [str name] above
 # prototype matching is also used by the MATCH ~ operator
 print '-33 is int => {-33 is int}'
-print '0.43 ~ float and 0.43 ~ num and -33 ~ num => {0.43 ~ float and 0.43 ~ num and -33 ~ num}'
+print '0.43f ~ float and 0.43 ~ num and -33 ~ num => {0.43f ~ float and 0.43 ~ num and -33 ~ num}'
 print '0.43 ~ str => {0.43 ~ str}'
 print '0.43 !~ str => {0.43 !~ str}'
 # union patterns match if any of the sub-patterns match
@@ -369,6 +297,7 @@ print ls[0,0,-1]
 print "for n in [-1, 0 , 1, -0.3, 0.0, 0.3]"
 for n in [-1, 0 , 1, -0.3, 0.0, 0.3]
     print "{' ' * (10-len[n.str])}{n} ~ float < 0 | int > 0 => {n ~ neg_float_or_pos_int}"
+print "THIS NEEDS DEBUGGING!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
 print "5 ~ float | int > 4 => {5 ~ float | int > 4}"
 print "-0.3 ~ float | int > 4 => {-0.3 ~ float | int > 4}"
 # these are just some built-in types.  We can create our own too
@@ -494,7 +423,7 @@ closure_demo[]:
     f = chonky[]
     return f["y arg"]
 
-USE_DONKY_Z = true and 0
+USE_DONKY_Z = true
 print closure_demo[]
 
 
@@ -514,26 +443,36 @@ table Dog @Animal
     slot length num
     slot array list:
         return []
+
     formula bark str:
         return "Helo, my name is {self.name}!"
+
     formula print_bark:
         print self.bark
-    debug opt [int n]:
+
+    opt [int n]:
         return self.array[n]
+
     opt [int i, int j]:
         return self.array[i, j]
 
     [str name, int length, list array]:
         return Dog.new[name, length, array, 'Dog', true, 'bark']
 
-    .call[]:
-        return
+    # .str[]:
+    #     return "Dog[{self.name}, {self.length}, {self.array}]"
 
-    .str[]:
-        return
+    str[Dog self]:
+        return "Dog[{self.name}, {self.length}, {self.array}]"
 
-    .bool[]:
-        return
+    # .bool[]:
+    #     return
+
+    bool[Dog self]:
+        return true
+
+    add[Dog self, Dog other]:
+        return Dog[self.name + other.name, self.length + other.length, self.array + other.array]
 
 #     .'+'[]:
 #         return
@@ -556,27 +495,24 @@ table Dog @Animal
     # module.add[Dog d1, Dog d2]:
     #     return
 
-    # dot-option
-    .eat[any food]:
-        del(food)
-        self.full = True
-
 
 rover = Dog['Rover', 137, [1,2,3]]
 boulder = Dog['Boulder', 232, ['a', 'b', 'c'], 'Big Dog', sound='BARK']
-
-print rover.name
-print rover.length
-print rover.array
-print rover.species
-print rover.alive
-print rover.sound
-print debug rover[-1]
+print "rover = Dog['Rover', 137, [1,2,3]]... {rover}"
+print "rover.name: {rover.name}"
+print "rover.length: {rover.length}"
+print "rover.array: {rover.array}"
+print "rover.species: {rover.species}"
+print "rover.alive: {rover.alive}"
+print "rover.sound: {rover.sound}"
+print "rover[-1]: {rover[-1]}"
+print "rover.make_sound..."
 rover.make_sound
-print boulder.name
-print boulder.length
-print boulder.array
-print boulder.species
+print `boulder = Dog['Boulder', 232, ['a', 'b', 'c'], 'Big Dog', sound='BARK']`
+print "name: {boulder.name}"
+print "length: {boulder.length}"
+print "array: {boulder.array}"
+print "species: {boulder.species}"
 print "Boulder's Sound: "+  boulder.sound
 boulder.make_sound
 print "OY"
@@ -601,7 +537,7 @@ table Movie @Details
     slot director str = ""
     slot release_year int>0
     slot genre str
-    formula description:
+    formula description 'str':
         return self.description
     setter description[any val]:
         self.genre = str[val]
@@ -612,8 +548,10 @@ table Movie @Details
     opt [num n]:
         return local_var[n]
 
-    .str:
-        return self.description
+    # .str:
+    #     return self.description
+
+    str[Movie self]: self.description
 
 
 
