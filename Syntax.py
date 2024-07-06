@@ -47,6 +47,7 @@ class TokenType(Enum):
     NewLine = '\n'
     BlockStart = '\t'
     BlockEnd = '\t\n'
+    Debug = "#debug"
 
 
 class Commands(Enum):
@@ -245,7 +246,7 @@ class Expression(Node):
         self.source_text = source
 
     def evaluate(self):
-        raise NotImplementedError
+        raise NotImplementedError()
 
     # def __repr__(self):
     #     if self.line:
@@ -272,18 +273,9 @@ class Block(ArrayNode):
         self. function_names = func_names
 
     def evaluate(self):
-        raise NotImplementedError
-        return Closure(self).execute()
-        line = Context.line
-        for expr in self.nodes:
-            Context.line = expr.line
-            expr.evaluate()
-            if Context.env.return_value:
-                break
-            if Context.break_loop or Context.continue_:
-                break
-        Context.line = line
-        return Context.env.return_value or BuiltIns['blank']
+        # raise NotImplementedError("Use Block.execute instead.")
+        self.execute()
+        return BuiltIns['blank']
 
     def execute(self):
         line = Context.line
@@ -314,24 +306,13 @@ class ListType(Enum):
 
 class ListNode(ArrayNode):
     """
-    :param list_type: [list], (tuple), {function}, [params], [args]
+    :param list_type: [list], (tuple), {function}, [args]
     """
     items: list[Node]
     list_type: ListType
-    named_params: list[Node] = None
-    def __init__(self, items: list[Node], list_type_or_params: ListType):
+    def __init__(self, items: list[Node], list_type: ListType):
         self.items = items
-        if isinstance(list_type_or_params, ListType):
-            self.list_type = list_type_or_params
-        else:
-            self.list_type = ListType.Params
-            self.named_params = list_type_or_params
-            for params in (items, self.named_params):
-                for i in range(len(params)):
-                    match params[i]:
-                        case Token(type=TokenType.Name, source_text=name, pos=pos):
-                            params[i] = BindExpr(Token("any", pos), name)
-
+        self.list_type = list_type
         super().__init__(items)
 
     def evaluate(self):
@@ -341,18 +322,6 @@ class ListNode(ArrayNode):
                 return py_value(list(items))
             case ListType.Tuple:
                 return py_value(tuple(items))
-            case ListType.Params:
-                # TODO: enable param flags and named parameters
-                named_params = {}
-                for node in self.named_params:
-                    match node:
-                        case BindExpr(name=name):
-                            named_params[name] = node.evaluate()
-                        case OpExpr(op=Operator(text="="), terms=(BindExpr(name=name), default)):
-                            named_params[name] = node.evaluate()
-                        case _:
-                            raise SyntaxErr(f"Line {Context.line}: Can't parse parameter {node}")
-                return ArgsMatcher(*items, named_params=named_params)
             case ListType.Args:
                 named_args = {}
                 flags = set()
@@ -377,6 +346,69 @@ class ListNode(ArrayNode):
     def __repr__(self):
         res = map(str, self.nodes)
         return f"{self.list_type.name}[{', '.join(res)}]"
+
+class ParamsNode(ArrayNode):
+    list_type = ListType.Params
+    named_params: list[Node]
+    def __init__(self, items: list[Node], named_params: list[Node]):
+        self.items = items
+        self.named_params = named_params
+        # for params in (items, named_params):
+        #     for i in range(len(params)):
+        #         match params[i]:
+        #             case Token(type=TokenType.Name, source_text=name, pos=pos):
+        #                 params[i] = BindExpr(Token("any", pos), name)
+        #             case OpExpr(op=Operator(text="="),
+        #                         terms=(Token(type=TokenType.Name, source_text=name, pos=pos), default)) as pexpr:
+        #                 pexpr.terms = (BindExpr(Token("any", pos), name), default)
+
+        super().__init__(items)
+
+    def evaluate(self):
+        # items = (n.evaluate() for n in self.nodes)
+        # TODO: enable param flags and named parameters
+        def gen_params(nodes):
+            for node in nodes:
+                match node:
+                    case BindExpr(name=name):
+                        yield name, node.evaluate()
+                    case Token(type=TokenType.Name, source_text=name):
+                        yield name, Parameter(AnyMatcher(), name)
+                    case OpExpr(op=Operator(text="="),
+                                terms=(BindExpr(name=name) | Token(type=TokenType.Name, source_text=name) as p_node,
+                                       default)):
+                        param: Parameter
+                        if isinstance(p_node, Token):
+                            param = Parameter(AnyMatcher(), name)
+                        else:
+                            param = p_node.evaluate()
+                        param.default = default.evaluate()
+                        yield name, param
+                    case _:
+                        param = node.evaluate()
+                        if not isinstance(param, Parameter):
+                            param = Parameter(param)
+                            # raise SyntaxErr(f"Line {Context.line}: Can't parse parameter {node}")
+                        yield param.binding, param
+
+        # named_params = {}
+        # for node in self.named_params:
+        #     match node:
+        #         case BindExpr(name=name):
+        #             named_params[name] = node.evaluate()
+        #         case OpExpr(op=Operator(text="="), terms=(BindExpr(name=name) as p_node, default)):
+        #             param: Parameter = p_node.evaluate()
+        #             param.default = default.evaluate()
+        #             named_params[name] = param
+        #         case _:
+        #             raise SyntaxErr(f"Line {Context.line}: Can't parse parameter {node}")
+
+        return ArgsMatcher(*(p[1] for p in gen_params(self.items)),
+                           named_params=dict(gen_params(self.named_params)))
+
+    def __repr__(self):
+        res = map(str, self.nodes)
+        return f"Params[{', '.join(res)}]"
 
 def expressionize(nodes: list[Node]):
     return mathological(nodes)
@@ -618,7 +650,7 @@ class IfElse(Expression):
         if condition:
             return self.do.evaluate()
         else:
-            self.alt.evaluate()
+            return self.alt.evaluate()
 
     def __repr__(self):
         return f"IfElse({self.do} if {self.condition} else {self.alt})"
@@ -1160,13 +1192,9 @@ class LocalExpr(Declaration):
 
 class VarExpr(Declaration):
     def evaluate(self):
-        if self.value_expr is None:
-            value = None
-        else:
-            value = self.value_expr.evaluate()
-
+        value = self.value_expr.evaluate() if self.value_expr else BuiltIns['blank']
         Context.env.vars[self.var_name] = value
-        return value or BuiltIns['blank']
+        return value
 
 
 expressions = {

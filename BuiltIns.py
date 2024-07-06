@@ -73,7 +73,7 @@ def upsert_field_fields(fields: list[Field]):
     fields.append(Slot('name', TraitMatcher(BuiltIns['str'])))
     fields.append(Slot('type', TableMatcher(BuiltIns['Pattern'])))
     fields.append(Slot('is_formula', TraitMatcher(BuiltIns['bool'])))
-    fields.append(Slot('default', Union(TraitMatcher(FuncTrait), AnyMatcher())))
+    fields.append(Slot('default', UnionMatcher(TraitMatcher(FuncTrait), AnyMatcher())))
     fields.append(Slot('formula', TraitMatcher(FuncTrait)))
     fields.append(Slot('setter', TraitMatcher(FuncTrait)))
 # upsert_field_fields(BuiltIns['Field'].trait.fields)
@@ -104,12 +104,12 @@ FloatParam = Parameter(TraitMatcher(BuiltIns["float"]))
 RationalParam = Parameter(TraitMatcher(BuiltIns["ratio"]))
 NumericParam = Parameter(TraitMatcher(BuiltIns['num']))
 StringParam = Parameter(TraitMatcher(BuiltIns["str"]))
-NormalParam = Parameter(Union(TraitMatcher(BuiltIns['num']), TraitMatcher(BuiltIns['str'])))
+NormalParam = Parameter(UnionMatcher(TraitMatcher(BuiltIns['num']), TraitMatcher(BuiltIns['str'])))
 SeqParam = Parameter(TraitMatcher(SeqTrait))
 ListParam = Parameter(TraitMatcher(ListTrait))
 NonStr = TraitMatcher(StrTrait)
 NonStr.invert = 1
-NonStrSeqParam = Parameter(Intersection(TraitMatcher(SeqTrait), NonStr))
+NonStrSeqParam = Parameter(IntersectionMatcher(TraitMatcher(SeqTrait), NonStr))
 IterParam = Parameter(TraitMatcher(IterTrait))
 # TypeParam = Parameter(TableMatcher(BuiltIns["Type"]))
 PatternParam = Parameter(TableMatcher(BuiltIns['Pattern']))
@@ -152,7 +152,7 @@ BuiltIns['str'].assign_option(ArgsMatcher(NumericParam, IntegralParam),
 BuiltIns['list'].assign_option(ArgsMatcher(SeqParam), lambda x: py_value(list(x.value)))
 BuiltIns['tuple'].assign_option(ArgsMatcher(SeqParam), lambda x: py_value(tuple(x.value)))
 BuiltIns['set'].assign_option(ArgsMatcher(SeqParam), lambda x: py_value(set(x.value)))
-BuiltIns['iter'].assign_option(Option(Union(*(TraitMatcher(BuiltIns[t])
+BuiltIns['iter'].assign_option(Option(UnionMatcher(*(TraitMatcher(BuiltIns[t])
                                                      for t in ('tuple', 'list', 'set', 'frozenset', 'str'))),
                                       lambda x: x))
 
@@ -181,8 +181,8 @@ def setting_set(prop: str, val: PyValue):
 #                               get=Function({ArgsMatcher(StringParam): setting_get}))
 get_base_fn = Function({AnyParam: lambda _: py_value("_ubtqphsond"[Context.settings['base']])},
                        name='get_base_fn')
-set_base_fn = Function({ArgsMatcher(AnyParam, Parameter(Union(TraitMatcher(StrTrait),
-                                                                 *(ValueMatcher(py_value(v)) for v in range(1, 11))))):
+set_base_fn = Function({ArgsMatcher(AnyParam, Parameter(UnionMatcher(TraitMatcher(StrTrait),
+                                                                     *(ValueMatcher(py_value(v)) for v in range(1, 11))))):
                         lambda _, val: setting_set('base', val)},
                        name='set_base_fn')
 get_sort_options = Function({AnyParam: lambda: py_value(Context.settings['sort_options'])},

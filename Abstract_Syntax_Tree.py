@@ -72,6 +72,10 @@ class Tokenizer:
                         self.fn_lv -= 1
             elif self.char in '[](),;':
                 text = self.char
+            elif self.char == '#' and self.peek(1, 5) == 'debug':
+                text = 'debug'
+                token_type = TokenType.Debug
+                self.next_char(6)
             elif self.char in "#\n":
                 last_indent = self.indent
                 self.next_line()
@@ -124,6 +128,8 @@ class Tokenizer:
         while self.next_char():
             if self.char == '\t':
                 self.indent += 1
+            elif self.char == '#' and self.peek(1, 5) == 'debug':
+                break
             elif self.char in '#\n':
                 return self.next_line()
             elif self.script[self.idx:self.idx+4] == '    ':
@@ -310,9 +316,14 @@ class AST:
                         list_type = ListType.List
                     self.seek()
                     items, params = self.read_list(TokenType.ListEnd)
-                    ls = ListNode(items, list_type if params is None else params)
-                    if self.peek().source_text == ':' and self.peek(2).type == TokenType.BlockStart:
-                        ls.list_type = ListType.Params
+                    # conditions for interpreting as params:
+                    if (params is not None  # read_list found parameters
+                            or self.peek().source_text == ':'):
+                            # and (self.peek(2).type == TokenType.BlockStart or nodes)):
+                        # the colon is followed by a block OR there are nodes preceding the params (eg foo[params]: ...)
+                        ls = ParamsNode(items, params or [])
+                    else:
+                        ls = ListNode(items, list_type)
                     nodes.append(ls)
                 case TokenType.FnStart:
                     self.seek()
@@ -368,17 +379,13 @@ class AST:
                     if not expr_nodes:
                         raise SyntaxErr(f"Line {nodes[-1].line}: missing block or expression after ':' operator.")
                     # determine if `nodes` represents a set of parameters, a value/tuple, or is ambiguous
-                    match nodes:
-                        case [ListNode(list_type=ListType.Params) as ls_node, Token()] \
-                             | [*_, Token(source_text='.'), ListNode() as ls_node, Token()]:
-                            nodes.append(Block([CommandWithExpr('return', expr_nodes, line, '')]))
-                            ls_node.list_type = ListType.Params
-                        # case [ListNode(), Token()]:
-                        #     raise Env.SyntaxErr(f"Line {line}: Ambiguous statement.  Please specify whether this is an"
-                        #                         f"option function definition or a key-value pair.")
-                        case _:
-                            nodes.extend(expr_nodes)
+                    if len(nodes) > 1 and isinstance(nodes[-2], ParamsNode):
+                        nodes.append(Block([CommandWithExpr('return', expr_nodes, line, '')]))
+                    else:
+                        nodes.extend(expr_nodes)
                     return nodes
+                case TokenType.Debug:
+                    pass
                 case _:
                     nodes.append(self.tok)
             self.seek()
@@ -388,7 +395,7 @@ class AST:
         return nodes
 
     def read_list(self, end: TokenType) -> tuple[list[Node], list[Node] | None]:
-        named_params: list[Node] | None = None  # this also acts as an indicator for list type
+        named_params: list[Node] | None = None  # this only gets set if read_list detects parameters
         white_space_tokens = TokenType.NewLine, TokenType.BlockStart, TokenType.BlockEnd
         items: list[Node] = []
         current = items
@@ -402,17 +409,19 @@ class AST:
             statement = self.read_statement(end, TokenType.Comma, TokenType.Semicolon, *white_space_tokens)
             if statement:
                 current.append(mathological(statement))
-                if named_params is None and isinstance(current[-1], BindExpr):
-                    named_params = []
+                # if named_params is None and isinstance(current[-1], BindExpr):
+                #     named_params = []
             else:
                 continue
             if self.tok:
                 if self.tok.type == TokenType.Comma:
                     self.seek()
                 elif self.tok.type == TokenType.Semicolon:
-                    if named_params is None:
-                        named_params = []
-                    current = named_params
+                    if named_params is not None:
+                        raise SyntaxErr(f"Line {self.tok.line}: Only one semicolon allowed in params list.")
+                    # if named_params is None:
+                    #     named_params = []
+                    current = named_params = []
                     self.seek()
 
         raise Env.SyntaxErr("Reached EOF: Expected " + repr(end))

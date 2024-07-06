@@ -1,8 +1,11 @@
+# one comment
+# two comments
 function foo
 	[int a, str b+; num c = 0, num d]:
+		return a, b, c, d
 		return str[a] + str[b] + str[c] + str[d]
 
-print foo[a=-1, "one", "two", "three", d=2/3]
+print foo[a=-1, "one", "two", "three", d=20/30]
 
 print foo[1, "two", c=55, d=1/2]
 
@@ -72,6 +75,8 @@ table Dog
 	slot name str
 	slot breed str
 	bark[Dog self]: "hello my name is " + self.name
+	.bark_breed:
+		return self.breed
 	# .bark: "hello my name is " + self.name
 	# I really need to have the dot-option here, because otherwise, methods like str and len will work but
 	# new methods will only be defined within the context of Dog!
@@ -80,7 +85,7 @@ table Dog
 	# ... ... do I need to revive the 'self' keyword?
 
 spot = Dog['Spot', 'terrier']
-test[8d] = spot.bark == "hello my name is Spot"
+test[8d] = spot.bark[] == "hello my name is Spot"
 print 'test 12 passed' if test[8d] else 'test 12 FAILED'
 
 test[9d] = (spot.breed == "terrier" or spot.name == "Spot") and (spot.breed != "terrier" or spot.name == "Spot") and not (spot.breed == "terrier" and spot.name != "Spot") and not (spot.breed != "terrier" and spot.name == "Spot")
@@ -90,31 +95,50 @@ spot.name = 'Rover'
 test[14] = spot.name == 'Rover'
 print 'test 14 passed' if test[14] else 'test 14 FAILED'
 
-test[15] = spot.bark == "hello my name is Rover"
+test[15] = spot.bark[] == "hello my name is Rover"
 print 'test 15 passed' if test[15] else 'test 15 FAILED'
+
+# Range[int start, int end, int step]:
+# 	index = start
+# 	.next:
+# 		return 'done' if index >= end else (self.index = index + step)
+#
+# table Range
+# 	[int start, int end, int step]:
+# 		index = start
+# 	.next:
 
 Range[int start, int end, int step]:
 	index = start
-	.next:
-		return 'done' if index >= end else (self.index = index + step)
+	function range
+		start = start
+		end = end
+		step = step
+		var index = start
+		.next:
+			index += step
+			return 'done' if index > end else index
+	return range
 r = Range[0, 3, 1]
+# print "Range[0, 3, 1]"
 # print r.index
-# print r.next
-# print r.next
-# print r.next
-# print r.next
-# return r.next
-test[20] = r.index == 0 and r.next == 1 and r.next == 2 and r.next == 3 and r.next == 'done'
+# print r.next[]
+# print r.next[]
+# print r.next[]
+# print r.next[]
+# return r.next[]
+test[20] = r.index == 0 and r.next[] == 1 and r.next[] == 2 and r.next[] == 3 and r.next[] == 'done'
 print 'test 20 passed' if test[20] else 'test 20 FAILED'
 
 # test prototype modification
-Dog.bark_breed: "Hi, I'm a " + breed
+Dog.bark_breed:
+	return "Hi, I'm a " + self.breed
 test[21] = (spot.bark_breed) == "Hi, I'm a terrier"
 print 'test 21 passed' if test[21] else 'test 21 FAILED'
 
 test[22] = Dog has "asdfknasdf" == false and Dog has "bark_breed" == true
 test[22] = test[22] and not has 'asdfasdf' and has "Dog" == true
-test[22] = test[22] and pili has 'string'
+test[22] = test[22] and has 'str'
 print 'test 22 passed' if test[22] else 'test 22 FAILED'
 
 test[23] = (Dog.?[23] ?? "fall back") == "fall back" and (spot.?name ?? "no name") == 'Rover'

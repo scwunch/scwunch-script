@@ -48,7 +48,7 @@ Operator(';', binop=1)
 Operator(':', binop=2, associativity='right')
 Operator('=', binop=2, associativity='right')
 
-for op in ('+', '-', '*', '/', '//', '**', '%'):
+for op in ('+', '-', '*', '/', '//', '**', '%', '&', '|'):
     Operator(op+'=', binop=2, associativity='right')
 
 Operator('??=', binop=2, associativity='right')

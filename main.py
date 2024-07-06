@@ -11,6 +11,7 @@ import operator_syntax
 
 print(f"starting module {__name__} ...")
 
+
 if len(sys.argv) == 1 and sys.executable == '/usr/bin/python3':  # test if running in console; pycharm executable is python3.10
     mode = 'shell'
 elif len(sys.argv) == 2:
@@ -111,6 +112,34 @@ def execute_script(path):
     print('Script finished with output: ', output)
 
 
+# def test(*args):
+#     return args
+#
+# # print(test(args=(1,2,3)))
+#
+# prog = [
+#     Inst().match(TraitMatcher(IntTrait), 'a'),
+#     Inst().save('b'),
+#     Inst().match(TraitMatcher(StrTrait)),
+#     Inst().split(-1, 1),
+#     Inst().save('b')
+# ]
+#
+# pattern = ArgsMatcher(Parameter(TraitMatcher(IntTrait), 'a'),
+#                       Parameter(TraitMatcher(StrTrait), 'b', '+'),
+#                       named_params={'c': Parameter(TraitMatcher(NumTrait), 'c', default=py_value(0)),
+#                                     'd': Parameter(TraitMatcher(NumTrait), 'd')})
+# # pattern.parameters = (Parameter(TraitMatcher(IntTrait), 'a'),
+# #                       Parameter(TraitMatcher(StrTrait), 'b', '+'))
+# # pattern.vm = prog
+#
+# args = Args(py_value(1), py_value('two'),
+#             named_arguments={'d': py_value(Fraction(1, 2)), 'c': py_value(55)})
+# args = Args(py_value("one"), py_value("two"), py_value("three"),
+#             named_arguments={'a': py_value(-1), 'd': py_value(Fraction(2, 3)), 'b': py_value('string')})
+#
+# print(pattern.match_zip(args))
+# exit()
 
 
 if mode in ('test', 'script'):

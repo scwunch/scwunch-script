@@ -9,7 +9,10 @@ FlexiPatt = ArgsMatcher | Parameter | Matcher | str
 PyFunction = type(lambda : None)
 
 
-class frozendict(dict): ...
+class frozendict(dict):
+    def __hash__(self): ...
+    def __add__(self, other: tuple[any, any] | dict): ...
+
 
 class OptionCatalog:
     """
@@ -336,6 +339,7 @@ class Block:
     table_names: set[str]
     trait_names: set[str]
     function_names: set[str]
+    def execute(self): ...
 
 class Closure:
     block: Block

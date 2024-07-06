@@ -11,25 +11,34 @@ identity = lambda x: x
 Op[';'].fn = Function({AnyPlusPattern: lambda *args: args[-1]})
 
 def eval_assign_args(lhs: Node, rhs: Node) -> Args:
-    val = rhs.evaluate()
+    if isinstance(rhs, Block):
+        val = Closure(rhs)
+    else:
+        val = rhs.evaluate()
+
     match lhs:
         case Token(type=TokenType.Name, source_text=name):
-            return Args(py_value(name), val)
-        case OpExpr(op=Operator(text='.'),
-                    terms=(Node() as fn_node, ListNode(list_type=ListType.Args) as args)):
-            location = fn_node.evaluate()
-            assert isinstance(location, Function)  # is this a fair assumption?
-                                                   # Any cases where you would assign to a non-Function record?  # noqa
-            key: Args = args.evaluate()
-            # if key.flags or key.named_arguments:
-            #     raise SyntaxErr(f"Line {Context.line}: flags and named arguments are not supported "
-            #                     f" in function key assignment.")
-            # return Args(location, py_value(key.positional_arguments), val)
-            return Args(location, key, val)
+            """ name := value """
+            return Args(py_value(name), val)  # str, any
+        case ListNode():
+            """ [key] := value """
+            return Args(lhs.evaluate(), val)
         case OpExpr(op=Operator(text='.'),
                     terms=(Node() as fn_node, Token(type=TokenType.Name, source_text=name))):
+            """ foo.bar := value """
             location = fn_node.evaluate()
-            return Args(location, py_value(name), val)
+            return Args(location, py_value(name), val)  # any, str, any
+        case OpExpr(op=Operator(text='.'),
+                    terms=(Node() as fn_node, ListNode(list_type=ListType.Args) as args)):
+            """ foo[key] := value """
+            location = fn_node.evaluate()  # note: if location is not a function, a custom option must be added to =
+            key: Args = args.evaluate()
+            return Args(location, key, val)  # fn, args, any
+        case OpExpr(op=Operator(text=','), terms=keys):
+            keys
+        case OpExpr(op=Operator(text=',')):
+            raise SyntaxErr(f"Line {lhs.line}: Invalid LHS for assignment.  If you want to assign to a key, use either "
+                            f"`[key1, key2] = value` or `key1, key2: value`")
         case _:
             raise SyntaxErr(f"Line {lhs.line}: Invalid lhs for assignment: {lhs}")
 
@@ -45,23 +54,14 @@ def set_or_assign_option(*args, operation: Function = None):
             rec.set(name, val)
         case _:
             raise ValueError("Incorrect value types for assignment")
-
+    return val
 
 Op['='].eval_args = eval_assign_args
 Op['='].fn = Function({ArgsMatcher(StringParam, AnyParam): lambda name, val: Context.env.assign(name.value, val),
                        ArgsMatcher(FunctionParam, AnyParam, AnyParam): set_or_assign_option,
                        ArgsMatcher(AnyParam, StringParam, AnyParam): lambda rec, name, val: rec.set(name.value, val)
                        }, name='=')
-for sym in ('+', '-', '*', '/', '//', '**', '%', '??'):
-    Op[sym+'='].fn = Function({ArgsMatcher(StringParam, AnyParam):
-                                   lambda name, val: Context.env.assign(name.value,
-                                                                        Op[sym].fn.call(Context.deref(name), val)),
-                               ArgsMatcher(FunctionParam, AnyParam, AnyParam):
-                                   lambda *args: set_or_assign_option(*args, operation=Op[sym].fn),
-                               ArgsMatcher(AnyParam, StringParam, AnyParam):
-                                   lambda rec, name, val: rec.set(name.value, Op[sym].fn.call(rec.get(name.value), val))
-                               }, name=sym+'=')
-    Op[sym+'='].eval_args = eval_assign_args
+
 def null_assign(rec_or_name: Record | PyValue, name_or_val: PyValue | Record, val_or_none: Record = None):
     if val_or_none is None:
         name = rec_or_name.value
@@ -101,38 +101,65 @@ Op['??='].eval_args = eval_assign_args
 
 def eval_colon_args(lhs: Node, rhs: Node) -> Args:
     if isinstance(rhs, Block):
+        pattern = params = None
         match lhs:
-            case OpExpr(op=Operator(text='.'), terms=[fn_node, ListNode(list_type=ListType.Params, nodes=params)]):
-                fn: Function = None
+            case OpExpr(op=Operator(text='.'), terms=[fn_node, ParamsNode() as params]):
+                #
                 match fn_node:
                     case Token(type=TokenType.Name, source_text=name):
                         fn = Context.deref(name, None)
                         if fn is None:
                             fn = Function(name=name)
-                            Context.env.vars[name] = fn
-                    case Node() as fn_node:
+                            Context.env.locals[name] = fn
+                    case _:
                         fn = fn_node.evaluate()
                 if not isinstance(fn, Function):
                     raise TypeErr(f'Line {fn_node.line}: Cannot assign option to {fn.table} {fn}')
-            case ListNode(list_type=ListType.Params, nodes=params):
+            case ParamsNode() as params:
                 if (fn := Context.env.fn) is None:
                     raise SyntaxErr(f"Line {lhs.line}: this syntax is not available in this context.  "
                                     f"Try within a function, trait, or table block.")
+            case OpExpr(op=Operator(text='.'), terms=[Token(type=TokenType.Name, source_text=name)]):
+                """ .foo: ... """
+                fn = Context.deref(name, None)
+                if fn is None:
+                    fn = Function(name=name)
+                    Context.env.locals[name] = fn
+                if not isinstance(fn, Function):
+                    raise TypeErr(f'Line {lhs.line}: Cannot assign option to {fn.table} {fn}')
+                match Context.env.fn:
+                    case Table() | Trait() as t:
+                        pattern = ArgsMatcher(Parameter(t, 'self'))
+                    case Function():
+                        pattern = ArgsMatcher()
+                    case None:
+                        raise SyntaxErr(f"Line {lhs.line}: this syntax is not available in this context.  "
+                                        f"Try within a trait, or table block.")
+            case OpExpr(op=Operator(text='.'), terms=[fn_node, Token(type=TokenType.Name, source_text=name)]):
+                ''' foo.bar: ... '''
+                t = fn_node.evaluate()
+                fn = t.get(name)
+                match t:
+                    case Table() | Trait():
+                        pattern = ArgsMatcher(Parameter(t, 'self'))
+                    case Function():
+                        pattern = ArgsMatcher()
+                    case None:
+                        raise RuntimeErr(f"Line {lhs.line}: leftmost container term must be a table, trait, or function."
+                                         f"\nIe, for `foo.bar: ...` then foo must be a table, trait, or function.")
             case _:
                 raise SyntaxErr(f'Line {lhs.line}: option syntax is: `<fn>[<params>]: <block or expression>`.  '
                                 f'Eg `foo[int n]: n + 2`')
-        def eval_param(p: Node):
-            match p:
-                case Token(type=TokenType.Name, source_text=name):
-                    return Parameter(AnyMatcher(), name)
-            return p.evaluate()
-        pattern = ArgsMatcher(*(map(eval_param, params)))
+        if pattern is None:
+            pattern = params.evaluate()
         code_block = Closure(rhs)
         return Args(fn, pattern, code_block)
     else:
         match lhs:
             case ListNode(nodes=key_nodes) | OpExpr(op=Operator(text=','), terms=key_nodes):
                 pass
+            case ParamsNode():
+                raise NotImplementedError
             case _:
                 key_nodes = [lhs]
 
@@ -141,17 +168,83 @@ def eval_colon_args(lhs: Node, rhs: Node) -> Args:
         return Args(key, value)
 
 
+def eval_colon_args(lhs: Node, rhs: Node) -> Args:
+    if isinstance(rhs, Block):
+        resolution = Closure(rhs)
+    else:
+        resolution = rhs.evaluate()
+
+    match lhs:
+        case ParamsNode():
+            """ [params]: ... """
+            return Args(lhs.evaluate(), resolution)
+        case OpExpr(op=Operator(text='.'), terms=terms):
+            match terms:
+                case [fn_node, ParamsNode() as params]:
+                    """ foo[key]: ... """
+                    match fn_node:
+                        case Token(type=TokenType.Name, source_text=name):
+                            location = Context.deref(name, None)
+                            if location is None:
+                                location = Function(name=name)
+                                Context.env.locals[name] = location
+                        case _:
+                            location = fn_node.evaluate()
+                    key = params.evaluate()
+                    return Args(location, key, resolution)  # fn, args, any
+                case [Token(type=TokenType.Name, source_text=name)]:
+                    """ .foo: ... """
+                    location = Context.env.fn
+                    if location is None:
+                        raise EnvironmentError(f"Line {Context.line}: illegal .dot option found")
+                    fn = Context.deref(name, None)
+                    if fn is None:
+                        fn = Function(name=name)
+                        Context.env.locals[name] = fn
+                    key = ArgsMatcher(Parameter(location, 'self'))
+                    # maybe this should have no self parameter if in Function context?
+                    return Args(fn, key, resolution)
+                case [OpExpr(op=Operator(text='.'), terms=[Token(type=TokenType.Name, source_text=name), ParamsNode() as params])]:
+                    """ .foo[params] """
+                    """ Is this actually the correct pattern to match .foo[params]?"""
+                    raise NotImplementedError
+                case [table_or_trait, Token(type=TokenType.Name, source_text=name)]:
+                    ''' Foo.bar: ... '''
+                    t = table_or_trait.evaluate()
+                    fn = t.get(name)
+                    match t:
+                        case Table() | Trait():
+                            pattern = ArgsMatcher(Parameter(t, 'self'))
+                        case Function():
+                            pattern = ArgsMatcher()
+                        case None:
+                            raise RuntimeErr(f"Line {lhs.line}: leftmost container term must be a table, trait, or function."
+                                             f"\nIe, for `foo.bar: ...` then foo must be a table, trait, or function.")
+                    return Args(fn, pattern, resolution)
+                case _:
+                    raise SyntaxErr(f"Line {Context.line}: Unrecognized syntax for LHS of assignment.")
+        case OpExpr(op=Operator(text=','), terms=keys):
+            """ key1, key2: ... """
+            key = Args(*(n.evaluate() for n in keys))
+            return Args(key, resolution)
+        case _:
+            """ key: ... """
+            key = Args(lhs.evaluate())
+            return Args(key, resolution)
+
+
 def assign_option(*args):
     match args:
-        case fn, pattern, code_block:
-            fn.assign_option(pattern, code_block)
-        case key, value:
+        case fn, pattern, resolution:
+            fn.assign_option(pattern, resolution)
+        case Args() | ArgsMatcher() as key, resolution:
             if not isinstance(Context.env.fn, Function):
                 raise EnvironmentError(f"Line {Context.line}: Cannot assign key-value option in this context.  "
                                        f"Must be within a definition of a function, table, or trait.")
-            Context.env.fn.assign_option(key, value)
+            Context.env.fn.assign_option(key, resolution)
         case _:
-            raise Env.RuntimeErr(f"Line {Context.line}: wrong arguments for colon function.")
+            raise RuntimeErr(f"Line {Context.line}: wrong arguments for colon function.")
+    return BuiltIns['blank']
 
 
 
@@ -172,19 +265,15 @@ def eval_dot_args(lhs: Node, rhs: Node) -> Args:
                      terms=(left_term, Token(type=TokenType.Name, source_text=name))),
               ListNode(list_type=ListType.Args) as args_node):
             # case left_term.name[args_node]
-            args = args_node.evaluate()
             # is name in left_term?
             left = left_term.evaluate()
             prop = left.get(name, None, search_table_frame_too=False)
             if prop is not None:
                 # the name resolved a slot in left
-                return Args(prop, args)
+                return Args(prop, right_arg, caller=left)
             # else: no slot named "name" in fn
-            method = left.table.frame[name]
-            if method is not None:
-                return Args(method, args, caller=left)
-            args.positional_arguments = (left, *args.positional_arguments)
-            fn = Context.deref(name, None)
+            args = Args(left) + right_arg
+            fn = left.table.get(name, Context.deref(name, None))
             if fn is None:
                 raise KeyErr(f"Line {Context.line}: {left.table} {left} has no slot '{name}' and no variable with that "
                              f"name found in current scope either.")
@@ -215,17 +304,16 @@ def eval_dot_args(lhs: Node, rhs: Node) -> Args:
     # return [fn, args]
 
 
-def dot_fn(a: Record, b: Record):
+def dot_fn(a: Record, b: Record, *, caller=None):
     match b:
         case Args() as args:
-            return a.call(args)
+            return a.call(args, caller=caller)
         case PyValue(value=str() as name):
-            try:
-                return a.get(name)
-            except SlotErr as e:
-                pass
-            fn = Context.deref(name)
-            return fn.call(a)
+            prop = a.get(name, None)
+            if prop is not None:
+                return prop
+            fn = a.table.get(name, Context.deref(name, None))
+            return fn.call(a, caller=caller)
         # case PyValue(value=tuple() | list() as args):
         #     return a.call(*args)
         case _:
@@ -234,9 +322,6 @@ def dot_fn(a: Record, b: Record):
             return a.call(b)
     # raise OperatorError(f"Line {Context.line}: "
     #                     f"right-hand operand of dot operator should be string or list of arguments.  Found {b}.")
-
-def temp_new_dot_fn(*args, **kwargs):
-    pass
 
 
 def py_dot(a: PyObj, b: PyValue):
@@ -248,16 +333,18 @@ def py_dot(a: PyObj, b: PyValue):
             return piliize(a.obj(*[arg.value for arg in args]))
 
 
-Op['.'].fn = Function({AnyBinopPattern: dot_fn,
+caller_patt = ArgsMatcher(AnyParam, AnyParam, named_params={'caller': Parameter(AnyMatcher(), 'caller', '?')})
+
+Op['.'].fn = Function({caller_patt: dot_fn,
                        # ArgsMatcher(AnyParam, AnyParam, caller=AnyParam): temp_new_dot_fn,
                        StringParam: lambda a: Context.deref(a.value),
                        ArgsMatcher(Parameter(TableMatcher(BuiltIns['PythonObject'])),
-                                   Parameter(Union(TraitMatcher(FuncTrait), TableMatcher(BuiltIns['Table'])))):
+                                   Parameter(UnionMatcher(TraitMatcher(FuncTrait), TableMatcher(BuiltIns['Table'])))):
                            py_dot,  # I don't remember why the second parameter for the pydot is func|table ???
                        ArgsMatcher(Parameter(TableMatcher(BuiltIns['PythonObject'])), AnyParam): py_dot
                        })
 
-Op['.?'].fn = Function({AnyBinopPattern:
+Op['.?'].fn = Function({caller_patt:
                             lambda a, b: BuiltIns['.'].call(a,b)
                                          if BuiltIns['has'].call(a, b).value else py_value(None),
                         ArgsMatcher(StringParam):
@@ -347,8 +434,8 @@ Op['is'].fn = Function({AnyBinopPattern: lambda a, b: py_value(bool(patternize(b
                        name='is')
 Op['is not'].fn = Function({AnyBinopPattern: lambda a, b: py_value(not patternize(b).match_score(a))},
                            name='is not')
-Op['|'].fn = Function({AnyBinopPattern: lambda *args: Union(*map(patternize, args))},
-                   name='|')
+Op['|'].fn = Function({AnyBinopPattern: lambda *args: UnionMatcher(*map(patternize, args))},
+                      name='|')
 Op['<'].fn = Function({NormalBinopPattern: lambda a, b: py_value(a.value < b.value)},
                    name='<')
 Op['>'].fn = Function({NormalBinopPattern: lambda a, b: py_value(a.value > b.value)},
@@ -385,8 +472,8 @@ Op['**'].fn = Function({ArgsMatcher(NumericParam, NumericParam): lambda a, b: py
                     name='**')
 Op['^'].fn = Function({ArgsMatcher(NumericParam, NumericParam): lambda a, b: py_value(a.value ** b.value)},
                    name='^')
-Op['?'].fn = Function({AnyParam: lambda p: Union(patternize(p), ValueMatcher(BuiltIns['blank']))},
-                   name='?')
+Op['?'].fn = Function({AnyParam: lambda p: UnionMatcher(patternize(p), ValueMatcher(BuiltIns['blank']))},
+                      name='?')
 def has_option(fn: Record, arg: Record = None) -> PyValue:
     if arg is None:
         fn, arg = None, fn
@@ -1444,6 +1531,23 @@ Op['+'].fn = Function({NormalBinopPattern: lambda a, b: py_value(a.value + b.val
 #                                     string_guard(op_sym))
 #         # add_guards(op)
 
+def make_op_equals_functions(sym: str):
+    op_fn = Op[sym].fn
+    op_name = sym + '='
+    Op[op_name].fn = Function({ArgsMatcher(StringParam, AnyParam):
+                                   lambda name, val: Context.env.assign(name.value,
+                                                                        op_fn.call(Context.deref(name), val)),
+                               ArgsMatcher(FunctionParam, AnyParam, AnyParam):
+                                   lambda *args: set_or_assign_option(*args, operation=op_fn),
+                               ArgsMatcher(AnyParam, StringParam, AnyParam):
+                                   lambda rec, name, val: rec.set(name.value, op_fn.call(rec.get(name.value), val))
+                               }, name=op_name)
+    Op[op_name].eval_args = eval_assign_args
+
+
+for sym in ('+', '-', '*', '/', '//', '**', '%', '??', '&', '|'):
+    make_op_equals_functions(sym)
+
 """ This is an option that matches (1) value int (the trait itself) and (2) any int value.  Eg, `int < 2`.
     The resolution of the option is a function that returns a pattern.  The pattern is an int trait matcher, with a
     specification via Lambda Matcher that said int ought to be less than the value in the pattern expression. 
@@ -1451,43 +1555,43 @@ Op['+'].fn = Function({NormalBinopPattern: lambda a, b: py_value(a.value + b.val
 for trait in ('int', 'ratio', 'float', 'num'):
     Op['<'].fn.assign_option(ArgsMatcher(Parameter(ValueMatcher(BuiltIns[trait])),
                                          Parameter(TraitMatcher(BuiltIns['num']))),
-                             lambda _, x: Intersection(TraitMatcher(BuiltIns[trait]),
-                                                       LambdaMatcher(lambda y: y.value < x.value))
+                             lambda _, x: IntersectionMatcher(TraitMatcher(BuiltIns[trait]),
+                                                              LambdaMatcher(lambda y: y.value < x.value))
                              )
     Op['<='].fn.assign_option(ArgsMatcher(Parameter(ValueMatcher(BuiltIns[trait])),
                                           Parameter(TraitMatcher(BuiltIns['num']))),
-                              lambda _, x: Intersection(TraitMatcher(BuiltIns[trait]),
-                                                        LambdaMatcher(lambda y: y.value <= x.value))
+                              lambda _, x: IntersectionMatcher(TraitMatcher(BuiltIns[trait]),
+                                                               LambdaMatcher(lambda y: y.value <= x.value))
                               )
     Op['>='].fn.assign_option(ArgsMatcher(Parameter(ValueMatcher(BuiltIns[trait])),
                                           Parameter(TraitMatcher(BuiltIns['num']))),
-                              lambda _, x: Intersection(TraitMatcher(BuiltIns[trait]),
-                                                        LambdaMatcher(lambda y: y.value >= x.value))
+                              lambda _, x: IntersectionMatcher(TraitMatcher(BuiltIns[trait]),
+                                                               LambdaMatcher(lambda y: y.value >= x.value))
                               )
     Op['>'].fn.assign_option(ArgsMatcher(Parameter(ValueMatcher(BuiltIns[trait])),
                                          Parameter(TraitMatcher(BuiltIns['num']))),
-                             lambda _, x: Intersection(TraitMatcher(BuiltIns[trait]),
-                                                       LambdaMatcher(lambda y: y.value > x.value))
+                             lambda _, x: IntersectionMatcher(TraitMatcher(BuiltIns[trait]),
+                                                              LambdaMatcher(lambda y: y.value > x.value))
                              )
 
 for trait in ('str', 'list'):
     Op['<'].fn.assign_option(ArgsMatcher(Parameter(ValueMatcher(BuiltIns[trait])),
                                          Parameter(TraitMatcher(BuiltIns['num']))),
-                             lambda _, x: Intersection(TraitMatcher(BuiltIns[trait]),
-                                                       LambdaMatcher(lambda y: len(y.value) < x.value))
+                             lambda _, x: IntersectionMatcher(TraitMatcher(BuiltIns[trait]),
+                                                              LambdaMatcher(lambda y: len(y.value) < x.value))
                              )
     Op['<='].fn.assign_option(ArgsMatcher(Parameter(ValueMatcher(BuiltIns[trait])),
                                           Parameter(TraitMatcher(BuiltIns['num']))),
-                              lambda _, x: Intersection(TraitMatcher(BuiltIns[trait]),
-                                                        LambdaMatcher(lambda y: len(y.value) <= x.value))
+                              lambda _, x: IntersectionMatcher(TraitMatcher(BuiltIns[trait]),
+                                                               LambdaMatcher(lambda y: len(y.value) <= x.value))
                               )
     Op['>='].fn.assign_option(ArgsMatcher(Parameter(ValueMatcher(BuiltIns[trait])),
                                           Parameter(TraitMatcher(BuiltIns['num']))),
-                              lambda _, x: Intersection(TraitMatcher(BuiltIns[trait]),
-                                                        LambdaMatcher(lambda y: len(y.value) >= x.value))
+                              lambda _, x: IntersectionMatcher(TraitMatcher(BuiltIns[trait]),
+                                                               LambdaMatcher(lambda y: len(y.value) >= x.value))
                               )
     Op['>'].fn.assign_option(ArgsMatcher(Parameter(ValueMatcher(BuiltIns[trait])),
                                          Parameter(TraitMatcher(BuiltIns['num']))),
-                             lambda _, x: Intersection(TraitMatcher(BuiltIns[trait]),
-                                                       LambdaMatcher(lambda y: len(y.value) > x.value))
+                             lambda _, x: IntersectionMatcher(TraitMatcher(BuiltIns[trait]),
+                                                              LambdaMatcher(lambda y: len(y.value) > x.value))
                              )

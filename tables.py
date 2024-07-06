@@ -68,8 +68,21 @@ class frozendict(dict):
                 self.hash = hash(frozenset(self))
             return self.hash
 
-    def __setitem__(self, key, value):
-        raise ValueError('Cannot change values of immutable frozendict: ', self)
+    def __setitem__(self, *args, **kwargs):
+        raise RuntimeError(f'Cannot change values of immutable {repr(self)}.')
+
+    __delitem__ = pop = popitem = clear = update = setdefault = __setitem__
+
+    def __add__(self, other: tuple | dict):
+        new = frozendict(self)
+        dict.update(new, other)
+        return new
+
+    def __str__(self):
+        return super().__str__()
+
+    def __repr__(self):
+        return f"frozendict({super().__repr__()})"
 
 
 class OptionCatalog:
@@ -137,16 +150,8 @@ class OptionCatalog:
             key = Args(*key)  # I don't think this should happen anymore
         if key in self.op_map:
             return self.op_map[key], {}
-        # match key:
-        #     case tuple() if key in self.op_map:
-        #         return self.op_map[key], {}
-        #     case Args():
-        #         if key in self.op_map:
-        #             return self.op_map[key], {}
-        #     case Args(positional_arguments=pos) if not (key.named_arguments or key.flags):
-        #         if pos in self.op_map:
-        #             return self.op_map[pos], {}
-
+        if Context.debug and self is BuiltIns['.']:
+            Context.debug = 0  # pause debugger
         option = bindings = None
         high_score = 0
         for opt in self.op_list:
@@ -156,6 +161,8 @@ class OptionCatalog:
             if score > high_score:
                 high_score = score
                 option, bindings = opt, saves
+        if Context.debug == 0 and self is BuiltIns['.']:
+            Context.debug = True  # unpause debug
         return option, bindings
 
     def select_by_pattern(self, patt, default=None):
@@ -211,7 +218,7 @@ class Record:
     #             raise RuntimeErr
     # key = property(get_key, set_key)
 
-    def get(self, name: str, *default, search_table_frame_too=True):
+    def get(self, name: str, *default, search_table_frame_too=False):
         if name in self.table.getters:
             match self.table.getters[name]:
                 case int() as idx:
@@ -247,7 +254,7 @@ class Record:
     # def call(self, args: Args) -> Record: ...
     """ A Record can be called on multiple values (like calling a regular function) with flags and kwargs, in which 
     case it will build an Args object.  Or, it can be called on an already built Args object. """
-    def call(self, *args, flags=None, **kwargs):
+    def call(self, *args, flags=None, caller=None, **kwargs):
         match args:
             case [Args()] if flags is None and not kwargs:
                 args = args[0]
@@ -259,7 +266,7 @@ class Record:
 
         option, bindings = self.select(args)
         if option:
-            return option.resolve(args, self, bindings)
+            return option.resolve(args, caller or self, bindings)
         raise NoMatchingOptionError(f"Line {Context.line}: {args} not found in {self.name or self}")
 
         # if not isinstance(args, Args):
@@ -477,9 +484,9 @@ class Function(Record, OptionCatalog):
             case Setter(fn=fn):
                 self.setter_dict[name] = fn
 
-    def get(self, name: str, *default, search_table_frame_too=True):
+    def get(self, name: str, *default, search_table_frame_too=False):
         if self.frame:
-            val = self.frame.vars.get(name, self.frame.locals.get(name, None))
+            val = self.frame[name]
             if val:
                 return val
         # if name in self.slot_dict:
@@ -1604,11 +1611,11 @@ class MatchState:
                 self.bindings[name] = BuiltIns['true']
                 self.i_param += 1
                 continue
-            if isinstance(param.pattern, Union):
+            if isinstance(param.pattern, UnionMatcher):
                 # TODO: I don't think this is logically sound.  I think I need to find a new approach.  I need to abstract more.
                 param_tuple = self.parameters.parameters
                 param_list = list(param_tuple)
-                for patt in param.pattern.patterns:
+                for patt in param.pattern.matchers:
                     param_list[self.i_param] = Parameter(patt)
                     self.parameters.parameters = tuple(param_list)
                     new_params = [*self.parameters[:self.i_param], param, *self.parameters[self.i_param + 1:]]
@@ -1873,8 +1880,8 @@ class Frame:
     return_value = None
     def __init__(self, scope, args=None, caller=None, bindings=None, fn=None):
         # self.names = bindings or {}
-        self.vars = bindings or {}
-        self.locals = {}
+        self.vars = {}
+        self.locals = bindings or {}
         # self.block = block
         # self.scope = code_block.scope
         self.scope = scope
@@ -1978,8 +1985,8 @@ class Option(Record):
             if isinstance(args, Args):
                 return call(self.fn, args)
             return self.fn(*args)
-        if self.dot_option:
-            caller = args[0]
+        # if self.dot_option:
+        #     caller = args[0]
         if self.block:
             return self.block.execute(args, caller, bindings)
             # closure = Closure(self.block, args, caller, bindings)
