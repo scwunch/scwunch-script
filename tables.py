@@ -78,6 +78,11 @@ class frozendict(dict):
         dict.update(new, other)
         return new
 
+    def __sub__(self, other):
+        new = frozendict(self)
+        dict.__delitem__(new, other)
+        return new
+
     def __str__(self):
         return super().__str__()
 
@@ -124,11 +129,12 @@ class OptionCatalog:
 
         if Context.settings['sort_options']:
             for i, opt in enumerate(self.op_list):
-                if option.pattern <= opt.pattern:
-                    self.op_list.insert(i, option)
+                if option.pattern == opt.pattern:
+                    if not no_clobber:
+                        self.op_list[i] = option
                     break
-                elif option.pattern == opt.pattern and not no_clobber:
-                    self.op_list[i] = option
+                elif option.pattern <= opt.pattern:
+                    self.op_list.insert(i, option)
                     break
             else:
                 self.op_list.append(option)
@@ -157,11 +163,13 @@ class OptionCatalog:
         for opt in self.op_list:
             score, saves = opt.pattern.match_zip(key)
             if score == 1:
+                if Context.debug is 0:
+                    Context.debug = True  # unpause debug
                 return opt, saves
             if score > high_score:
                 high_score = score
                 option, bindings = opt, saves
-        if Context.debug == 0 and self is BuiltIns['.']:
+        if Context.debug is 0:
             Context.debug = True  # unpause debug
         return option, bindings
 
@@ -367,10 +375,11 @@ class PyValue(Record, Generic[T]):
 
     def __index__(self) -> int | None:
         if not isinstance(self.value, int | bool):
-            raise TypeErr(f"Line {Context.line}: Index must be integer, not {self.table}")
+            raise TypeErr(f"Line {Context.line}: Value used as seq index must have trait int. "
+                          f"{self} is a record of {self.table}")
         if not self.value:
             # return None  -->  TypeError: __index__ returned non-int (type NoneType)
-            raise ValueError(f"Line {Context.line}: Pili indices start at 1, so 0 is not a valid index.")
+            raise ValueError(f"Line {Context.line}: Pili indices start at ±1.  0 is not a valid index.")
         return self.value - (self.value > 0)
 
     @property
@@ -426,14 +435,15 @@ def py_value(value: T | object):
             table = BuiltIns[class2table[type(value).__name__]]
             t = type(value)
             value = t(map(py_value, value))
-        case dict():
-            raise NotImplementedError
+        case dict() as d:
+            table = BuiltIns['Function']
+            value = Function({py_value(k): py_value(v) for k, v in d.items()})
         case Record():
             return value
-        case Parameter():
-            return ArgsMatcher(value)
-        case Matcher() as t:
-            return ArgsMatcher(Parameter(t))
+        # case Parameter():
+        #     return ParamSet(value)
+        # case Matcher() as t:
+        #     return ParamSet(Parameter(t))
         case _:
             return PyObj(value)
     return PyValue(table, value)
@@ -742,10 +752,10 @@ class Table(Function):
                             self.setters[name] = fn
 
         self.defaults = tuple(defaults[n] for n in defaults)
-        patt = ArgsMatcher(*(Parameter(types[name],
-                                       name,
+        patt = ParamSet(*(Parameter(types[name],
+                                    name,
                                        "?" * (defaults[name] is not None))
-                                for name in defaults))
+                          for name in defaults))
 
         self.assign_option(patt,
                            Native(lambda args: BuiltIns['new'].call(Args(Context.env.caller) + args)),
@@ -880,7 +890,7 @@ class Field(Record):
             formula = py_value(None)
         super().__init__(BuiltIns['Field'])
         # , name=py_value(name),
-        # type=ArgsMatcher(Parameter(type)) if type else BuiltIns['blank'],
+        # type=ParamSet(Parameter(type)) if type else BuiltIns['blank'],
         # is_formula=py_value(formula is not None),
         # default=default, formula=formula)
 
@@ -889,7 +899,7 @@ class Slot(Field):
     def __init__(self, name, type, default=None):
         match default:
             case Function(op_list=[Option(pattern=
-                                          ArgsMatcher(parameters=(Parameter(binding='self'),))
+                                          ParamSet(parameters=(Parameter(binding='self'), ))
                                           )]):
                 pass  # assert that default is a function whose sole option is [<patt> self]: ...
             case _:
@@ -1068,7 +1078,7 @@ class Setter(Field):
 #
 #
 # class FunctionMatcher(Matcher):
-#     # pattern: ArgsMatcher
+#     # pattern: ParamSet
 #     # return_type: Matcher
 #     def __init__(self, pattern, return_type, name=None, guard=None, inverse=False):
 #         self.pattern = pattern
@@ -1187,7 +1197,7 @@ class Setter(Field):
 #         # return state.match_zip()
 #
 #
-# class ArgsMatcher(Matcher):
+# class ParamSet(Matcher):
 #     parameters: tuple
 #     # machine: VM
 #     named_params: frozendict
@@ -1196,13 +1206,13 @@ class Setter(Field):
 #         self.named_params = frozendict(named_params)
 #         # self.vm = VM(parameters)
 #         super().__init__()
-#         # super().__init__(BuiltIns['ArgsMatcher'])  # , parameters=py_value(parameters))
+#         # super().__init__(BuiltIns['ParamSet'])  # , parameters=py_value(parameters))
 #
 #     def match_score(self, *values: Record) -> int | float:
 #         return self.match_zip(values)[0]
 #
 #     def issubset(self, other):
-#         return (isinstance(other, ArgsMatcher)
+#         return (isinstance(other, ParamSet)
 #                 and all(p1.issubset(p2) for (p1, p2) in zip(self.parameters, other.parameters))
 #                 and all(self.named_params[k].issubset(other.named_params[k])
 #                         for k in set(self.named_params).union(other.named_params)))
@@ -1296,17 +1306,17 @@ class Setter(Field):
 #         return len(self.parameters)
 #
 #     def __lt__(self, other):
-#         if not isinstance(other, ArgsMatcher):
+#         if not isinstance(other, ParamSet):
 #             return NotImplemented
 #         return self.parameters < other.parameters
 #
 #     def __le__(self, other):
-#         if not isinstance(other, ArgsMatcher):
+#         if not isinstance(other, ParamSet):
 #             return NotImplemented
 #         return self.parameters <= other.parameters
 #
 #     def __eq__(self, other):
-#         return (isinstance(other, ArgsMatcher)
+#         return (isinstance(other, ParamSet)
 #                 and self.parameters == other.parameters
 #                 and self.named_params == other.named_params)
 #
@@ -1314,17 +1324,17 @@ class Setter(Field):
 #         return hash((self.parameters, self.named_params))
 #
 #     def __gt__(self, other):
-#         if not isinstance(other, ArgsMatcher):
+#         if not isinstance(other, ParamSet):
 #             return NotImplemented
 #         return self.parameters > other.parameters
 #
 #     def __ge__(self, other):
-#         if not isinstance(other, ArgsMatcher):
+#         if not isinstance(other, ParamSet):
 #             return NotImplemented
 #         return self.parameters >= other.parameters
 #
 #     def __repr__(self):
-#         return f"ArgsMatcher({', '.join(self.parameters)}{'; ' + str(self.named_params) if self.named_params else ''})"
+#         return f"ParamSet({', '.join(self.parameters)}{'; ' + str(self.named_params) if self.named_params else ''})"
 #
 # class Intersection(Pattern):
 #     patterns: tuple[Pattern, ...]
@@ -1449,7 +1459,7 @@ class Setter(Field):
 #             if isinstance(default, Option):
 #                 self.default = default
 #             else:
-#                 self.default = Option(ArgsMatcher(), default)
+#                 self.default = Option(ParamSet(), default)
 #             match quantifier:
 #                 case "":
 #                     quantifier = '?'
@@ -1511,7 +1521,7 @@ class Setter(Field):
 #                 pass
 #             case Matcher() | Pattern():
 #                 param = Parameter(other)
-#             case ArgsMatcher(parameters=(param, ), named_params={}):
+#             case ParamSet(parameters=(param, ), named_params={}):
 #                 pass
 #             case _:
 #                 return False
@@ -1551,12 +1561,12 @@ class MatchState:
         self.named_params = named_params or self.pattern.named_params.copy()
         # self.done = i_param == len(parameters) and i_arg == len(args)
         if i_param > len(pattern.parameters) or i_arg > len(args.positional_arguments):
-            raise RuntimeErr(f"Line {Context.line}: ArgsMatcher error: i_param or i_arg went out of bounds.")
+            raise RuntimeErr(f"Line {Context.line}: ParamSet error: i_param or i_arg went out of bounds.")
 
     @property
     def success(self):
         if self.i_param > len(self.pattern.parameters) or self.i_arg > len(self.args.positional_arguments):
-            raise RuntimeErr(f"Line {Context.line}: ArgsMatcher error: i_param or i_arg went out of bounds.")
+            raise RuntimeErr(f"Line {Context.line}: ParamSet error: i_param or i_arg went out of bounds.")
         return (self.i_param == len(self.pattern.parameters)
                 and self.i_arg == len(self.args.positional_arguments)
                 # and used up named arguments
@@ -1927,12 +1937,12 @@ class Option(Record):
     return_type = None
     def __init__(self, pattern, resolution=None):
         match pattern:
-            case ArgsMatcher():
+            case ParamSet():
                 self.pattern = pattern
             case Parameter() as param:
-                self.pattern = ArgsMatcher(param)
+                self.pattern = ParamSet(param)
             case _:
-                self.pattern = ArgsMatcher(Parameter(patternize(pattern)))
+                self.pattern = ParamSet(Parameter(patternize(pattern)))
         if resolution is not None:
             self.resolution = resolution
         super().__init__(BuiltIns['Option'])  # , signature=self.pattern, code_block=self.resolution)

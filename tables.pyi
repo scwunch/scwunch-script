@@ -5,7 +5,7 @@ from Env import *
 from typing import TypeVar, Generic, overload
 from patterns import *
 
-FlexiPatt = ArgsMatcher | Parameter | Matcher | str
+FlexiPatt = ParamSet | Parameter | Matcher | str
 PyFunction = type(lambda : None)
 
 
@@ -222,9 +222,9 @@ class ValueMatcher(Matcher):
     def __hash__(self): ...
 
 class FunctionMatcher(Matcher):
-    pattern: ArgsMatcher
+    pattern: ParamSet
     return_type: Matcher
-    def __init__(self, pattern: ArgsMatcher, return_type: Matcher, name=None, guard=None, inverse=False): ...
+    def __init__(self, pattern: ParamSet, return_type: Matcher, name=None, guard=None, inverse=False): ...
     def __eq__(self, other): ...
     def __hash__(self): ...
 
@@ -262,7 +262,7 @@ class Parameter(Pattern):
     def bytecode(self) -> VM: ...
     def match_score(self, value: Record) -> int | float: ...
 
-class ArgsMatcher(Matcher):
+class ParamSet(Matcher):
     """
     a sequence of zero or more parameters, together with their quantifiers
     as well as named parameters
@@ -274,7 +274,7 @@ class ArgsMatcher(Matcher):
     def __init__(self, *parameters: Parameter, **named_params: Parameter): ...
     def to_args(self) -> Args | None: ...
     def match_score(self, *values: Record) -> int | float: ...
-    def issubset(self, other: ArgsMatcher) -> bool: ...
+    def issubset(self, other: ParamSet) -> bool: ...
     def min_len(self) -> int: ...
     def max_len(self) -> int | float: ...
     # def match_zip_recursive(self, state: MatchState) -> 0 | tuple[int|float, dict[str, Record]]: ...
@@ -285,7 +285,7 @@ class ArgsMatcher(Matcher):
     def __hash__(self): ...
 
 class MatchState:
-    pattern: ArgsMatcher
+    pattern: ParamSet
     args: Args
     i_param: int
     i_arg: int
@@ -294,7 +294,7 @@ class MatchState:
     bindings: dict[str, Record | list[Record]]
     satisfied_named_params: set[str]
     named_params: dict[str, Parameter]
-    def __init__(self, pattern: ArgsMatcher, args: Args, i_param=0, i_arg=0, named_params=None, score=0, param_score=0, bindings=None): ...
+    def __init__(self, pattern: ParamSet, args: Args, i_param=0, i_arg=0, named_params=None, score=0, param_score=0, bindings=None): ...
     @property
     def success(self) -> int | float: ...
     @property
@@ -306,8 +306,8 @@ class MatchState:
     def score_and_bindings(self) -> (int | float, dict[str, Record | list[Record]]): ...
 
 # class SubPattern:
-#     patterns: tuple[ArgsMatcher, ...]
-#     def __init__(self, *patterns: ArgsMatcher): ...
+#     patterns: tuple[ParamSet, ...]
+#     def __init__(self, *patterns: ParamSet): ...
 #
 # class UnionPattern(SubPattern): ...
 #
@@ -384,7 +384,7 @@ class GlobalFrame(Frame):
 opt_resolution = Record | Closure | PyFunction | None
 class Option(Record):
     # env: Closure
-    pattern: ArgsMatcher
+    pattern: ParamSet
     resolution: opt_resolution
     value: Record
     block: Closure

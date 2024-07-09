@@ -1,7 +1,7 @@
-# one comment
-# two comments
 function foo
-	[int a, str b+; num c = 0, num d]:
+	[int a, str b+; num c = 0, num d, *]:
+		if has 'other_name'
+			return other_name
 		return a, b, c, d
 		return str[a] + str[b] + str[c] + str[d]
 
@@ -9,7 +9,7 @@ print foo[a=-1, "one", "two", "three", d=20/30]
 
 print foo[1, "two", c=55, d=1/2]
 
-
+print foo[a=1, "two", c=55, d=1/2, other_name='YES!']
 
 
 
@@ -148,42 +148,46 @@ foo[str|int]: 'it worked'
 test[24] = foo[4] + foo["4"] == 'it worked' * 2
 print 'test 24 ' + ('passed' if test[24] else 'FAILED')
 
-foo2[str|int|bool var_name]: string[var_name] + ' worked'
+foo2[str|int|bool var_name]: str[var_name] + ' worked'
 test[25] = foo2[1] == "1 worked"
 print 'test 25 ' + ('passed' if test[25] else 'FAILED')
 
-Cat =
-	str name:
-		name = "😸 " + name
-	.meow: "hello my name is " + self.name
-	.string: "Cat " + self.name
+table Cat
+	slot name str
+	[str name]:
+		return Cat.new[name = "😸 " + name]
+	.meow:
+		return "hello my name is " + self.name
+	.str:
+		return "Cat " + self.name
 
 my_cat = Cat["Ruby"]
-test[30] = string[my_cat] == my_cat.string and my_cat.string == "Cat 😸 Ruby"
+test[30] = str[my_cat] == my_cat.str and my_cat.str == "Cat 😸 Ruby"
 print 'test 30 ' + ('passed' if test[30] else 'FAILED')
 
 numberlicious = int|float|bool|ratio
-add[numberlicious a, numberlicious b]: integer[a] + b
+add[numberlicious a, numberlicious b]: int[a] + b
 fav_num = 5
 test[31] = add[fav_num, 5]  == fav_num.add[5]
 print 'test 31 ' + ('passed' if test[31] else 'FAILED')
 
 
-test[32] = type[-10 / 20].string == "ratio" \
-	and type[4 * (1 + (-15 / 4))].string == "int" \
-		and type[1.0 / 1 + 1].string == "float"
-# print type[-10/20]
-# print type[4 * (1 + (-15 / 4))]
-# print type[1.0 / 1 + 1]
+test[32] = type[-10 / 20].str == "Fraction" \
+	and type[4 * (1 + (-15 / 4))].str == "Integer" \
+		and type[1.0f / 1 + 1].str == "Float"
+print type[-10/20]
+print type[4 * (1 + (-15 / 4))]
+print type[1.0f / 1 + 1]
 print 'test 32 ' + ('passed' if test[32] else 'FAILED')
 
-int_patt = int[-3, 5]
-test[33] = 1 ~ int_patt and -11 !~ int_patt and 0.0 !~ int_patt
-small_str = str[1, 3]
-word_str = str[`\w+`]
-test[33] = test[33] and 'hi' ~ small_str and '' !~ small_str and 'too long' !~ small_str
-test[33] = test[33] and 'hi' ~ word_str and 'two words' !~ word_str
-print 'test 33 ' + ('passed' if test[33] else 'FAILED')
+# int_patt = int[-3, 5]
+# test[33] = 1 ~ int_patt and -11 !~ int_patt and 0.0 !~ int_patt
+# small_str = str[1, 3]
+# word_str = str[`\w+`]
+# test[33] = test[33] and 'hi' ~ small_str and '' !~ small_str and 'too long' !~ small_str
+# test[33] = test[33] and 'hi' ~ word_str and 'two words' !~ word_str
+# print 'test 33 ' + ('passed' if test[33] else 'FAILED')
+print "test 33 deprecated (don't want int[-3, 5] and str[1, 3] patterns builtin anymore)"
 
 neg_int = int < 0
 long_str = str >= 5
@@ -203,20 +207,21 @@ print 'test 35 ' + ('passed' if test[35] == 10 else 'FAILED')
 
 
 my_list = []
-my_list[1] = 'one'
+test[40] = 'one'
+debug my_list[1] = 'one'
 my_list[2] = 'two'
-my_list['not a number'] = 7d
+# my_list['not a number'] = 7d
 my_list[3] = 'three'
 test[40] = len[my_list] == 3
 my_list.push['another value']
-test[40] = test[40] and len[my_list] == 4 # and my_list[-1] == 'another value'
+test[40] = test[40] and len[my_list] == 4 and my_list[-1] == 'another value'
 print 'test 40 ' + ('passed' if test[40] else 'FAILED')
 
 test[41] = my_list.push[55].len == 5 and my_list[1] == 'one' and my_list[-5] == 'one'
 print 'test 41 ' + ('passed' if test[41] else 'FAILED')
 
 my_func = {}
-my_func = {any arg: string[arg], num arg: string[arg+1]}
+my_func = {any arg: str[arg], num arg: str[arg+1]}
 test[42] = my_func["ANY ARG"] == "ANY ARG" and my_func[42] == "43"
 print 'test 42 ' + ('passed' if test[42] else 'FAILED')
 
@@ -277,7 +282,7 @@ print 'test 52 ' + ('passed' if test[52] else 'FAILED')
 
 join_strings[str items+, num n?]:
 	if has 'n'
-		items.push[n.string]
+		items.push[n.str]
 	return items.join[' :: ']
 
 test[53] = join_strings["hi"] == 'hi' and join_strings["hi", "there"] == "hi :: there" and join_strings["hi", "there", "someone"] == "hi :: there :: someone" and join_strings["hi", 1] == "hi :: 1" and join_strings["hi", "there", 3.5d] == "hi :: there :: 3.3"
@@ -291,9 +296,9 @@ print_test[53]
 ifs[int i*, float f?, str s+]:
 	result = ''
 	if has 'i' and len[i]
-		result = string[i]
+		result = str[i]
 	if has 'f'
-		result = result + ' ' * bool[result] + string[f]
+		result = result + ' ' * bool[result] + str[f]
 	return result + ' ' * bool[result] + '"' + s.join[' '] + '"'
 
 test[54] = ifs['oh'] == '"oh"' and ifs[1, 'oh'] == '[1] "oh"' and ifs[0.555, 'oh'] == '0.555 "oh"' and ifs[2, 0.0003, 'oh'] == '[2] 0.0003 "oh"' and ifs[2, 1, 11, 0.4, 'oh', 'my'] == '[2, 1, 11] 0.4 "oh my"'
@@ -315,7 +320,7 @@ joiner =
 	[list ls, str sep]:
 		result = ''
 		for s in ls
-			result = result + s.string + sep
+			result = result + s.str + sep
 		return result
 	list ls:
 		return joiner[ls, ' ']
@@ -343,12 +348,12 @@ joiner =
 fsnfi[float f1?, str s*, num n*, float f2+, int op_i?]:
 	arguments = []
 	if has 'f1'
-		arguments.push['f1='+f1.string]
-	arguments.push['s='+s.string]
-	arguments.push['n='+n.string]
-	arguments.push['f2='+f2.string]
+		arguments.push['f1='+f1.str]
+	arguments.push['s='+s.str]
+	arguments.push['n='+n.str]
+	arguments.push['f2='+f2.str]
 	if has 'op_i'
-		arguments.push['op_i='+op_i.string]
+		arguments.push['op_i='+op_i.str]
 	return arguments.joiner
 
 test[100] = fsnfi[0.11, 'string', 1/2, -3.2] == 'f1=0.11 s=[string] n=[1/2] f2=[-3.2] '
@@ -380,7 +385,7 @@ print_test[103]
 cat_names = ['Chairman Meow', 'Purrfect', 'Fuzz Aldrin']
 cats = cat_names..Cat
 test[104] = cats..name == ['😸 Chairman Meow', '😸 Purrfect', '😸 Fuzz Aldrin']
-test[104] = test[104] and cats..string.join['\n'] == 'Cat 😸 Chairman Meow\nCat 😸 Purrfect\nCat 😸 Fuzz Aldrin'
+test[104] = test[104] and cats..str.join['\n'] == 'Cat 😸 Chairman Meow\nCat 😸 Purrfect\nCat 😸 Fuzz Aldrin'
 threeCats = [Cat, Cat, Cat]
 cats = threeCats..["ralph"]
 test[104] = test[104] and cats..meow.join[''] == 'hello my name is 😸 ralph' * 3
@@ -392,14 +397,14 @@ for i in test
 	count += 1
 	for j in [1,2,3,4,5]
 		1
-		# print i.string +', ' + j.string
+		# print i.str +', ' + j.str
 		if count > 1 and j == 4
 			break 2
-			print "count = " + count.string + "j = " + j.string
+			print "count = " + count.str + "j = " + j.str
 	if count >= 14
 		break
 	count += 5 * (count > 1)
-	# print "count = " + count.string
+	# print "count = " + count.str
 
 test[105] = j == 4 and count == 2
 print_test[105]
@@ -414,29 +419,29 @@ for i in test
 	for j in [1,2,3,4,5]
 		if j > 4.5
 			continue
-		# print 'j='+j.string
+		# print 'j='+j.str
 		if j > 2.5
 			continue 2
 	if j > 2.5 and count >= 5
 		print "WILL NOT PRINT THIS LINE"
-	# print 'count='+count.string
+	# print 'count='+count.str
 	if count >= 10
 		break
-# print 'COUNT='+count.string
-# print 'J='+j.string
+# print 'COUNT='+count.str
+# print 'J='+j.str
 test[110] = count == 14 and j == 3
 print_test[110]
 
 
-pili.settings.set['base', 'd']
+settings.base = 'd'  # pili.settings.set['base', 'd']
 99  # no error
-test[43] = 19 == 19d and pili.settings.get['base'] == 'd'
+test[43] = 19 == 19d and settings.base == 'd'  # pili.settings.get['base'] == 'd'
 pili.settings.set['base', 'h']
-test[43] = test[43] and pili.settings.get['base'] == 'h'
+test[43] = test[43] and settings.base == 'h'  # pili.settings.get['base'] == 'h'
 print_test[111]
 
 
-test[112] = len[test].string[14] == '43' and number['9.5', 10d] == 13.3
+test[112] = len[test].str[14] == '43' and num['9.5', 10d] == 13.3
 print_test[112]
 
 
@@ -449,8 +454,8 @@ some_options =
 # print some_options[5]
 # print some_options.names
 # print some_options.keys
-print [len, options, names, keys]..[some_options]..string.join['\n']
-test[113] = [len, options, names, keys]..[some_options]..string.join['\n'] \
+print [len, options, names, keys]..[some_options]..str.join['\n']
+test[113] = [len, options, names, keys]..[some_options]..str.join['\n'] \
 	== '3\n[[Any x], [ValuePattern(5)], [ValuePattern(named_option) named_option]]\n[named_option, x]\n[5, named_option]' \
 	or true
 print_test[113]
@@ -553,7 +558,7 @@ for t in test
 		all_test_passed = false
 		break
 if all_test_passed
-	print "All " + string[test.len] + " tests passed!"
+	print "All " + str[test.len] + " tests passed!"
 else
 	print "some tests failed :("
 

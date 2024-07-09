@@ -350,8 +350,12 @@ class ListNode(ArrayNode):
 class ParamsNode(ArrayNode):
     list_type = ListType.Params
     named_params: list[Node]
+    any_kwargs: bool = False
     def __init__(self, items: list[Node], named_params: list[Node]):
         self.items = items
+        if named_params and named_params[-1].source_text == '*':
+            named_params.pop()
+            self.any_kwargs = True
         self.named_params = named_params
         # for params in (items, named_params):
         #     for i in range(len(params)):
@@ -367,7 +371,7 @@ class ParamsNode(ArrayNode):
     def evaluate(self):
         # items = (n.evaluate() for n in self.nodes)
         # TODO: enable param flags and named parameters
-        def gen_params(nodes):
+        def gen_params(nodes) -> tuple[str, Parameter]:
             for node in nodes:
                 match node:
                     case BindExpr(name=name):
@@ -403,8 +407,9 @@ class ParamsNode(ArrayNode):
         #         case _:
         #             raise SyntaxErr(f"Line {Context.line}: Can't parse parameter {node}")
 
-        return ArgsMatcher(*(p[1] for p in gen_params(self.items)),
-                           named_params=dict(gen_params(self.named_params)))
+        return ParamSet(*(p[1] for p in gen_params(self.items)),
+                        named_params=dict(gen_params(self.named_params)),
+                        kwargs=self.any_kwargs)
 
     def __repr__(self):
         res = map(str, self.nodes)
@@ -930,18 +935,17 @@ class TableExpr(Command):
 
     def evaluate(self):
         # table = ListTable(name=self.table_name)
-        table = Context.env.locals[self.table_name]
-        assert isinstance(table, Table)
         # Context.env.assign(self.table_name, table)
         table = Context.deref(self.table_name)
+        if not isinstance(table, Table):
+            table = ListTable()
         traits = tuple(Context.deref(tname) for tname in self.traits)
         table.traits += traits
         for trait, name in zip(table.traits, self.traits):
             if not isinstance(trait, Trait):
-                raise TypeErr(f"Line: {Context.line}: '{name}' is not a Trait, it is {repr(trait)}")
+                raise TypeErr(f"Line: {Context.line}: expected trait, but '{name}' is {repr(trait)}")
         if self.body is not None:
             Closure(self.body).execute(fn=table)
-
         table.integrate_traits()
         return table
 
@@ -978,7 +982,7 @@ class SlotExpr(Command):
     def evaluate(self):
         slot_type = patternize(self.slot_type.evaluate())
         # match patternize(self.slot_type.evaluate()):
-        #     case ArgsMatcher(parameters=(Parameter(matcher=slot_type),)):
+        #     case ParamSet(parameters=(Parameter(matcher=slot_type),)):
         #         pass
         #     case _:
         #         raise TypeErr(f"Line {Context.line}: Invalid type: {self.slot_type.evaluate()}.  "
@@ -1030,12 +1034,12 @@ class FormulaExpr(Command):
     def evaluate(self):
         formula_type = patternize(self.formula_type.evaluate())
         # match patternize(self.formula_type.evaluate()):
-        #     case ArgsMatcher(parameters=(Parameter(pattern=formula_type), )):
+        #     case ParamSet(parameters=(Parameter(pattern=formula_type), )):
         #         pass
         #     case _:
         #         raise TypeErr(f"Line {Context.line}: Invalid type: {self.formula_type.evaluate()}.  "
         #                       f"Expected value, table, trait, or single-parameter pattern.")
-        patt = ArgsMatcher(Parameter(Context.env.fn, binding='self'))
+        patt = ParamSet(Parameter(Context.env.fn, binding='self'))
         formula_fn = Function({patt: Closure(self.block)})
         formula = Formula(self.formula_name, formula_type, formula_fn)
         match Context.env.fn:
@@ -1071,9 +1075,9 @@ class SetterExpr(Command):
                                 f"Eg, `setter description[str desc]: self._description = trim[desc]`")
 
     def evaluate(self):
-        # fn = Function({ArgsMatcher(Parameter(AnyMatcher(), 'self'), make_param(self.param_nodes)):
+        # fn = Function({ParamSet(Parameter(AnyMatcher(), 'self'), make_param(self.param_nodes)):
         #                    CodeBlock(self.block)})
-        params: ArgsMatcher = self.params.evaluate()
+        params: ParamSet = self.params.evaluate()
         params.parameters = (Parameter(AnyMatcher(), 'self'),) + params.parameters
         assert len(params) == 2
         fn = Function({params: Closure(self.block)})
@@ -1110,15 +1114,15 @@ class OptExpr(Command):
 
     def evaluate(self):
         match patternize(self.return_type.evaluate()):
-            case ArgsMatcher(parameters=(Parameter(pattern=Matcher() as return_type))):
+            case ParamSet(parameters=(Parameter(pattern=Matcher() as return_type))):
                 pass
             case Matcher() as return_type:
                 pass
             case _:
                 raise TypeErr(f"Line {Context.line}: Invalid return type: {self.return_type.evaluate()}.  "
                               f"Expected value, table, trait, or single-parameter pattern.")
-        # pattern = ArgsMatcher(*map(make_param, self.params))
-        pattern = ArgsMatcher(*(p.evaluate() for p in self.params))
+        # pattern = ParamSet(*map(make_param, self.params))
+        pattern = ParamSet(*(p.evaluate() for p in self.params))
         match Context.env.fn:
             case Trait() as trait:
                 pass
@@ -1254,8 +1258,8 @@ def eval_node(node: Node) -> Record:
                     return py_value(list(map(eval_node, items)))
                 case ListType.Args:
                     return eval_args_list(items)
-                case ListType.Params:
-                    return ArgsMatcher(*map(make_param, items))
+                # case ListType.Params:
+                #     return ParamSet(*map(make_param, items))
                 case ListType.Tuple:
                     return py_value(tuple(map(eval_node, items)))
                 case ListType.Function:
@@ -1485,9 +1489,9 @@ def split(nodes: list[Node], splitter: TokenType) -> list[list[Node]]:
 #         definite_env = not is_value
 #     params = map(make_param if not is_value else make_value_param, param_list)
 #     if dot_option:
-#         patt = ArgsMatcher(Parameter(TableMatcher(Context.env)), *params)
+#         patt = ParamSet(Parameter(TableMatcher(Context.env)), *params)
 #     else:
-#         patt = ArgsMatcher(*params)
+#         patt = ParamSet(*params)
 #     # try:
 #     #     # option = fn.select(patt, walk_prototype_chain=False, ascend_env=not definite_env)
 #     #     option = fn.select_by_pattern(patt, walk_prototype_chain=False, ascend_env=not definite_env)
@@ -1498,7 +1502,7 @@ def split(nodes: list[Node], splitter: TokenType) -> list[list[Node]]:
 #     option.dot_option = dot_option
 #     return option
 
-def read_option2(nodes: list[Node]) -> tuple[Function, ArgsMatcher, bool]:
+def read_option2(nodes: list[Node]) -> tuple[Function, ParamSet, bool]:
     nodes = nodes[:]
     dot_option = nodes[0].source_text == '.'
     if dot_option:
@@ -1582,14 +1586,14 @@ def read_option2(nodes: list[Node]) -> tuple[Function, ArgsMatcher, bool]:
 
     params = map(make_param, param_list)
     if dot_option:
-        # patt = ArgsMatcher(Parameter(TableMatcher(Context.env)), *params)
+        # patt = ParamSet(Parameter(TableMatcher(Context.env)), *params)
         raise NotImplementedError
     else:
-        patt = ArgsMatcher(*params)
+        patt = ParamSet(*params)
     return fn, patt, dot_option
 
 
-def read_option(nodes: list[Node]) -> tuple[Function, ArgsMatcher, bool]:
+def read_option(nodes: list[Node]) -> tuple[Function, ParamSet, bool]:
     nodes = nodes[:]
     dot_option = nodes[0].source_text == '.'
     if dot_option:
@@ -1646,9 +1650,9 @@ def read_option(nodes: list[Node]) -> tuple[Function, ArgsMatcher, bool]:
             case _:
                 raise RuntimeErr(f"Line {Context.line}: "
                          f"Dot options can only be declared in a scope which is a function, table, or trait.")
-        patt = ArgsMatcher(Parameter(matcher, name='self'), *params)
+        patt = ParamSet(Parameter(matcher, name='self'), *params)
     else:
-        patt = ArgsMatcher(*params)
+        patt = ParamSet(*params)
     return context_fn, patt, dot_option
 
 

@@ -29,13 +29,13 @@ else:
     # script_path = 'pili_interpreter.pili'
     print('(test mode) running script', script_path, '...')
 
-# pili = Function({ArgsMatcher(): lambda: NotImplemented}, name='pili')
+# pili = Function({ParamSet(): lambda: NotImplemented}, name='pili')
 # BuiltIns['pili'] = pili
 # for key, builtin in BuiltIns.items():
 #     if not getattr(builtin, 'name', False):
 #         builtin.name = key
 #     pili.names[key] = builtin
-#     # pili.add_option(ArgsMatcher(Parameter(Matcher(key))), builtin)
+#     # pili.add_option(ParamSet(Parameter(Matcher(key))), builtin)
 # Context.root = pili
 # Context.push(0, pili, Option(Any))
 
@@ -93,7 +93,7 @@ def execute_script(path):
     ast = AST(tokenizer)
     # print(ast)
     # print('**********************************')
-    # pili.assign_option(ArgsMatcher(), CodeBlock(ast.block))
+    # pili.assign_option(ParamSet(), CodeBlock(ast.block))
     # main_block = CodeBlock(ast.block)
     # BuiltIns['pili'] = root
     # for key, builtin in BuiltIns.items():
@@ -125,7 +125,7 @@ def execute_script(path):
 #     Inst().save('b')
 # ]
 #
-# pattern = ArgsMatcher(Parameter(TraitMatcher(IntTrait), 'a'),
+# pattern = ParamSet(Parameter(TraitMatcher(IntTrait), 'a'),
 #                       Parameter(TraitMatcher(StrTrait), 'b', '+'),
 #                       named_params={'c': Parameter(TraitMatcher(NumTrait), 'c', default=py_value(0)),
 #                                     'd': Parameter(TraitMatcher(NumTrait), 'd')})

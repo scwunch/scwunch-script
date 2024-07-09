@@ -18,24 +18,28 @@ def eval_assign_args(lhs: Node, rhs: Node) -> Args:
 
     match lhs:
         case Token(type=TokenType.Name, source_text=name):
-            """ name := value """
+            # name = value
+            if isinstance(val, Closure):
+                raise SyntaxErr("Cannot assign block to a name.  Blocks are only assignable to options.")
             return Args(py_value(name), val)  # str, any
         case ListNode():
-            """ [key] := value """
+            # [key] = value
             return Args(lhs.evaluate(), val)
         case OpExpr(op=Operator(text='.'),
                     terms=(Node() as fn_node, Token(type=TokenType.Name, source_text=name))):
-            """ foo.bar := value """
+            # foo.bar = value
+            if isinstance(val, Closure):
+                raise SyntaxErr("Cannot assign block to a name.  Blocks are only assignable to options.")
             location = fn_node.evaluate()
             return Args(location, py_value(name), val)  # any, str, any
         case OpExpr(op=Operator(text='.'),
                     terms=(Node() as fn_node, ListNode(list_type=ListType.Args) as args)):
-            """ foo[key] := value """
-            location = fn_node.evaluate()  # note: if location is not a function, a custom option must be added to =
+            # foo[key] = value
+            location = fn_node.evaluate()  # note: if location is not a function or list, a custom option must be added to =
             key: Args = args.evaluate()
-            return Args(location, key, val)  # fn, args, any
-        case OpExpr(op=Operator(text=','), terms=keys):
-            keys
+            return Args(location, key, val)  # fn/list, args, any
+        # case OpExpr(op=Operator(text=','), terms=keys):
+        #     pass
         case OpExpr(op=Operator(text=',')):
             raise SyntaxErr(f"Line {lhs.line}: Invalid LHS for assignment.  If you want to assign to a key, use either "
                             f"`[key1, key2] = value` or `key1, key2: value`")
@@ -48,6 +52,10 @@ def set_or_assign_option(*args, operation: Function = None):
             if operation:
                 val = operation.call(fn.call(args), val)
             fn.assign_option(args, val)
+        case PyValue(value=list()) as ls, Args(positional_arguments=[index]) as args, Record() as val:
+            if operation:
+                val = operation.call(ls.call(args), val)
+            list_set(ls, index, val)
         case Record() as rec, PyValue(value=str() as name), Record() as val:
             if operation:
                 val = operation.call(rec.get(name), val)
@@ -57,9 +65,10 @@ def set_or_assign_option(*args, operation: Function = None):
     return val
 
 Op['='].eval_args = eval_assign_args
-Op['='].fn = Function({ArgsMatcher(StringParam, AnyParam): lambda name, val: Context.env.assign(name.value, val),
-                       ArgsMatcher(FunctionParam, AnyParam, AnyParam): set_or_assign_option,
-                       ArgsMatcher(AnyParam, StringParam, AnyParam): lambda rec, name, val: rec.set(name.value, val)
+Op['='].fn = Function({ParamSet(StringParam, AnyParam): lambda name, val: Context.env.assign(name.value, val),
+                       ParamSet(FunctionParam, AnyParam, AnyParam): set_or_assign_option,
+                       ParamSet(ListParam, AnyParam, AnyParam): set_or_assign_option,
+                       ParamSet(AnyParam, StringParam, AnyParam): set_or_assign_option
                        }, name='=')
 
 def null_assign(rec_or_name: Record | PyValue, name_or_val: PyValue | Record, val_or_none: Record = None):
@@ -91,11 +100,11 @@ def null_assign_rec(rec, name, val):
         return existing_value
 
 
-Op['??='].fn = Function({ArgsMatcher(StringParam, AnyParam): null_assign,
-                         ArgsMatcher(FunctionParam, AnyParam, AnyParam):
+Op['??='].fn = Function({ParamSet(StringParam, AnyParam): null_assign,
+                         ParamSet(FunctionParam, AnyParam, AnyParam):
                              lambda fn, args, val: fn.assign_option(args, val, no_clobber=True).value
                                                 or BuiltIns['blank'],
-                         ArgsMatcher(AnyParam, StringParam, AnyParam): null_assign
+                         ParamSet(AnyParam, StringParam, AnyParam): null_assign
                          }, name='??=')
 Op['??='].eval_args = eval_assign_args
 
@@ -129,9 +138,9 @@ def eval_colon_args(lhs: Node, rhs: Node) -> Args:
                     raise TypeErr(f'Line {lhs.line}: Cannot assign option to {fn.table} {fn}')
                 match Context.env.fn:
                     case Table() | Trait() as t:
-                        pattern = ArgsMatcher(Parameter(t, 'self'))
+                        pattern = ParamSet(Parameter(t, 'self'))
                     case Function():
-                        pattern = ArgsMatcher()
+                        pattern = ParamSet()
                     case None:
                         raise SyntaxErr(f"Line {lhs.line}: this syntax is not available in this context.  "
                                         f"Try within a trait, or table block.")
@@ -141,9 +150,9 @@ def eval_colon_args(lhs: Node, rhs: Node) -> Args:
                 fn = t.get(name)
                 match t:
                     case Table() | Trait():
-                        pattern = ArgsMatcher(Parameter(t, 'self'))
+                        pattern = ParamSet(Parameter(t, 'self'))
                     case Function():
-                        pattern = ArgsMatcher()
+                        pattern = ParamSet()
                     case None:
                         raise RuntimeErr(f"Line {lhs.line}: leftmost container term must be a table, trait, or function."
                                          f"\nIe, for `foo.bar: ...` then foo must be a table, trait, or function.")
@@ -194,14 +203,17 @@ def eval_colon_args(lhs: Node, rhs: Node) -> Args:
                     return Args(location, key, resolution)  # fn, args, any
                 case [Token(type=TokenType.Name, source_text=name)]:
                     """ .foo: ... """
-                    location = Context.env.fn
-                    if location is None:
-                        raise EnvironmentError(f"Line {Context.line}: illegal .dot option found")
+                    match Context.env.fn:
+                        case Table() | Trait() as location:
+                            key = ParamSet(Parameter(location, 'self'))
+                        case Function():
+                            key = ParamSet()
+                        case _:
+                            raise EnvironmentError(f"Line {Context.line}: illegal .dot option found")
                     fn = Context.deref(name, None)
                     if fn is None:
                         fn = Function(name=name)
                         Context.env.locals[name] = fn
-                    key = ArgsMatcher(Parameter(location, 'self'))
                     # maybe this should have no self parameter if in Function context?
                     return Args(fn, key, resolution)
                 case [OpExpr(op=Operator(text='.'), terms=[Token(type=TokenType.Name, source_text=name), ParamsNode() as params])]:
@@ -214,9 +226,9 @@ def eval_colon_args(lhs: Node, rhs: Node) -> Args:
                     fn = t.get(name)
                     match t:
                         case Table() | Trait():
-                            pattern = ArgsMatcher(Parameter(t, 'self'))
+                            pattern = ParamSet(Parameter(t, 'self'))
                         case Function():
-                            pattern = ArgsMatcher()
+                            pattern = ParamSet()
                         case None:
                             raise RuntimeErr(f"Line {lhs.line}: leftmost container term must be a table, trait, or function."
                                              f"\nIe, for `foo.bar: ...` then foo must be a table, trait, or function.")
@@ -237,7 +249,7 @@ def assign_option(*args):
     match args:
         case fn, pattern, resolution:
             fn.assign_option(pattern, resolution)
-        case Args() | ArgsMatcher() as key, resolution:
+        case Args() | ParamSet() as key, resolution:
             if not isinstance(Context.env.fn, Function):
                 raise EnvironmentError(f"Line {Context.line}: Cannot assign key-value option in this context.  "
                                        f"Must be within a definition of a function, table, or trait.")
@@ -304,7 +316,7 @@ def eval_dot_args(lhs: Node, rhs: Node) -> Args:
     # return [fn, args]
 
 
-def dot_fn(a: Record, b: Record, *, caller=None):
+def dot_fn(a: Record, b: Record, *, caller=None, suppress_error=False):
     match b:
         case Args() as args:
             return a.call(args, caller=caller)
@@ -313,6 +325,11 @@ def dot_fn(a: Record, b: Record, *, caller=None):
             if prop is not None:
                 return prop
             fn = a.table.get(name, Context.deref(name, None))
+            if fn is None:
+                if suppress_error:
+                    return
+                raise MissingNameErr(f"Line {Context.line}: {a.table} {a} has no field \"{name}\", "
+                                     f"and also not found as function name in scope.")
             return fn.call(a, caller=caller)
         # case PyValue(value=tuple() | list() as args):
         #     return a.call(*args)
@@ -333,27 +350,27 @@ def py_dot(a: PyObj, b: PyValue):
             return piliize(a.obj(*[arg.value for arg in args]))
 
 
-caller_patt = ArgsMatcher(AnyParam, AnyParam, named_params={'caller': Parameter(AnyMatcher(), 'caller', '?')})
+caller_patt = ParamSet(AnyParam, AnyParam, named_params={'caller': Parameter(AnyMatcher(), 'caller', '?')})
 
 Op['.'].fn = Function({caller_patt: dot_fn,
-                       # ArgsMatcher(AnyParam, AnyParam, caller=AnyParam): temp_new_dot_fn,
+                       # ParamSet(AnyParam, AnyParam, caller=AnyParam): temp_new_dot_fn,
                        StringParam: lambda a: Context.deref(a.value),
-                       ArgsMatcher(Parameter(TableMatcher(BuiltIns['PythonObject'])),
-                                   Parameter(UnionMatcher(TraitMatcher(FuncTrait), TableMatcher(BuiltIns['Table'])))):
+                       ParamSet(Parameter(TableMatcher(BuiltIns['PythonObject'])),
+                                Parameter(UnionMatcher(TraitMatcher(FuncTrait), TableMatcher(BuiltIns['Table'])))):
                            py_dot,  # I don't remember why the second parameter for the pydot is func|table ???
-                       ArgsMatcher(Parameter(TableMatcher(BuiltIns['PythonObject'])), AnyParam): py_dot
+                       ParamSet(Parameter(TableMatcher(BuiltIns['PythonObject'])), AnyParam): py_dot
                        })
 
 Op['.?'].fn = Function({caller_patt:
                             lambda a, b: BuiltIns['.'].call(a,b)
                                          if BuiltIns['has'].call(a, b).value else py_value(None),
-                        ArgsMatcher(StringParam):
+                        ParamSet(StringParam):
                             lambda a: BuiltIns['.'].call(a)
                                       if BuiltIns['has'].call(a).value else py_value(None),
                         })
 # map-dot / swizzle operator
-Op['..'].fn = Function({ArgsMatcher(SeqParam, StringParam): lambda ls, name: List([dot_fn(el, name) for el in ls.value]),
-                       ArgsMatcher(NumericParam, NumericParam): lambda a, b: piliize(range(a.value, b.value))},
+Op['..'].fn = Function({ParamSet(SeqParam, StringParam): lambda ls, name: List([dot_fn(el, name) for el in ls.value]),
+                        ParamSet(NumericParam, NumericParam): lambda a, b: piliize(range(a.value, b.value))},
                        name='..')
 Op['.'].eval_args = Op['.?'].eval_args = Op['..'].eval_args = eval_dot_args
 BuiltIns['call'] = Op['.'].fn
@@ -417,7 +434,7 @@ Op['not'].fn = Function({AnyParam: lambda x: py_value(not x.truthy)},
 
 Op['in'].fn = Function({AnyBinopPattern:
                             lambda a, b: py_value(any(a == opt.value for opt in b.options)),
-                        ArgsMatcher(AnyParam, IterParam):
+                        ParamSet(AnyParam, IterParam):
                             lambda a, b: py_value(a in b.value)},
                        name='in')
 
@@ -434,7 +451,7 @@ Op['is'].fn = Function({AnyBinopPattern: lambda a, b: py_value(bool(patternize(b
                        name='is')
 Op['is not'].fn = Function({AnyBinopPattern: lambda a, b: py_value(not patternize(b).match_score(a))},
                            name='is not')
-Op['|'].fn = Function({AnyBinopPattern: lambda *args: UnionMatcher(*map(patternize, args))},
+Op['|'].fn = Function({AnyPlusPattern: lambda *args: UnionMatcher(*map(patternize, args))},
                       name='|')
 Op['<'].fn = Function({NormalBinopPattern: lambda a, b: py_value(a.value < b.value)},
                    name='<')
@@ -446,34 +463,47 @@ Op['<='].fn = Function({AnyBinopPattern:
 Op['>='].fn = Function({AnyBinopPattern:
                          lambda a, b: py_value(BuiltIns['>'].call(a, b).value or BuiltIns['=='].call(a, b).value)},
                     name='>=')
-Op['+'].fn = Function({NormalBinopPattern: lambda a, b: py_value(a.value + b.value),
-                   ArgsMatcher(AnyParam): lambda a: BuiltIns['num'].call(a),
-                   ArgsMatcher(StringParam, StringParam): lambda a, b: py_value(a.value + b.value),
-                   ArgsMatcher(ListParam, ListParam): lambda a, b: py_value(a.value + b.value),
-                   ArgsMatcher(*(Parameter(TraitMatcher(TupTrait)),) * 2): lambda a, b: py_value(a.value + b.value),
-                   ArgsMatcher(SeqParam, SeqParam): lambda a, b: py_value(a.value + b.value)
-                    },
-                   name='+')
+Op['+'].fn = Function({Parameter(TraitMatcher(NumTrait), quantifier='+'):
+                           lambda *args: py_value(sum(n.value for n in args)),
+                       Parameter(TraitMatcher(StrTrait), quantifier='+'):
+                           lambda *args: py_value(''.join(n.value for n in args)),
+                       # ParamSet(AnyParam): lambda a: BuiltIns['num'].call(a),
+                       Parameter(TraitMatcher(ListTrait), quantifier='+'):
+                           lambda *args: py_value(sum((n.value for n in args), [])),
+                       Parameter(TraitMatcher(TupTrait), quantifier='+'):
+                           lambda *args: py_value(sum((n.value for n in args), ())),
+                       }, name='+')
 Op['-'].fn = Function({NormalBinopPattern: lambda a, b: py_value(a.value - b.value),
-                    ArgsMatcher(AnyParam): lambda a: py_value(-BuiltIns['num'].call(a).value)},
-                   name='-')
-Op['*'].fn = Function({ArgsMatcher(NumericParam, NumericParam): lambda a, b: py_value(a.value * b.value),
-                    ArgsMatcher(StringParam, IntegralParam): lambda a, b: py_value(a.value * b.value)},
-                   name='*')
-Op['/'].fn = Function({ArgsMatcher(NumericParam, NumericParam): lambda a, b: py_value(a.value / b.value),
-                    ArgsMatcher(RationalParam, RationalParam): lambda a, b:
+                       ParamSet(AnyParam): lambda a: py_value(-a.value)},
+                      name='-')
+def product(*args: PyValue):
+    acc = args[0].value
+    for n in args[1:]:
+        if acc == 0:
+            return py_value(0)
+        acc *= n.value
+    return py_value(acc)
+
+
+Op['*'].fn = Function({Parameter(TraitMatcher(NumTrait), quantifier='+'): product,
+                       ParamSet(SeqParam, IntegralParam): lambda a, b: py_value(a.value * b.value)},
+                      name='*')
+Op['/'].fn = Function({ParamSet(NumericParam, NumericParam): lambda a, b: py_value(a.value / b.value),
+                       ParamSet(RationalParam, RationalParam): lambda a, b:
                     py_value(Fraction(a.value.numerator * b.value.denominator, a.value.denominator * b.value.numerator))},
                    name='/')
-Op['//'].fn = Function({ArgsMatcher(NumericParam, NumericParam): lambda a, b: py_value(a.value // b.value)},
-                    name='//')
-Op['%'].fn = Function({ArgsMatcher(NumericParam, NumericParam): lambda a, b: py_value(a.value % b.value)},
-                   name='%')
-Op['**'].fn = Function({ArgsMatcher(NumericParam, NumericParam): lambda a, b: py_value(a.value ** b.value)},
-                    name='**')
-Op['^'].fn = Function({ArgsMatcher(NumericParam, NumericParam): lambda a, b: py_value(a.value ** b.value)},
-                   name='^')
+Op['//'].fn = Function({ParamSet(NumericParam, NumericParam): lambda a, b: py_value(a.value // b.value)},
+                       name='//')
+Op['%'].fn = Function({ParamSet(NumericParam, NumericParam): lambda a, b: py_value(a.value % b.value)},
+                      name='%')
+Op['**'].fn = Function({ParamSet(NumericParam, NumericParam): lambda a, b: py_value(a.value ** b.value)},
+                       name='**')
+Op['^'].fn = Function({ParamSet(NumericParam, NumericParam): lambda a, b: py_value(a.value ** b.value)},
+                      name='^')
 Op['?'].fn = Function({AnyParam: lambda p: UnionMatcher(patternize(p), ValueMatcher(BuiltIns['blank']))},
                       name='?')
+
+
 def has_option(fn: Record, arg: Record = None) -> PyValue:
     if arg is None:
         fn, arg = None, fn
@@ -499,17 +529,17 @@ def has_option(fn: Record, arg: Record = None) -> PyValue:
                           f"The right-hand term of the `has` operator must be a string or sequence of arguments.")
 
 
-Op['has'].fn = Function({ArgsMatcher(AnyParam, NonStrSeqParam): has_option,
-                      AnyBinopPattern: has_option,
-                      ArgsMatcher(StringParam): lambda s: py_value(Context.deref(s, None) is not None),
-                      ArgsMatcher(NormalParam): has_option},
-                     name='has')
+Op['has'].fn = Function({ParamSet(AnyParam, NonStrSeqParam): has_option,
+                         AnyBinopPattern: has_option,
+                         ParamSet(StringParam): lambda s: py_value(Context.deref(s, None) is not None),
+                         ParamSet(NormalParam): has_option},
+                        name='has')
 Op['+'].fn = Function({NormalBinopPattern: lambda a, b: py_value(a.value + b.value),
-                       ArgsMatcher(AnyParam): lambda a: BuiltIns['num'].call(a),
-                       ArgsMatcher(StringParam, StringParam): lambda a, b: py_value(a.value + b.value),
-                       ArgsMatcher(ListParam, ListParam): lambda a, b: py_value(a.value + b.value),
-                       ArgsMatcher(*(Parameter(TraitMatcher(TupTrait)),) * 2): lambda a, b: py_value(a.value + b.value),
-                       # ArgsMatcher(SeqParam, SeqParam): lambda a, b: py_value(a.value + b.value),
+                       ParamSet(AnyParam): lambda a: BuiltIns['num'].call(a),
+                       ParamSet(StringParam, StringParam): lambda a, b: py_value(a.value + b.value),
+                       ParamSet(ListParam, ListParam): lambda a, b: py_value(a.value + b.value),
+                       ParamSet(*(Parameter(TraitMatcher(TupTrait)),) * 2): lambda a, b: py_value(a.value + b.value),
+                       # ParamSet(SeqParam, SeqParam): lambda a, b: py_value(a.value + b.value),
                        },
                       name='+')
 
@@ -559,7 +589,7 @@ Op['+'].fn = Function({NormalBinopPattern: lambda a, b: py_value(a.value + b.val
 #         match right[:-1]:
 #             case (PyValue(value=str() as name),):
 #                 closure = Context.env
-#                 # option = Option(ArgsMatcher(), lambda : closure.)
+#                 # option = Option(ParamSet(), lambda : closure.)
 #         right_key = right[-2]
 #         if len(right) == 3:
 #             right_fn = right[-3]
@@ -581,7 +611,7 @@ Op['+'].fn = Function({NormalBinopPattern: lambda a, b: py_value(a.value + b.val
 #
 #     def assign_option(fn: Function, args: PyValue[tuple] | Args, val: Record):
 #         params = (Parameter(ValueMatcher(rec)) for rec in args)
-#         fn.assign_option(ArgsMatcher(*params), val)
+#         fn.assign_option(ParamSet(*params), val)
 #         return val
 #
 #
@@ -598,7 +628,7 @@ Op['+'].fn = Function({NormalBinopPattern: lambda a, b: py_value(a.value + b.val
 #     Operator(';',
 #              Function({AnyBinopPattern: lambda x, y: y}),
 #              binop=1)
-#     def assign_fn(fn: Function, patt: ArgsMatcher, block: CodeBlock, dot_option: PyValue[bool]) -> PyValue:
+#     def assign_fn(fn: Function, patt: ParamSet, block: CodeBlock, dot_option: PyValue[bool]) -> PyValue:
 #         option = fn.select_by_pattern(patt)
 #         if option is None:
 #             option = fn.assign_option(patt, block)
@@ -607,7 +637,7 @@ Op['+'].fn = Function({NormalBinopPattern: lambda a, b: py_value(a.value + b.val
 #         option.dot_option = dot_option.value
 #         return py_value(None)
 #     Operator(':',
-#              Function({ArgsMatcher(AnyParam, PatternParam, AnyParam, BoolParam): assign_fn}),
+#              Function({ParamSet(AnyParam, PatternParam, AnyParam, BoolParam): assign_fn}),
 #              binop=2, associativity='right')
 #     def eval_assign_fn_args(lhs: list[Node], rhs: list[Node]) -> list[Record]:
 #         blk_nd = rhs[0]
@@ -622,15 +652,15 @@ Op['+'].fn = Function({NormalBinopPattern: lambda a, b: py_value(a.value + b.val
 #
 #     Operator(':=', binop=2, associativity='right')
 #     Operator('=',
-#              Function({ArgsMatcher(StringParam, AnyParam): lambda name, val: Context.env.assign(name, val),
-#                        ArgsMatcher(FunctionParam, NonStrSeqParam, AnyParam): assign_option,
-#                        ArgsMatcher(AnyParam, StringParam, AnyParam): lambda rec, name, val: rec.set(name.value, val)}),
+#              Function({ParamSet(StringParam, AnyParam): lambda name, val: Context.env.assign(name, val),
+#                        ParamSet(FunctionParam, NonStrSeqParam, AnyParam): assign_option,
+#                        ParamSet(AnyParam, StringParam, AnyParam): lambda rec, name, val: rec.set(name.value, val)}),
 #              binop=2, associativity='right')
 #     Op['='].eval_args = eval_set_args
 #     Op[':='].fn = Op['='].fn
 #     for op in ('+', '-', '*', '/', '//', '**', '%'):
 #         Operator(op+'=', Function({AnyBinopPattern: augment_assign_fn(op),
-#                                   ArgsMatcher(AnyParam, AnyParam, AnyParam): lambda *args: BuiltIns['set'].call(*args)}),
+#                                   ParamSet(AnyParam, AnyParam, AnyParam): lambda *args: BuiltIns['set'].call(*args)}),
 #                  binop=2, associativity='right')
 #         Op[op+'='].eval_args = eval_set_args
 #     Op[':='].eval_args = eval_alias_args
@@ -679,22 +709,22 @@ Op['+'].fn = Function({NormalBinopPattern: lambda a, b: py_value(a.value + b.val
 #
 #     def null_assign_option(fn: Function, key: PyValue[list], val: Record):
 #         params = (Parameter(ValueMatcher(rec)) for rec in key.value)
-#         fn.assign_option(ArgsMatcher(*params), val)
+#         fn.assign_option(ParamSet(*params), val)
 #         return val
 #
 #
 #     Operator('??=',
-#              Function({ArgsMatcher(StringParam, AnyParam): lambda name, val: Context.env.assign(name, val),
-#                        ArgsMatcher(FunctionParam, NonStrSeqParam, AnyParam): assign_option,
-#                        ArgsMatcher(AnyParam, StringParam, AnyParam): lambda rec, name, val: rec.set(name.value, val),
-#                        ArgsMatcher(AnyParam): lambda x: x}),
+#              Function({ParamSet(StringParam, AnyParam): lambda name, val: Context.env.assign(name, val),
+#                        ParamSet(FunctionParam, NonStrSeqParam, AnyParam): assign_option,
+#                        ParamSet(AnyParam, StringParam, AnyParam): lambda rec, name, val: rec.set(name.value, val),
+#                        ParamSet(AnyParam): lambda x: x}),
 #              binop=2, associativity='right')
 #     Op['??='].eval_args = eval_set_args
 #     Operator('=>',
-#              Function({ArgsMatcher(AnyParam, FunctionParam): lambda x, fn: BuiltIns['call'](Args(fn, x))}),
+#              Function({ParamSet(AnyParam, FunctionParam): lambda x, fn: BuiltIns['call'](Args(fn, x))}),
 #              binop=2)
 #     Operator(',',
-#              Function({ArgsMatcher(Parameter(AnyMatcher(), quantifier='+')): lambda *args: py_value(tuple(args)),
+#              Function({ParamSet(Parameter(AnyMatcher(), quantifier='+')): lambda *args: py_value(tuple(args)),
 #                       AnyParam: lambda x: py_value((x,))}),
 #              binop=2, postfix=2, associativity='right')
 #     def eval_tuple_args(lhs: list[Node], rhs: list[Node]) -> list[Record]:
@@ -720,7 +750,7 @@ Op['+'].fn = Function({NormalBinopPattern: lambda a, b: py_value(a.value + b.val
 #         else:
 #             return [py_value(None), py_value(False), expressionize(rhs).evaluate()]
 #     Operator('if',
-#              Function({ArgsMatcher(AnyParam, AnyParam, AnyParam):
+#              Function({ParamSet(AnyParam, AnyParam, AnyParam):
 #                       lambda consequent, condition, alt: consequent if condition.value else alt}),
 #              binop=3, ternary='else')
 #     Op['if'].eval_args = eval_if_args
@@ -733,7 +763,7 @@ Op['+'].fn = Function({NormalBinopPattern: lambda a, b: py_value(a.value + b.val
 #
 #
 #     Operator('??',
-#              Function({ArgsMatcher(Parameter(AnyMatcher(), "", "+")): nullish_or}),
+#              Function({ParamSet(Parameter(AnyMatcher(), "", "+")): nullish_or}),
 #              binop=4)
 #     def eval_nullish_args(lhs: list[Node], rhs: list[Node]) -> list[Record]:
 #         first = expressionize(lhs).evaluate()
@@ -771,11 +801,11 @@ Op['+'].fn = Function({NormalBinopPattern: lambda a, b: py_value(a.value + b.val
 #     Op['and'].eval_args = eval_and_args
 #
 #     Operator('not',
-#              Function({ArgsMatcher(AnyParam): lambda a: py_value(not BuiltIns['bool'].call(a).value)}),
+#              Function({ParamSet(AnyParam): lambda a: py_value(not BuiltIns['bool'].call(a).value)}),
 #              prefix=7)
 #     Operator('in',
 #              Function({AnyBinopPattern: lambda a, b: py_value(a in (opt.value for opt in b.options if hasattr(opt, 'value'))),
-#                        ArgsMatcher(AnyParam, IterParam): lambda a, b: py_value(a in b.value)}),
+#                        ParamSet(AnyParam, IterParam): lambda a, b: py_value(a in b.value)}),
 #              binop=8)
 #     Operator('==',
 #              Function({AnyBinopPattern: lambda a, b: py_value(a == b)}),
@@ -800,9 +830,9 @@ Op['+'].fn = Function({NormalBinopPattern: lambda a, b: py_value(a.value + b.val
 #     #     params = (param for patt in patts for param in patt.try_get_params())
 #     #     try:
 #     #         matchers = (m for p in params for m in p.try_get_matchers())
-#     #         return ArgsMatcher(Parameter(Union(*matchers)))
+#     #         return ParamSet(Parameter(Union(*matchers)))
 #     #     except TypeError:
-#     #         return ArgsMatcher(UnionParam(*params))
+#     #         return ParamSet(UnionParam(*params))
 #     def union_patterns(*values_or_patterns: Record):
 #         patterns = map(patternize, values_or_patterns)
 #         params = []
@@ -817,12 +847,12 @@ Op['+'].fn = Function({NormalBinopPattern: lambda a, b: py_value(a.value + b.val
 #         matchers = []
 #         for param in params:
 #             if param.quantifier or param.name is not None:
-#                 return ArgsMatcher(UnionParam(*params))
+#                 return ParamSet(UnionParam(*params))
 #             if isinstance(param.matcher, UnionMatcher):
 #                 matchers.extend(param.matcher.matchers)
 #             else:
 #                 matchers.append(param.matcher)
-#         return ArgsMatcher(Parameter(UnionMatcher(*matchers)))
+#         return ParamSet(Parameter(UnionMatcher(*matchers)))
 #
 #
 #     Operator('|',
@@ -844,37 +874,37 @@ Op['+'].fn = Function({NormalBinopPattern: lambda a, b: py_value(a.value + b.val
 #              binop=11, chainable=True)
 #     Operator('+',
 #              Function({NormalBinopPattern: lambda a, b: py_value(a.value + b.value),
-#                        ArgsMatcher(AnyParam): lambda a: BuiltIns['num'].call(a),
-#                        ArgsMatcher(StringParam, StringParam): lambda a, b: py_value(a.value + b.value),
-#                        ArgsMatcher(ListParam, ListParam): lambda a, b: py_value(a.value + b.value),
-#                        ArgsMatcher(*(Parameter(TraitMatcher(TupTrait)),) * 2): lambda a, b: py_value(a.value + b.value),
-#                        # ArgsMatcher(SeqParam, SeqParam): lambda a, b: py_value(a.value + b.value)
+#                        ParamSet(AnyParam): lambda a: BuiltIns['num'].call(a),
+#                        ParamSet(StringParam, StringParam): lambda a, b: py_value(a.value + b.value),
+#                        ParamSet(ListParam, ListParam): lambda a, b: py_value(a.value + b.value),
+#                        ParamSet(*(Parameter(TraitMatcher(TupTrait)),) * 2): lambda a, b: py_value(a.value + b.value),
+#                        # ParamSet(SeqParam, SeqParam): lambda a, b: py_value(a.value + b.value)
 #                        }),
 #              binop=12, prefix=14)
 #     Operator('-',
 #              Function({NormalBinopPattern: lambda a, b: py_value(a.value - b.value),
-#                       ArgsMatcher(AnyParam): lambda a: py_value(-BuiltIns['num'].call(a).value)}),
+#                       ParamSet(AnyParam): lambda a: py_value(-BuiltIns['num'].call(a).value)}),
 #              binop=12, chainable=False, prefix=14)
 #     Operator('*',
-#              Function({ArgsMatcher(NumericParam, NumericParam): lambda a, b: py_value(a.value * b.value),
-#                       ArgsMatcher(StringParam, IntegralParam): lambda a, b: py_value(a.value * b.value)}),
+#              Function({ParamSet(NumericParam, NumericParam): lambda a, b: py_value(a.value * b.value),
+#                       ParamSet(StringParam, IntegralParam): lambda a, b: py_value(a.value * b.value)}),
 #              binop=13)
 #     Operator('/',
-#              Function({ArgsMatcher(NumericParam, NumericParam): lambda a, b: py_value(a.value / b.value),
-#                       ArgsMatcher(RationalParam, RationalParam): lambda a, b:
+#              Function({ParamSet(NumericParam, NumericParam): lambda a, b: py_value(a.value / b.value),
+#                       ParamSet(RationalParam, RationalParam): lambda a, b:
 #                       py_value(Fraction(a.value.numerator * b.value.denominator, a.value.denominator * b.value.numerator))}),
 #              binop=13, chainable=False)
 #     Operator('//',
-#              Function({ArgsMatcher(NumericParam, NumericParam): lambda a, b: py_value(a.value // b.value)}),
+#              Function({ParamSet(NumericParam, NumericParam): lambda a, b: py_value(a.value // b.value)}),
 #              binop=13, chainable=False)
 #     Operator('%',
-#              Function({ArgsMatcher(NumericParam, NumericParam): lambda a, b: py_value(a.value % b.value)}),
+#              Function({ParamSet(NumericParam, NumericParam): lambda a, b: py_value(a.value % b.value)}),
 #              binop=13, chainable=False)
 #     Operator('**',
-#              Function({ArgsMatcher(NumericParam, NumericParam): lambda a, b: py_value(a.value ** b.value)}),
+#              Function({ParamSet(NumericParam, NumericParam): lambda a, b: py_value(a.value ** b.value)}),
 #              binop=14, chainable=False, associativity='right')
 #     Operator('^',
-#              Function({ArgsMatcher(NumericParam, NumericParam): lambda a, b: py_value(a.value ** b.value)}),
+#              Function({ParamSet(NumericParam, NumericParam): lambda a, b: py_value(a.value ** b.value)}),
 #              binop=14, chainable=False, associativity='right')
 #     Operator('?',
 #              Function({AnyParam: lambda p: union_patterns(p, BuiltIns['blank'])}),
@@ -903,9 +933,9 @@ Op['+'].fn = Function({NormalBinopPattern: lambda a, b: py_value(a.value + b.val
 #                 raise TypeErr(f"Line {Context.line}: "
 #                               f"The right-hand term of the `has` operator must be a string or sequence of arguments.")
 #     Operator('has',
-#              Function({ArgsMatcher(AnyParam, NonStrSeqParam): has_option,
+#              Function({ParamSet(AnyParam, NonStrSeqParam): has_option,
 #                        AnyBinopPattern: has_option,
-#                        ArgsMatcher(NormalParam): has_option}),
+#                        ParamSet(NormalParam): has_option}),
 #              binop=15, prefix=15)
 #     def add_guard_fn(fn: Record, guard: Function):
 #         patt = patternize(fn)
@@ -916,8 +946,8 @@ Op['+'].fn = Function({NormalBinopPattern: lambda a, b: py_value(a.value + b.val
 #         patt.exprs.append(expr)  # noqa
 #         return patt
 #     Operator('&',
-#              Function({ArgsMatcher(AnyParam, AnyParam): add_guard_expr,
-#                        ArgsMatcher(FunctionParam, AnyParam): add_guard_expr}),
+#              Function({ParamSet(AnyParam, AnyParam): add_guard_expr,
+#                        ParamSet(FunctionParam, AnyParam): add_guard_expr}),
 #              binop=15)
 #     # def eval_patt_guard_args(lhs: list[Node], rhs: list[Node]) -> [Record, Expression]:
 #     #     return [expressionize(lhs).evaluate(), expressionize(rhs)]
@@ -989,22 +1019,22 @@ Op['+'].fn = Function({NormalBinopPattern: lambda a, b: py_value(a.value + b.val
 #
 #
 #     Operator('.',
-#              Function({ArgsMatcher(AnyParam, NonStrSeqParam): dot_fn,
+#              Function({ParamSet(AnyParam, NonStrSeqParam): dot_fn,
 #                        AnyBinopPattern: dot_fn,
 #                        StringParam: lambda a: Context.deref(a.value),
-#                        ArgsMatcher(Parameter(TableMatcher(BuiltIns['PythonObject'])),
+#                        ParamSet(Parameter(TableMatcher(BuiltIns['PythonObject'])),
 #                                Parameter(UnionMatcher(TraitMatcher(FuncTrait), TableMatcher(BuiltIns['Table'])))):
 #                            py_dot}),
 #              binop=16, prefix=16)
 #     BuiltIns['call'] = BuiltIns['.']
 #     Operator('.?',
 #              Function({AnyBinopPattern: lambda a, b: BuiltIns['.'].call(a,b) if BuiltIns['has'].call(a, b).value else py_value(None),
-#                       ArgsMatcher(StringParam): lambda a: BuiltIns['.'].call(a) if BuiltIns['has'].call(a).value else py_value(None),}),
+#                       ParamSet(StringParam): lambda a: BuiltIns['.'].call(a) if BuiltIns['has'].call(a).value else py_value(None),}),
 #              binop=16, prefix=16)
 #     # map-dot / swizzle operator
 #     Operator('..',
-#              Function({ArgsMatcher(SeqParam, StringParam): lambda ls, name: List([dot_fn(el, name) for el in ls.value]),
-#                        ArgsMatcher(NumericParam, NumericParam): lambda a, b: piliize(range(a.value, b.value))}),
+#              Function({ParamSet(SeqParam, StringParam): lambda ls, name: List([dot_fn(el, name) for el in ls.value]),
+#                        ParamSet(NumericParam, NumericParam): lambda a, b: piliize(range(a.value, b.value))}),
 #              binop=16, prefix=16)
 #     Op['.'].eval_args = Op['.?'].eval_args = Op['..'].eval_args = eval_call_args
 #
@@ -1012,52 +1042,52 @@ Op['+'].fn = Function({NormalBinopPattern: lambda a, b: py_value(a.value + b.val
 #     # pattern generator options for int, str, float, etc
 #     def make_lambda_guard(type_name: str):
 #         if type_name == 'str':
-#             return lambda a, b: ArgsMatcher(Parameter(TableMatcher(BuiltIns[type_name], guard=lambda x: py_value(a.value <= len(x.value) <= b.value))))
+#             return lambda a, b: ParamSet(Parameter(TableMatcher(BuiltIns[type_name], guard=lambda x: py_value(a.value <= len(x.value) <= b.value))))
 #         else:
-#             return lambda a, b: ArgsMatcher(Parameter(TableMatcher(BuiltIns[type_name], guard=lambda x: py_value(a.value <= x.value <= b.value))))
+#             return lambda a, b: ParamSet(Parameter(TableMatcher(BuiltIns[type_name], guard=lambda x: py_value(a.value <= x.value <= b.value))))
 #
 #
 #     for type_name in ('num', 'ratio', 'float', 'int', 'str'):
 #         if type_name == 'int':
 #             pass
-#         pass # BuiltIns[type_name].add_option(ArgsMatcher(NumericParam, NumericParam), make_lambda_guard(type_name))
+#         pass # BuiltIns[type_name].add_option(ParamSet(NumericParam, NumericParam), make_lambda_guard(type_name))
 #
 #
-#     # BuiltIns['str'].add_option(ArgsMatcher(StringParam),
-#     #                            lambda regex: ArgsMatcher(Parameter(TraitMatcher(
+#     # BuiltIns['str'].add_option(ParamSet(StringParam),
+#     #                            lambda regex: ParamSet(Parameter(TraitMatcher(
 #     #                                BuiltIns['str'], guard=lambda s: py_value(bool(re.fullmatch(regex.value, s.value)))))))
-#     # BuiltIns['num'].add_option(ArgsMatcher(NumericParam, NumericParam), lambda a, b: py_value(TableMatcher(BuiltIns['num'], guard=lambda x: py_value(a.value <= x.value <= b.value))))
+#     # BuiltIns['num'].add_option(ParamSet(NumericParam, NumericParam), lambda a, b: py_value(TableMatcher(BuiltIns['num'], guard=lambda x: py_value(a.value <= x.value <= b.value))))
 #
 #     # Add shortcut syntax for adding function guards to type checks.  Eg `int > 0` or `float < 1.0`
 #     def number_guard(op_sym: str):
 #         # assert a.value == b.type
-#         return lambda t, n: ArgsMatcher(Parameter(TraitMatcher(t, guard=lambda x: Op[op_sym].fn.call(x, n))))
+#         return lambda t, n: ParamSet(Parameter(TraitMatcher(t, guard=lambda x: Op[op_sym].fn.call(x, n))))
 #
 #     # generating functions with syntax like `str > 5` => `[str x]: len(x) > 5`
 #     def string_guard(op_sym: str):
 #         # assert a.value == BuiltIns['str'] and b.type in (BuiltIns['int'], BuiltIns['float'])
-#         return lambda t, n: ArgsMatcher(Parameter(TraitMatcher(t, guard=lambda s: Op[op_sym].fn.call(py_value(len(s.value)), n))))
+#         return lambda t, n: ParamSet(Parameter(TraitMatcher(t, guard=lambda s: Op[op_sym].fn.call(py_value(len(s.value)), n))))
 #         # def guard(x, y):
-#         #     return ArgsMatcher(Parameter(TableMatcher(BuiltIns['str'], guard=lambda s: Op[op_sym].fn.call(py_value(len(s.value)), b))))
+#         #     return ParamSet(Parameter(TableMatcher(BuiltIns['str'], guard=lambda s: Op[op_sym].fn.call(py_value(len(s.value)), b))))
 #         # # return guard
-#         # return ArgsMatcher(Parameter(TableMatcher(BuiltIns['str'], guard=lambda s: Op[op_sym].fn.call(py_value(len(s.value)), b))))
+#         # return ParamSet(Parameter(TableMatcher(BuiltIns['str'], guard=lambda s: Op[op_sym].fn.call(py_value(len(s.value)), b))))
 #
 #     # def add_guards(op_sym: str):
-#     #     Op[op_sym].fn.add_option(ArgsMatcher(Parameter(ValueMatcher(BuiltIns['int'])), NumericParam),
+#     #     Op[op_sym].fn.add_option(ParamSet(Parameter(ValueMatcher(BuiltIns['int'])), NumericParam),
 #     #                                 number_guard(op_sym))
-#     #     Op[op_sym].fn.assign_option(ArgsMatcher(Parameter(ValueMatcher(BuiltIns['float'])), NumericParam),
+#     #     Op[op_sym].fn.assign_option(ParamSet(Parameter(ValueMatcher(BuiltIns['float'])), NumericParam),
 #     #                                 lambda a, b: number_guard(a, b, op_sym))
-#     #     Op[op_sym].fn.assign_option(ArgsMatcher(Parameter(ValueMatcher(BuiltIns['ratio'])), NumericParam),
+#     #     Op[op_sym].fn.assign_option(ParamSet(Parameter(ValueMatcher(BuiltIns['ratio'])), NumericParam),
 #     #                                 lambda a, b: number_guard(a, b, op_sym))
-#     #     Op[op_sym].fn.assign_option(ArgsMatcher(Parameter(ValueMatcher(BuiltIns['str'])), NumericParam),
+#     #     Op[op_sym].fn.assign_option(ParamSet(Parameter(ValueMatcher(BuiltIns['str'])), NumericParam),
 #     #                                 lambda a, b: string_guard(a, b, op_sym))
 #
 #
 #     for op_sym in ('>', '<', '>=', '<='):
 #         for type_name in ('int', 'ratio', 'float', 'num'):
-#             Op[op_sym].fn.assign_option(ArgsMatcher(Parameter(ValueMatcher(BuiltIns[type_name])), NumericParam),
+#             Op[op_sym].fn.assign_option(ParamSet(Parameter(ValueMatcher(BuiltIns[type_name])), NumericParam),
 #                                         number_guard(op_sym))
-#         Op[op_sym].fn.assign_option(ArgsMatcher(Parameter(ValueMatcher(BuiltIns['str'])), NumericParam),
+#         Op[op_sym].fn.assign_option(ParamSet(Parameter(ValueMatcher(BuiltIns['str'])), NumericParam),
 #                                     string_guard(op_sym))
 #         # add_guards(op)
 #
@@ -1102,7 +1132,7 @@ Op['+'].fn = Function({NormalBinopPattern: lambda a, b: py_value(a.value + b.val
 #         match right[:-1]:
 #             case (PyValue(value=str() as name),):
 #                 closure = Context.env
-#                 # option = Option(ArgsMatcher(), lambda : closure.)
+#                 # option = Option(ParamSet(), lambda : closure.)
 #         right_key = right[-2]
 #         if len(right) == 3:
 #             right_fn = right[-3]
@@ -1124,7 +1154,7 @@ Op['+'].fn = Function({NormalBinopPattern: lambda a, b: py_value(a.value + b.val
 #
 #     def assign_option(fn: Function, args: PyValue[tuple] | Args, val: Record):
 #         params = (Parameter(ValueMatcher(rec)) for rec in args)
-#         fn.assign_option(ArgsMatcher(*params), val)
+#         fn.assign_option(ParamSet(*params), val)
 #         return val
 #
 #
@@ -1140,7 +1170,7 @@ Op['+'].fn = Function({NormalBinopPattern: lambda a, b: py_value(a.value + b.val
 #     # Operator('=', binop=1, static=True, associativity='right')
 #     Op[';'] = Function({AnyBinopPattern: lambda x, y: y})
 #
-#     def assign_fn(fn: Function, patt: ArgsMatcher, block: CodeBlock, dot_option: PyValue[bool]) -> PyValue:
+#     def assign_fn(fn: Function, patt: ParamSet, block: CodeBlock, dot_option: PyValue[bool]) -> PyValue:
 #         option = fn.select_by_pattern(patt)
 #         if option is None:
 #             option = fn.assign_option(patt, block)
@@ -1150,7 +1180,7 @@ Op['+'].fn = Function({NormalBinopPattern: lambda a, b: py_value(a.value + b.val
 #         return py_value(None)
 #
 #
-#     Op[':'] = Function({ArgsMatcher(AnyParam, PatternParam, AnyParam, BoolParam): assign_fn})
+#     Op[':'] = Function({ParamSet(AnyParam, PatternParam, AnyParam, BoolParam): assign_fn})
 #
 #     def eval_assign_fn_args(lhs: list[Node], rhs: list[Node]) -> list[Record]:
 #         blk_nd = rhs[0]
@@ -1164,14 +1194,14 @@ Op['+'].fn = Function({NormalBinopPattern: lambda a, b: py_value(a.value + b.val
 #     Op[':'].eval_args = eval_assign_fn_args
 #
 #     Operator(':=', binop=2, associativity='right')
-#     Op['='] = Function({ArgsMatcher(StringParam, AnyParam): lambda name, val: Context.env.assign(name, val),
-#                        ArgsMatcher(FunctionParam, NonStrSeqParam, AnyParam): assign_option,
-#                        ArgsMatcher(AnyParam, StringParam, AnyParam): lambda rec, name, val: rec.set(name.value, val)})
+#     Op['='] = Function({ParamSet(StringParam, AnyParam): lambda name, val: Context.env.assign(name, val),
+#                        ParamSet(FunctionParam, NonStrSeqParam, AnyParam): assign_option,
+#                        ParamSet(AnyParam, StringParam, AnyParam): lambda rec, name, val: rec.set(name.value, val)})
 #     Op['='].eval_args = eval_set_args
 #     Op[':='].fn = Op['='].fn
 #     for op in ('+', '-', '*', '/', '//', '**', '%'):
 #         Op[op+'='] = Function({AnyBinopPattern: augment_assign_fn(op),
-#                                   ArgsMatcher(AnyParam, AnyParam, AnyParam): lambda *args: BuiltIns['set'].call(*args)})
+#                                   ParamSet(AnyParam, AnyParam, AnyParam): lambda *args: BuiltIns['set'].call(*args)})
 #         Op[op+'='].eval_args = eval_set_args
 #     Op[':='].eval_args = eval_alias_args
 #
@@ -1219,17 +1249,17 @@ Op['+'].fn = Function({NormalBinopPattern: lambda a, b: py_value(a.value + b.val
 #
 #     def null_assign_option(fn: Function, key: PyValue[list], val: Record):
 #         params = (Parameter(ValueMatcher(rec)) for rec in key.value)
-#         fn.assign_option(ArgsMatcher(*params), val)
+#         fn.assign_option(ParamSet(*params), val)
 #         return val
 #
 #
-#     Op['??='] = Function({ArgsMatcher(StringParam, AnyParam): lambda name, val: Context.env.assign(name, val),
-#                        ArgsMatcher(FunctionParam, NonStrSeqParam, AnyParam): assign_option,
-#                        ArgsMatcher(AnyParam, StringParam, AnyParam): lambda rec, name, val: rec.set(name.value, val),
-#                        ArgsMatcher(AnyParam): lambda x: x})
+#     Op['??='] = Function({ParamSet(StringParam, AnyParam): lambda name, val: Context.env.assign(name, val),
+#                        ParamSet(FunctionParam, NonStrSeqParam, AnyParam): assign_option,
+#                        ParamSet(AnyParam, StringParam, AnyParam): lambda rec, name, val: rec.set(name.value, val),
+#                        ParamSet(AnyParam): lambda x: x})
 #     Op['??='].eval_args = eval_set_args
-#     Op['=>'] = Function({ArgsMatcher(AnyParam, FunctionParam): lambda x, fn: BuiltIns['call'](Args(fn, x))})
-#     Op[','] = Function({ArgsMatcher(Parameter(AnyMatcher(), quantifier='+')): lambda *args: py_value(tuple(args)),
+#     Op['=>'] = Function({ParamSet(AnyParam, FunctionParam): lambda x, fn: BuiltIns['call'](Args(fn, x))})
+#     Op[','] = Function({ParamSet(Parameter(AnyMatcher(), quantifier='+')): lambda *args: py_value(tuple(args)),
 #                       AnyParam: lambda x: py_value((x,))})
 #     def eval_tuple_args(lhs: list[Node], rhs: list[Node]) -> list[Record]:
 #         left = expressionize(lhs).evaluate()
@@ -1253,7 +1283,7 @@ Op['+'].fn = Function({NormalBinopPattern: lambda a, b: py_value(a.value + b.val
 #             return [expressionize(lhs).evaluate(), py_value(True), py_value(None)]
 #         else:
 #             return [py_value(None), py_value(False), expressionize(rhs).evaluate()]
-#     Op['if'] = Function({ArgsMatcher(AnyParam, AnyParam, AnyParam):
+#     Op['if'] = Function({ParamSet(AnyParam, AnyParam, AnyParam):
 #                       lambda consequent, condition, alt: consequent if condition.value else alt})
 #     Op['if'].eval_args = eval_if_args
 #
@@ -1264,7 +1294,7 @@ Op['+'].fn = Function({NormalBinopPattern: lambda a, b: py_value(a.value + b.val
 #         return args[-1]
 #
 #
-#     Op['??'] = Function({ArgsMatcher(Parameter(AnyMatcher(), "", "+")): nullish_or})
+#     Op['??'] = Function({ParamSet(Parameter(AnyMatcher(), "", "+")): nullish_or})
 #     def eval_nullish_args(lhs: list[Node], rhs: list[Node]) -> list[Record]:
 #         first = expressionize(lhs).evaluate()
 #         if first != BuiltIns['blank']:
@@ -1296,9 +1326,9 @@ Op['+'].fn = Function({NormalBinopPattern: lambda a, b: py_value(a.value + b.val
 #         return [condition] if not BuiltIns['bool'].call(condition).value else [expressionize(rhs).evaluate()]
 #     Op['and'].eval_args = eval_and_args
 #
-#     Op['not'] = Function({ArgsMatcher(AnyParam): lambda a: py_value(not BuiltIns['bool'].call(a).value)})
+#     Op['not'] = Function({ParamSet(AnyParam): lambda a: py_value(not BuiltIns['bool'].call(a).value)})
 #     Op['in'] = Function({AnyBinopPattern: lambda a, b: py_value(a in (opt.value for opt in b.options if hasattr(opt, 'value'))),
-#                        ArgsMatcher(AnyParam, IterParam): lambda a, b: py_value(a in b.value)})
+#                        ParamSet(AnyParam, IterParam): lambda a, b: py_value(a in b.value)})
 #     Op['=='] = Function({AnyBinopPattern: lambda a, b: py_value(a == b)})
 #     Op['!='] = Function({AnyBinopPattern: lambda a, b: py_value(not BuiltIns['=='].call(a, b).value)})
 #     Op['~'] = Function({AnyBinopPattern: lambda a, b: py_value(bool(patternize(b).match_score(a)))})
@@ -1310,9 +1340,9 @@ Op['+'].fn = Function({NormalBinopPattern: lambda a, b: py_value(a.value + b.val
 #     #     params = (param for patt in patts for param in patt.try_get_params())
 #     #     try:
 #     #         matchers = (m for p in params for m in p.try_get_matchers())
-#     #         return ArgsMatcher(Parameter(Union(*matchers)))
+#     #         return ParamSet(Parameter(Union(*matchers)))
 #     #     except TypeError:
-#     #         return ArgsMatcher(UnionParam(*params))
+#     #         return ParamSet(UnionParam(*params))
 #     def union_patterns(*values_or_patterns: Record):
 #         patterns = map(patternize, values_or_patterns)
 #         params = []
@@ -1327,12 +1357,12 @@ Op['+'].fn = Function({NormalBinopPattern: lambda a, b: py_value(a.value + b.val
 #         matchers = []
 #         for param in params:
 #             if param.quantifier or param.name is not None:
-#                 return ArgsMatcher(UnionParam(*params))
+#                 return ParamSet(UnionParam(*params))
 #             if isinstance(param.matcher, UnionMatcher):
 #                 matchers.extend(param.matcher.matchers)
 #             else:
 #                 matchers.append(param.matcher)
-#         return ArgsMatcher(Parameter(UnionMatcher(*matchers)))
+#         return ParamSet(Parameter(UnionMatcher(*matchers)))
 #
 #
 #     Op['|'] = Function({AnyBinopPattern: union_patterns})
@@ -1343,23 +1373,23 @@ Op['+'].fn = Function({NormalBinopPattern: lambda a, b: py_value(a.value + b.val
 #     Op['>='] = Function({AnyBinopPattern:
 #                       lambda a, b: py_value(BuiltIns['>'].call(a, b).value or BuiltIns['=='].call(a, b).value)})
 #     Op['+'] = Function({NormalBinopPattern: lambda a, b: py_value(a.value + b.value),
-#                        ArgsMatcher(AnyParam): lambda a: BuiltIns['num'].call(a),
-#                        ArgsMatcher(StringParam, StringParam): lambda a, b: py_value(a.value + b.value),
-#                        ArgsMatcher(ListParam, ListParam): lambda a, b: py_value(a.value + b.value),
-#                        ArgsMatcher(*(Parameter(TraitMatcher(TupTrait)),) * 2): lambda a, b: py_value(a.value + b.value),
-#                        # ArgsMatcher(SeqParam, SeqParam): lambda a, b: py_value(a.value + b.value)
+#                        ParamSet(AnyParam): lambda a: BuiltIns['num'].call(a),
+#                        ParamSet(StringParam, StringParam): lambda a, b: py_value(a.value + b.value),
+#                        ParamSet(ListParam, ListParam): lambda a, b: py_value(a.value + b.value),
+#                        ParamSet(*(Parameter(TraitMatcher(TupTrait)),) * 2): lambda a, b: py_value(a.value + b.value),
+#                        # ParamSet(SeqParam, SeqParam): lambda a, b: py_value(a.value + b.value)
 #                        })
 #     Op['-'] = Function({NormalBinopPattern: lambda a, b: py_value(a.value - b.value),
-#                       ArgsMatcher(AnyParam): lambda a: py_value(-BuiltIns['num'].call(a).value)})
-#     Op['*'] = Function({ArgsMatcher(NumericParam, NumericParam): lambda a, b: py_value(a.value * b.value),
-#                       ArgsMatcher(StringParam, IntegralParam): lambda a, b: py_value(a.value * b.value)})
-#     Op['/'] = Function({ArgsMatcher(NumericParam, NumericParam): lambda a, b: py_value(a.value / b.value),
-#                       ArgsMatcher(RationalParam, RationalParam): lambda a, b:
+#                       ParamSet(AnyParam): lambda a: py_value(-BuiltIns['num'].call(a).value)})
+#     Op['*'] = Function({ParamSet(NumericParam, NumericParam): lambda a, b: py_value(a.value * b.value),
+#                       ParamSet(StringParam, IntegralParam): lambda a, b: py_value(a.value * b.value)})
+#     Op['/'] = Function({ParamSet(NumericParam, NumericParam): lambda a, b: py_value(a.value / b.value),
+#                       ParamSet(RationalParam, RationalParam): lambda a, b:
 #                       py_value(Fraction(a.value.numerator * b.value.denominator, a.value.denominator * b.value.numerator))})
-#     Op['//'] = Function({ArgsMatcher(NumericParam, NumericParam): lambda a, b: py_value(a.value // b.value)})
-#     Op['%'] = Function({ArgsMatcher(NumericParam, NumericParam): lambda a, b: py_value(a.value % b.value)})
-#     Op['**'] = Function({ArgsMatcher(NumericParam, NumericParam): lambda a, b: py_value(a.value ** b.value)})
-#     Op['^'] = Function({ArgsMatcher(NumericParam, NumericParam): lambda a, b: py_value(a.value ** b.value)})
+#     Op['//'] = Function({ParamSet(NumericParam, NumericParam): lambda a, b: py_value(a.value // b.value)})
+#     Op['%'] = Function({ParamSet(NumericParam, NumericParam): lambda a, b: py_value(a.value % b.value)})
+#     Op['**'] = Function({ParamSet(NumericParam, NumericParam): lambda a, b: py_value(a.value ** b.value)})
+#     Op['^'] = Function({ParamSet(NumericParam, NumericParam): lambda a, b: py_value(a.value ** b.value)})
 #     Op['?'] = Function({AnyParam: lambda p: union_patterns(p, BuiltIns['blank'])})
 #     def has_option(fn: Record, arg: Record = None) -> PyValue:
 #         if arg is None:
@@ -1384,9 +1414,9 @@ Op['+'].fn = Function({NormalBinopPattern: lambda a, b: py_value(a.value + b.val
 #             case _:
 #                 raise TypeErr(f"Line {Context.line}: "
 #                               f"The right-hand term of the `has` operator must be a string or sequence of arguments.")
-#     Op['has'] = Function({ArgsMatcher(AnyParam, NonStrSeqParam): has_option,
+#     Op['has'] = Function({ParamSet(AnyParam, NonStrSeqParam): has_option,
 #                        AnyBinopPattern: has_option,
-#                        ArgsMatcher(NormalParam): has_option})
+#                        ParamSet(NormalParam): has_option})
 #     def add_guard_fn(fn: Record, guard: Function):
 #         patt = patternize(fn)
 #         patt.guard = guard
@@ -1395,8 +1425,8 @@ Op['+'].fn = Function({NormalBinopPattern: lambda a, b: py_value(a.value + b.val
 #         patt = patternize(fn)
 #         patt.exprs.append(expr)  # noqa
 #         return patt
-#     Op['&'] = Function({ArgsMatcher(AnyParam, AnyParam): add_guard_expr,
-#                        ArgsMatcher(FunctionParam, AnyParam): add_guard_expr})
+#     Op['&'] = Function({ParamSet(AnyParam, AnyParam): add_guard_expr,
+#                        ParamSet(FunctionParam, AnyParam): add_guard_expr})
 #     # def eval_patt_guard_args(lhs: list[Node], rhs: list[Node]) -> [Record, Expression]:
 #     #     return [expressionize(lhs).evaluate(), expressionize(rhs)]
 #     Op['&'].eval_args = lambda lhs, rhs: [expressionize(lhs).evaluate(), expressionize(rhs)]
@@ -1464,82 +1494,82 @@ Op['+'].fn = Function({NormalBinopPattern: lambda a, b: py_value(a.value + b.val
 #                 return piliize(a.obj(*[arg.value for arg in args]))
 #
 #
-#     Op['.'] = Function({ArgsMatcher(AnyParam, NonStrSeqParam): dot_fn,
+#     Op['.'] = Function({ParamSet(AnyParam, NonStrSeqParam): dot_fn,
 #                        AnyBinopPattern: dot_fn,
 #                        StringParam: lambda a: Context.deref(a.value),
-#                        ArgsMatcher(Parameter(TableMatcher(BuiltIns['PythonObject'])),
+#                        ParamSet(Parameter(TableMatcher(BuiltIns['PythonObject'])),
 #                                Parameter(UnionMatcher(TraitMatcher(FuncTrait), TableMatcher(BuiltIns['Table'])))):
 #                            py_dot})
 #     BuiltIns['call'] = BuiltIns['.']
 #     Op['.?'] = Function({AnyBinopPattern: lambda a, b: BuiltIns['.'].call(a,b) if BuiltIns['has'].call(a, b).value else py_value(None),
-#                       ArgsMatcher(StringParam): lambda a: BuiltIns['.'].call(a) if BuiltIns['has'].call(a).value else py_value(None),})
+#                       ParamSet(StringParam): lambda a: BuiltIns['.'].call(a) if BuiltIns['has'].call(a).value else py_value(None),})
 #     # map-dot / swizzle operator
-#     Op['..'] = Function({ArgsMatcher(SeqParam, StringParam): lambda ls, name: List([dot_fn(el, name) for el in ls.value]),
-#                        ArgsMatcher(NumericParam, NumericParam): lambda a, b: piliize(range(a.value, b.value))})
+#     Op['..'] = Function({ParamSet(SeqParam, StringParam): lambda ls, name: List([dot_fn(el, name) for el in ls.value]),
+#                        ParamSet(NumericParam, NumericParam): lambda a, b: piliize(range(a.value, b.value))})
 #     Op['.'].eval_args = Op['.?'].eval_args = Op['..'].eval_args = eval_call_args
 #
 #
 #     # pattern generator options for int, str, float, etc
 #     def make_lambda_guard(type_name: str):
 #         if type_name == 'str':
-#             return lambda a, b: ArgsMatcher(Parameter(TableMatcher(BuiltIns[type_name], guard=lambda x: py_value(a.value <= len(x.value) <= b.value))))
+#             return lambda a, b: ParamSet(Parameter(TableMatcher(BuiltIns[type_name], guard=lambda x: py_value(a.value <= len(x.value) <= b.value))))
 #         else:
-#             return lambda a, b: ArgsMatcher(Parameter(TableMatcher(BuiltIns[type_name], guard=lambda x: py_value(a.value <= x.value <= b.value))))
+#             return lambda a, b: ParamSet(Parameter(TableMatcher(BuiltIns[type_name], guard=lambda x: py_value(a.value <= x.value <= b.value))))
 #
 #
 #     for type_name in ('num', 'ratio', 'float', 'int', 'str'):
 #         if type_name == 'int':
 #             pass
-#         pass # BuiltIns[type_name].add_option(ArgsMatcher(NumericParam, NumericParam), make_lambda_guard(type_name))
+#         pass # BuiltIns[type_name].add_option(ParamSet(NumericParam, NumericParam), make_lambda_guard(type_name))
 #
 #
-#     # BuiltIns['str'].add_option(ArgsMatcher(StringParam),
-#     #                            lambda regex: ArgsMatcher(Parameter(TraitMatcher(
+#     # BuiltIns['str'].add_option(ParamSet(StringParam),
+#     #                            lambda regex: ParamSet(Parameter(TraitMatcher(
 #     #                                BuiltIns['str'], guard=lambda s: py_value(bool(re.fullmatch(regex.value, s.value)))))))
-#     # BuiltIns['num'].add_option(ArgsMatcher(NumericParam, NumericParam), lambda a, b: py_value(TableMatcher(BuiltIns['num'], guard=lambda x: py_value(a.value <= x.value <= b.value))))
+#     # BuiltIns['num'].add_option(ParamSet(NumericParam, NumericParam), lambda a, b: py_value(TableMatcher(BuiltIns['num'], guard=lambda x: py_value(a.value <= x.value <= b.value))))
 #
 #     # Add shortcut syntax for adding function guards to type checks.  Eg `int > 0` or `float < 1.0`
 #     def number_guard(op_sym: str):
 #         # assert a.value == b.type
-#         return lambda t, n: ArgsMatcher(Parameter(TraitMatcher(t, guard=lambda x: Op[op_sym].fn.call(x, n))))
+#         return lambda t, n: ParamSet(Parameter(TraitMatcher(t, guard=lambda x: Op[op_sym].fn.call(x, n))))
 #
 #     # generating functions with syntax like `str > 5` => `[str x]: len(x) > 5`
 #     def string_guard(op_sym: str):
 #         # assert a.value == BuiltIns['str'] and b.type in (BuiltIns['int'], BuiltIns['float'])
-#         return lambda t, n: ArgsMatcher(Parameter(TraitMatcher(t, guard=lambda s: Op[op_sym].fn.call(py_value(len(s.value)), n))))
+#         return lambda t, n: ParamSet(Parameter(TraitMatcher(t, guard=lambda s: Op[op_sym].fn.call(py_value(len(s.value)), n))))
 #         # def guard(x, y):
-#         #     return ArgsMatcher(Parameter(TableMatcher(BuiltIns['str'], guard=lambda s: Op[op_sym].fn.call(py_value(len(s.value)), b))))
+#         #     return ParamSet(Parameter(TableMatcher(BuiltIns['str'], guard=lambda s: Op[op_sym].fn.call(py_value(len(s.value)), b))))
 #         # # return guard
-#         # return ArgsMatcher(Parameter(TableMatcher(BuiltIns['str'], guard=lambda s: Op[op_sym].fn.call(py_value(len(s.value)), b))))
+#         # return ParamSet(Parameter(TableMatcher(BuiltIns['str'], guard=lambda s: Op[op_sym].fn.call(py_value(len(s.value)), b))))
 #
 #     # def add_guards(op_sym: str):
-#     #     Op[op_sym].fn.add_option(ArgsMatcher(Parameter(ValueMatcher(BuiltIns['int'])), NumericParam),
+#     #     Op[op_sym].fn.add_option(ParamSet(Parameter(ValueMatcher(BuiltIns['int'])), NumericParam),
 #     #                                 number_guard(op_sym))
-#     #     Op[op_sym].fn.assign_option(ArgsMatcher(Parameter(ValueMatcher(BuiltIns['float'])), NumericParam),
+#     #     Op[op_sym].fn.assign_option(ParamSet(Parameter(ValueMatcher(BuiltIns['float'])), NumericParam),
 #     #                                 lambda a, b: number_guard(a, b, op_sym))
-#     #     Op[op_sym].fn.assign_option(ArgsMatcher(Parameter(ValueMatcher(BuiltIns['ratio'])), NumericParam),
+#     #     Op[op_sym].fn.assign_option(ParamSet(Parameter(ValueMatcher(BuiltIns['ratio'])), NumericParam),
 #     #                                 lambda a, b: number_guard(a, b, op_sym))
-#     #     Op[op_sym].fn.assign_option(ArgsMatcher(Parameter(ValueMatcher(BuiltIns['str'])), NumericParam),
+#     #     Op[op_sym].fn.assign_option(ParamSet(Parameter(ValueMatcher(BuiltIns['str'])), NumericParam),
 #     #                                 lambda a, b: string_guard(a, b, op_sym))
 #
 #
 #     for op_sym in ('>', '<', '>=', '<='):
 #         for type_name in ('int', 'ratio', 'float', 'num'):
-#             Op[op_sym].fn.assign_option(ArgsMatcher(Parameter(ValueMatcher(BuiltIns[type_name])), NumericParam),
+#             Op[op_sym].fn.assign_option(ParamSet(Parameter(ValueMatcher(BuiltIns[type_name])), NumericParam),
 #                                         number_guard(op_sym))
-#         Op[op_sym].fn.assign_option(ArgsMatcher(Parameter(ValueMatcher(BuiltIns['str'])), NumericParam),
+#         Op[op_sym].fn.assign_option(ParamSet(Parameter(ValueMatcher(BuiltIns['str'])), NumericParam),
 #                                     string_guard(op_sym))
 #         # add_guards(op)
 
 def make_op_equals_functions(sym: str):
     op_fn = Op[sym].fn
     op_name = sym + '='
-    Op[op_name].fn = Function({ArgsMatcher(StringParam, AnyParam):
+    Op[op_name].fn = Function({ParamSet(StringParam, AnyParam):
                                    lambda name, val: Context.env.assign(name.value,
                                                                         op_fn.call(Context.deref(name), val)),
-                               ArgsMatcher(FunctionParam, AnyParam, AnyParam):
+                               ParamSet(FunctionParam, AnyParam, AnyParam):
                                    lambda *args: set_or_assign_option(*args, operation=op_fn),
-                               ArgsMatcher(AnyParam, StringParam, AnyParam):
+                               ParamSet(AnyParam, StringParam, AnyParam):
                                    lambda rec, name, val: rec.set(name.value, op_fn.call(rec.get(name.value), val))
                                }, name=op_name)
     Op[op_name].eval_args = eval_assign_args
@@ -1548,50 +1578,82 @@ def make_op_equals_functions(sym: str):
 for sym in ('+', '-', '*', '/', '//', '**', '%', '??', '&', '|'):
     make_op_equals_functions(sym)
 
+
 """ This is an option that matches (1) value int (the trait itself) and (2) any int value.  Eg, `int < 2`.
     The resolution of the option is a function that returns a pattern.  The pattern is an int trait matcher, with a
     specification via Lambda Matcher that said int ought to be less than the value in the pattern expression. 
 """
-for trait in ('int', 'ratio', 'float', 'num'):
-    Op['<'].fn.assign_option(ArgsMatcher(Parameter(ValueMatcher(BuiltIns[trait])),
-                                         Parameter(TraitMatcher(BuiltIns['num']))),
+def make_comp_opt(trait: str):
+    if trait in ('str', 'list', 'tuple', 'set', 'frozenset'):
+        def t(rec):
+            return len(rec.value)
+    elif trait in ('int', 'ratio', 'float', 'num'):
+        def t(rec):
+            return rec.value
+    Op['<'].fn.assign_option(ParamSet(Parameter(ValueMatcher(BuiltIns[trait])),
+                                      Parameter(TraitMatcher(BuiltIns['num']))),
                              lambda _, x: IntersectionMatcher(TraitMatcher(BuiltIns[trait]),
-                                                              LambdaMatcher(lambda y: y.value < x.value))
+                                                              LambdaMatcher(lambda y: t(y) < x.value))
                              )
-    Op['<='].fn.assign_option(ArgsMatcher(Parameter(ValueMatcher(BuiltIns[trait])),
-                                          Parameter(TraitMatcher(BuiltIns['num']))),
+    Op['<='].fn.assign_option(ParamSet(Parameter(ValueMatcher(BuiltIns[trait])),
+                                       Parameter(TraitMatcher(BuiltIns['num']))),
                               lambda _, x: IntersectionMatcher(TraitMatcher(BuiltIns[trait]),
-                                                               LambdaMatcher(lambda y: y.value <= x.value))
+                                                               LambdaMatcher(lambda y: t(y) <= x.value))
                               )
-    Op['>='].fn.assign_option(ArgsMatcher(Parameter(ValueMatcher(BuiltIns[trait])),
-                                          Parameter(TraitMatcher(BuiltIns['num']))),
+    Op['>='].fn.assign_option(ParamSet(Parameter(ValueMatcher(BuiltIns[trait])),
+                                       Parameter(TraitMatcher(BuiltIns['num']))),
                               lambda _, x: IntersectionMatcher(TraitMatcher(BuiltIns[trait]),
-                                                               LambdaMatcher(lambda y: y.value >= x.value))
+                                                               LambdaMatcher(lambda y: t(y) >= x.value))
                               )
-    Op['>'].fn.assign_option(ArgsMatcher(Parameter(ValueMatcher(BuiltIns[trait])),
-                                         Parameter(TraitMatcher(BuiltIns['num']))),
+    Op['>'].fn.assign_option(ParamSet(Parameter(ValueMatcher(BuiltIns[trait])),
+                                      Parameter(TraitMatcher(BuiltIns['num']))),
                              lambda _, x: IntersectionMatcher(TraitMatcher(BuiltIns[trait]),
-                                                              LambdaMatcher(lambda y: y.value > x.value))
+                                                              LambdaMatcher(lambda y: t(y) > x.value))
                              )
 
-for trait in ('str', 'list'):
-    Op['<'].fn.assign_option(ArgsMatcher(Parameter(ValueMatcher(BuiltIns[trait])),
-                                         Parameter(TraitMatcher(BuiltIns['num']))),
-                             lambda _, x: IntersectionMatcher(TraitMatcher(BuiltIns[trait]),
-                                                              LambdaMatcher(lambda y: len(y.value) < x.value))
-                             )
-    Op['<='].fn.assign_option(ArgsMatcher(Parameter(ValueMatcher(BuiltIns[trait])),
-                                          Parameter(TraitMatcher(BuiltIns['num']))),
-                              lambda _, x: IntersectionMatcher(TraitMatcher(BuiltIns[trait]),
-                                                               LambdaMatcher(lambda y: len(y.value) <= x.value))
-                              )
-    Op['>='].fn.assign_option(ArgsMatcher(Parameter(ValueMatcher(BuiltIns[trait])),
-                                          Parameter(TraitMatcher(BuiltIns['num']))),
-                              lambda _, x: IntersectionMatcher(TraitMatcher(BuiltIns[trait]),
-                                                               LambdaMatcher(lambda y: len(y.value) >= x.value))
-                              )
-    Op['>'].fn.assign_option(ArgsMatcher(Parameter(ValueMatcher(BuiltIns[trait])),
-                                         Parameter(TraitMatcher(BuiltIns['num']))),
-                             lambda _, x: IntersectionMatcher(TraitMatcher(BuiltIns[trait]),
-                                                              LambdaMatcher(lambda y: len(y.value) > x.value))
-                             )
+
+for trait in ('int', 'ratio', 'float', 'num', 'str', 'list', 'tuple', 'set', 'frozenset'):
+    make_comp_opt(trait)
+# for trait in ('int', 'ratio', 'float', 'num'):
+#     Op['<'].fn.assign_option(ParamSet(Parameter(ValueMatcher(BuiltIns[trait])),
+#                                       Parameter(TraitMatcher(BuiltIns['num']))),
+#                              lambda _, x: IntersectionMatcher(TraitMatcher(BuiltIns[trait]),
+#                                                               LambdaMatcher(lambda y: y.value < x.value))
+#                              )
+#     Op['<='].fn.assign_option(ParamSet(Parameter(ValueMatcher(BuiltIns[trait])),
+#                                        Parameter(TraitMatcher(BuiltIns['num']))),
+#                               lambda _, x: IntersectionMatcher(TraitMatcher(BuiltIns[trait]),
+#                                                                LambdaMatcher(lambda y: y.value <= x.value))
+#                               )
+#     Op['>='].fn.assign_option(ParamSet(Parameter(ValueMatcher(BuiltIns[trait])),
+#                                        Parameter(TraitMatcher(BuiltIns['num']))),
+#                               lambda _, x: IntersectionMatcher(TraitMatcher(BuiltIns[trait]),
+#                                                                LambdaMatcher(lambda y: y.value >= x.value))
+#                               )
+#     Op['>'].fn.assign_option(ParamSet(Parameter(ValueMatcher(BuiltIns[trait])),
+#                                       Parameter(TraitMatcher(BuiltIns['num']))),
+#                              lambda _, x: IntersectionMatcher(TraitMatcher(BuiltIns[trait]),
+#                                                               LambdaMatcher(lambda y: y.value > x.value))
+#                              )
+#
+# for trait in ('str', 'list'):
+#     Op['<'].fn.assign_option(ParamSet(Parameter(ValueMatcher(BuiltIns[trait])),
+#                                       Parameter(TraitMatcher(BuiltIns['num']))),
+#                              lambda _, x: IntersectionMatcher(TraitMatcher(BuiltIns[trait]),
+#                                                               LambdaMatcher(lambda y: len(y.value) < x.value))
+#                              )
+#     Op['<='].fn.assign_option(ParamSet(Parameter(ValueMatcher(BuiltIns[trait])),
+#                                        Parameter(TraitMatcher(BuiltIns['num']))),
+#                               lambda _, x: IntersectionMatcher(TraitMatcher(BuiltIns[trait]),
+#                                                                LambdaMatcher(lambda y: len(y.value) <= x.value))
+#                               )
+#     Op['>='].fn.assign_option(ParamSet(Parameter(ValueMatcher(BuiltIns[trait])),
+#                                        Parameter(TraitMatcher(BuiltIns['num']))),
+#                               lambda _, x: IntersectionMatcher(TraitMatcher(BuiltIns[trait]),
+#                                                                LambdaMatcher(lambda y: len(y.value) >= x.value))
+#                               )
+#     Op['>'].fn.assign_option(ParamSet(Parameter(ValueMatcher(BuiltIns[trait])),
+#                                       Parameter(TraitMatcher(BuiltIns['num']))),
+#                              lambda _, x: IntersectionMatcher(TraitMatcher(BuiltIns[trait]),
+#                                                               LambdaMatcher(lambda y: len(y.value) > x.value))
+#                              )

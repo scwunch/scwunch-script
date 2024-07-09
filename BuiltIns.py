@@ -64,7 +64,7 @@ BuiltIns['Trait'].traits += (FuncTrait,)
 
 BuiltIns['Pattern'] = ListTable(SeqTrait, IterTrait, name='Pattern')
 BuiltIns['Pattern'].records = IntermediatePatternTable.records
-# BuiltIns["Pattern"] = BuiltIns['ArgsMatcher']
+# BuiltIns["Pattern"] = BuiltIns['ParamSet']
 BuiltIns['Block'] = ListTable(name='Block')
 
 BuiltIns['Field'] = ListTable(name='Field')
@@ -116,10 +116,10 @@ PatternParam = Parameter(TableMatcher(BuiltIns['Pattern']))
 FunctionParam = Parameter(TraitMatcher(BuiltIns["fn"]))
 TableParam = Parameter(TableMatcher(BuiltIns['Table']))
 AnyParam = Parameter(AnyMatcher())
-NormalBinopPattern = ArgsMatcher(NormalParam, NormalParam)
-AnyBinopPattern = ArgsMatcher(AnyParam, AnyParam)
-AnyPlusPattern = ArgsMatcher(Parameter(AnyMatcher(), quantifier="+"))
-AnyPattern = ArgsMatcher(Parameter(AnyMatcher(), quantifier="*"))
+NormalBinopPattern = ParamSet(NormalParam, NormalParam)
+AnyBinopPattern = ParamSet(AnyParam, AnyParam)
+AnyPlusPattern = ParamSet(Parameter(AnyMatcher(), quantifier="+"))
+AnyPattern = ParamSet(Parameter(AnyMatcher(), quantifier="*"))
 
 # PositiveIntParam = Parameter(TraitMatcher(BuiltIns["int"], guard=lambda x: py_value(x.value > 0)))
 # NegativeIntParam = Parameter(TraitMatcher(BuiltIns["int"], guard=lambda x: py_value(x.value < 0)))
@@ -130,28 +130,28 @@ AnyPattern = ArgsMatcher(Parameter(AnyMatcher(), quantifier="*"))
 
 
 
-BuiltIns['bool'].assign_option(ArgsMatcher(AnyParam), lambda x: py_value(bool(x.value)))
-BuiltIns['num'].assign_option(ArgsMatcher(BoolParam), lambda x: py_value(int(x.value)))
-BuiltIns['num'].assign_option(ArgsMatcher(NumericParam), lambda x: py_value(x.value))
-BuiltIns['num'].assign_option(ArgsMatcher(StringParam), lambda x: py_value(read_number(x.value, Context.settings['base'])))
-BuiltIns['num'].assign_option(ArgsMatcher(StringParam, IntegralParam),
+BuiltIns['bool'].assign_option(ParamSet(AnyParam), lambda x: py_value(bool(x.value)))
+BuiltIns['num'].assign_option(ParamSet(BoolParam), lambda x: py_value(int(x.value)))
+BuiltIns['num'].assign_option(ParamSet(NumericParam), lambda x: py_value(x.value))
+BuiltIns['num'].assign_option(ParamSet(StringParam), lambda x: py_value(read_number(x.value, Context.settings['base'])))
+BuiltIns['num'].assign_option(ParamSet(StringParam, IntegralParam),
                               lambda x, b: py_value(read_number(x.value, b.value)))
-# Function({ArgsMatcher(BoolParam): lambda x: py_value(int(x.value)),
-#                               ArgsMatcher(NumericParam): lambda x: py_value(x.value),
-#                                ArgsMatcher(StringParam): lambda x: py_value(read_number(x.value, Context.settings['base'])),
-#                                ArgsMatcher(StringParam, IntegralParam): lambda x, b: py_value(read_number(x.value, b.value))},
+# Function({ParamSet(BoolParam): lambda x: py_value(int(x.value)),
+#                               ParamSet(NumericParam): lambda x: py_value(x.value),
+#                                ParamSet(StringParam): lambda x: py_value(read_number(x.value, Context.settings['base'])),
+#                                ParamSet(StringParam, IntegralParam): lambda x, b: py_value(read_number(x.value, b.value))},
 #                               name='number')
-BuiltIns['int'].assign_option(ArgsMatcher(NormalParam), lambda x: py_value(int(BuiltIns['num'].call(x).value)))
-BuiltIns['ratio'].assign_option(ArgsMatcher(NormalParam), lambda x: py_value(Fraction(BuiltIns['num'].call(x).value)))
-BuiltIns['float'].assign_option(ArgsMatcher(NormalParam), lambda x: py_value(float(BuiltIns['num'].call(x).value)))
-# BuiltIns['float'] = Function({ArgsMatcher(NormalParam), lambda x: py_value(float(BuiltIns['number'].call(x).value)))
-BuiltIns['str'].assign_option(ArgsMatcher(AnyParam), lambda x: x.to_string())
+BuiltIns['int'].assign_option(ParamSet(NormalParam), lambda x: py_value(int(BuiltIns['num'].call(x).value)))
+BuiltIns['ratio'].assign_option(ParamSet(NormalParam), lambda x: py_value(Fraction(BuiltIns['num'].call(x).value)))
+BuiltIns['float'].assign_option(ParamSet(NormalParam), lambda x: py_value(float(BuiltIns['num'].call(x).value)))
+# BuiltIns['float'] = Function({ParamSet(NormalParam), lambda x: py_value(float(BuiltIns['number'].call(x).value)))
+BuiltIns['str'].assign_option(ParamSet(AnyParam), lambda x: x.to_string())
 BuiltIns['str'].assign_option(Option(StringParam, lambda x: x))
-BuiltIns['str'].assign_option(ArgsMatcher(NumericParam, IntegralParam),
+BuiltIns['str'].assign_option(ParamSet(NumericParam, IntegralParam),
                               lambda n, b: py_value(write_number(n.value, b.value)))
-BuiltIns['list'].assign_option(ArgsMatcher(SeqParam), lambda x: py_value(list(x.value)))
-BuiltIns['tuple'].assign_option(ArgsMatcher(SeqParam), lambda x: py_value(tuple(x.value)))
-BuiltIns['set'].assign_option(ArgsMatcher(SeqParam), lambda x: py_value(set(x.value)))
+BuiltIns['list'].assign_option(ParamSet(SeqParam), lambda x: py_value(list(x.value)))
+BuiltIns['tuple'].assign_option(ParamSet(SeqParam), lambda x: py_value(tuple(x.value)))
+BuiltIns['set'].assign_option(ParamSet(SeqParam), lambda x: py_value(set(x.value)))
 BuiltIns['iter'].assign_option(Option(UnionMatcher(*(TraitMatcher(BuiltIns[t])
                                                      for t in ('tuple', 'list', 'set', 'frozenset', 'str'))),
                                       lambda x: x))
@@ -177,17 +177,17 @@ def setting_set(prop: str, val: PyValue):
 #                                   Slot('get', TableMatcher(BuiltIns['Function']))]
 #                           )
 # BuiltIns['settings'] = Record(SettingsTable,
-#                               set=Function({ArgsMatcher(StringParam, AnyParam): setting_set}),
-#                               get=Function({ArgsMatcher(StringParam): setting_get}))
+#                               set=Function({ParamSet(StringParam, AnyParam): setting_set}),
+#                               get=Function({ParamSet(StringParam): setting_get}))
 get_base_fn = Function({AnyParam: lambda _: py_value("_ubtqphsond"[Context.settings['base']])},
                        name='get_base_fn')
-set_base_fn = Function({ArgsMatcher(AnyParam, Parameter(UnionMatcher(TraitMatcher(StrTrait),
-                                                                     *(ValueMatcher(py_value(v)) for v in range(1, 11))))):
+set_base_fn = Function({ParamSet(AnyParam, Parameter(UnionMatcher(TraitMatcher(StrTrait),
+                                                                  *(ValueMatcher(py_value(v)) for v in range(1, 11))))):
                         lambda _, val: setting_set('base', val)},
                        name='set_base_fn')
 get_sort_options = Function({AnyParam: lambda: py_value(Context.settings['sort_options'])},
                             name='get_sort_options')
-set_sort_options = Function({ArgsMatcher(AnyParam, BoolParam):
+set_sort_options = Function({ParamSet(AnyParam, BoolParam):
                                  lambda _, val: setting_set('sort_options', val)},
                             name='set_sort_options')
 SettingsSingletonTable = SetTable(Trait({},
@@ -204,16 +204,16 @@ BuiltIns['settings'] = Record(SettingsSingletonTable)
 #                                 Setter('sort_options', set_sort_options)
 #                                 )
 
-def key_to_param_set(key: PyValue) -> ArgsMatcher:
+def key_to_param_set(key: PyValue) -> ParamSet:
     if hasattr(key, 'value') and isinstance(key.value, list):
         vals = key.value
     else:
         vals = [key]
     params = (Parameter(ValueMatcher(pval, pval.value if isinstance(pval.value, str) else None))
               for pval in vals)
-    return ArgsMatcher(*params)
+    return ParamSet(*params)
 
-# def set_value(fn: Record, key: ArgsMatcher, val: Record):
+# def set_value(fn: Record, key: ParamSet, val: Record):
 #     match key:
 #         case PyValue(value=str() as name):
 #             pass
@@ -224,22 +224,22 @@ def key_to_param_set(key: PyValue) -> ArgsMatcher:
 if 'set' in BuiltIns:
     print("set already a defined builtin")
 else:
-    BuiltIns['set'] = Function({ArgsMatcher(FunctionParam, AnyParam, AnyParam):
+    BuiltIns['set'] = Function({ParamSet(FunctionParam, AnyParam, AnyParam):
                                lambda fn, key, val: fn.assign_option(key_to_param_set(key), val).resolution})
-# BuiltIns['string'].add_option(ArgsMatcher(ListParam), lambda l: py_value(str(l.value[1:])))
-# BuiltIns['string'].add_option(ArgsMatcher(NumberParam),
+# BuiltIns['string'].add_option(ParamSet(ListParam), lambda l: py_value(str(l.value[1:])))
+# BuiltIns['string'].add_option(ParamSet(NumberParam),
 #                               lambda n: py_value('-' * (n.value < 0) +
 #                                               base(abs(n.value), 10, 6, string=True, recurring=False)))
-# BuiltIns['string'].add_option(ArgsMatcher(Parameter(TableMatcher(BuiltIns["Type"]))), lambda t: py_value(t.value.name))
+# BuiltIns['string'].add_option(ParamSet(Parameter(TableMatcher(BuiltIns["Type"]))), lambda t: py_value(t.value.name))
 
 BuiltIns['type'] = Function({AnyParam: lambda v: v.table})
 
 BuiltIns['len'] = Function({SeqParam: lambda s: py_value(len(s.value)),
                             PatternParam: lambda p: py_value(len(p)),
-                            ArgsMatcher(Parameter(TableMatcher(BuiltIns['Table']))): lambda t: py_value(len(t.records))
+                            ParamSet(Parameter(TableMatcher(BuiltIns['Table']))): lambda t: py_value(len(t.records))
                             })
 # BuiltIns['traits'] = Function({Parameter(BuiltIns['Table']): lambda t: py_value(t.traits)})
-# # BuiltIns['contains'] = Function({ArgsMatcher(FunctionParam: AnyParam),
+# # BuiltIns['contains'] = Function({ParamSet(FunctionParam: AnyParam),
 # #                                 lambda a, b: py_value(b in (opt.value for opt in a.options)))
 # # BuiltIns['options'] = Function({AnyParam: lambda x: piliize([py_value(lp.pattern) for lp in x.options])})
 # # BuiltIns['names'] = Function({AnyParam: lambda x: piliize([py_value(k) for k in x.named_options.keys()])})
@@ -268,7 +268,7 @@ def round_to_rational(num, places):
 
 
 BuiltIns['round'] = Function({NumericParam: lambda n: py_value(round(n.value)),
-                             ArgsMatcher(NumericParam, IntegralParam): round_to_rational})
+                              ParamSet(NumericParam, IntegralParam): round_to_rational})
 
 def inclusive_range(*args: PyValue):
     step = 1
@@ -302,22 +302,22 @@ def inclusive_range(*args: PyValue):
 
 
 BuiltIns['range'] = Function({Parameter(BuiltIns["num"], quantifier="*"): inclusive_range})
-# BuiltIns['map'] = Function({ArgsMatcher(SeqParam, FunctionParam): lambda ls, fn: piliize([fn.call(val) for val in ls.value]),
-#                             ArgsMatcher(FunctionParam, SeqParam): lambda fn, ls: piliize([fn.call(val) for val in ls.value])})
-# BuiltIns['filter'] = Function({ArgsMatcher(ListParam, FunctionParam):
+# BuiltIns['map'] = Function({ParamSet(SeqParam, FunctionParam): lambda ls, fn: piliize([fn.call(val) for val in ls.value]),
+#                             ParamSet(FunctionParam, SeqParam): lambda fn, ls: piliize([fn.call(val) for val in ls.value])})
+# BuiltIns['filter'] = Function({ParamSet(ListParam, FunctionParam):
 #                                    lambda ls, fn: piliize([v for v in ls.value
 #                                                            if BuiltIns['bool'].call(fn.call(v)).value]),
-#                                ArgsMatcher(FunctionParam, ListParam):
+#                                ParamSet(FunctionParam, ListParam):
 #                                    lambda fn, ls: piliize([v for v in ls.value
 #                                                            if BuiltIns['bool'].call(fn.call(v)).value])})
 # BuiltIns['sum'] = Function({SeqParam: lambda ls: BuiltIns['+'].call(*ls.value)})
 # BuiltIns['trim'] = Function({StringParam: lambda text: py_value(text.value.strip()),
-#                             ArgsMatcher(StringParam, StringParam): lambda t, c: py_value(t.value.strip(c.value))})
+#                             ParamSet(StringParam, StringParam): lambda t, c: py_value(t.value.strip(c.value))})
 # BuiltIns['upper'] = Function({StringParam: lambda text: py_value(text.value.upper())})
 # BuiltIns['lower'] = Function({StringParam: lambda text: py_value(text.value.lower())})
-# BuiltIns['match'] = Function({ArgsMatcher(StringParam, StringParam):
+# BuiltIns['match'] = Function({ParamSet(StringParam, StringParam):
 #                                   lambda s, p: py_value(re.match(p.value, s.value)),
-#                               ArgsMatcher(StringParam, StringParam, StringParam):
+#                               ParamSet(StringParam, StringParam, StringParam):
 #                                   lambda s, p, f: py_value(re.match(p.value, s.value, f.value))})
 # # BuiltIns['self'] = lambda: Context.env.caller or Context.env or py_value(None)
 # # def Args(fn: Function):
@@ -350,13 +350,11 @@ def list_get(args: Args):
             raise KeyErr(f"Line {Context.line}: Pili sequence indices start at 1, not 0.")
         raise KeyErr(f"Line {Context.line}: {e}")
 
-def list_set(ls: List, index: PyValue, val: Function):
-    i = index.value[0].value
-    i -= i > 0
-    if i == len(ls.value):
+def list_set(ls: PyValue[list], index: PyValue, val: Record):
+    if index.value == len(ls.value) + 1:
         ls.value.append(val)
     else:
-        ls.value[i] = val
+        ls.value[index] = val
     return val
 
 def list_slice(seq: PyValue, start: PyValue[int], end: PyValue[int], step: PyValue[int] = py_value(1)):
@@ -399,30 +397,31 @@ def list_slice(args: Args):
         raise KeyErr(f"Line {Context.line}: {e}")
 
 
-BuiltIns['slice'] = Function({ArgsMatcher(SeqParam, IntegralParam, IntegralParam): list_slice,
-                              ArgsMatcher(SeqParam, IntegralParam, IntegralParam, IntegralParam): list_slice})
-list_get_option = Option(ArgsMatcher(IntegralParam), Native(list_get))
-list_slice_option1 = Option(ArgsMatcher(IntegralParam, IntegralParam), Native(list_slice))
-list_slice_option2 = Option(ArgsMatcher(IntegralParam, IntegralParam, IntegralParam), Native(list_slice))
+BuiltIns['slice'] = Function({ParamSet(SeqParam, IntegralParam, IntegralParam): list_slice,
+                              ParamSet(SeqParam, IntegralParam, IntegralParam, IntegralParam): list_slice})
+list_get_option = Option(ParamSet(IntegralParam), Native(list_get))
+list_slice_option1 = Option(ParamSet(IntegralParam, IntegralParam), Native(list_slice))
+list_slice_option2 = Option(ParamSet(IntegralParam, IntegralParam, IntegralParam), Native(list_slice))
 
 for tbl in ('List', 'Tuple', 'String'):
     BuiltIns[tbl].catalog.assign_option(list_get_option)
     BuiltIns[tbl].catalog.assign_option(list_slice_option1)
     BuiltIns[tbl].catalog.assign_option(list_slice_option2)
 
-BuiltIns['push'] = Function({ArgsMatcher(ListParam, AnyParam):
+BuiltIns['push'] = Function({ParamSet(ListParam, AnyParam):
                              lambda ls, item: ls.value.append(item)})
-BuiltIns['join'] = Function({ArgsMatcher(SeqParam, StringParam):
+BuiltIns['join'] = Function({ParamSet(SeqParam, StringParam):
                              lambda ls, sep: py_value(sep.value.join(BuiltIns['str'].call(item).value
                                                                      for item in iter(ls))),
-                             ArgsMatcher(StringParam, Parameter(AnyMatcher(), quantifier="+")):
+                             ParamSet(StringParam, Parameter(AnyMatcher(), quantifier="+")):
                              lambda sep, items: py_value(sep.value.join(BuiltIns['str'].call(item).value
                                                                         for item in iter(items))),
                              })
-BuiltIns['split'] = Function({ArgsMatcher(StringParam, StringParam):
+BuiltIns['split'] = Function({ParamSet(StringParam, StringParam):
                                   lambda txt, sep: piliize([py_value(s) for s in txt.value.split(sep.value)])})
 
-BuiltIns['new'] = Function({ArgsMatcher(TableParam, AnyPattern[0]): lambda t, *args, **kwargs: Record(t, *args, **kwargs)})
+BuiltIns['new'] = Function({ParamSet(TableParam, AnyPattern[0], kwargs='kwargs'):
+                                lambda t, *args, **kwargs: Record(t, *args, **kwargs)})
 #
 # SeqTrait.options.append(Option(IntegralParam, Native(list_get)))
 # SeqTrait.options.append(Option(AnyPlusPattern,
@@ -436,7 +435,7 @@ BuiltIns['new'] = Function({ArgsMatcher(TableParam, AnyPattern[0]): lambda t, *a
 #     py_fn = __builtins__.get(name, o)  # noqa
 #     if py_fn is o:
 #         raise SyntaxErr(f"Name '{name}' not found.")
-#     # Context.root.add_option(ArgsMatcher(Parameter(name)), lambda *args: py_value(py_fn((arg.value for arg in args))))
+#     # Context.root.add_option(ParamSet(Parameter(name)), lambda *args: py_value(py_fn((arg.value for arg in args))))
 #     # def lambda_fn(*args):
 #     #     arg_list = list(arg.value for arg in args)
 #     #     return py_value(py_fn(*arg_list))
@@ -444,7 +443,7 @@ BuiltIns['new'] = Function({ArgsMatcher(TableParam, AnyPattern[0]): lambda t, *a
 #     return Function({AnyPattern: lambda *args: py_value(py_fn(*(arg.value for arg in args)))})
 #
 #
-# # BuiltIns['python'] = Function({ArgsMatcher(StringParam): lambda n: convert(n.value))
+# # BuiltIns['python'] = Function({ParamSet(StringParam): lambda n: convert(n.value))
 # BuiltIns['python'] = Function({StringParam: lambda code: py_value(eval(code.value))})  # lambda x: py_value(eval(x.value)))
 BuiltIns['python'] = Function({StringParam: None})
 #

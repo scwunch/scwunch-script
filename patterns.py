@@ -10,26 +10,22 @@ class Pattern(Record):
         raise NotImplementedError(self.__class__.__name__)
 
 
-class Matcher(Pattern):
-    guard = None
+class Matcher:
+    # guard = None
     invert = False
-    def __init__(self, name: str = None, guard: Function | PyFunction = None, inverse=False):
-        if name is not None or guard is not None or inverse:
-            raise Exception("Check this out.  Can we get rid of these properties entirely?")
-        self.name = name
-        self.guard = guard
-        self.invert = inverse
-        super().__init__()
+    hash: int
+    # def __init__(self, name: str = None, guard: Function | PyFunction = None, inverse=False):
+    #     if name is not None or guard is not None or inverse:
+    #         raise Exception("Check this out.  Can we get rid of these properties entirely?")
+    #     self.name = name
+    #     self.guard = guard
+    #     self.invert = inverse
+    #     super().__init__()
 
     def match_score(self, arg: Record) -> bool | float:
+        if self.invert:
+            return not self.basic_score(arg)
         return self.basic_score(arg)
-        # score = self.basic_score(arg)
-        # if self.invert:
-        #     score = not score
-        # if score and self.guard:
-        #     result = self.guard.call(arg)
-        #     return score * BuiltIns['bool'].call(result).value
-        # return score
 
     def basic_score(self, arg):
         # implemented by subclasses
@@ -78,34 +74,50 @@ class Matcher(Pattern):
             case _:
                 return NotImplemented
 
-    # def __eq__(self, other):
-    #     return self.get_rank() == other.get_rank()
+    def __repr__(self):
+        return (f"{'!' * self.invert}{self.__class__.__name__}"
+                f"{tuple(v for k, v in self.__dict__.items() if k not in ('hash', 'invert'))}")
+
+    def __eq__(self, other):
+        return (self.__class__ is other.__class__
+                and hash(self) == hash(other)
+                and self.__dict__ == other.__dict__)
+        # return self.invert == other.invert and self.guard == other.guard
+        # raise NotImplementedError(f'Please implement __eq__ of {self.__class__}')
+
+    def __hash__(self):
+        try:
+            return self.hash
+        except AttributeError:
+            props = dict(self.__dict__)
+            props['class'] = self.__class__
+            self.hash = hash(frozenset(props.items()))
+            return self.hash
 
 class TableMatcher(Matcher):
-    _table: Table
+    table: Table
     rank = 5, 0
 
-    def __init__(self, table, name=None, guard=None, inverse=False):
+    def __init__(self, table):
         assert isinstance(table, Table)
-        self._table = table
-        super().__init__(name, guard, inverse)
+        self.table = table
 
     def basic_score(self, arg: Record) -> bool:
-        return arg.table == self._table
+        return arg.table == self.table
 
     def issubset(self, other):
         match other:
-            case TableMatcher(_table=table):
-                return table == self._table
+            case TableMatcher(table=table):
+                return table == self.table
             case TraitMatcher(trait=trait):
-                return trait in self._table.traits
+                return trait in self.table.traits
         return False
 
     def equivalent(self, other):
-        return isinstance(other, TableMatcher) and self._table == other._table
+        return isinstance(other, TableMatcher) and self.table == other.table
 
     def __repr__(self):
-        return f"TableMatcher({self._table})"
+        return f"TableMatcher({self.table})"
 
 class TraitMatcher(Matcher):
     trait: Trait
@@ -123,8 +135,8 @@ class TraitMatcher(Matcher):
     def equivalent(self, other):
         return isinstance(other, TraitMatcher) and other.trait == self.trait
 
-    def __repr__(self):
-        return f"TraitMatcher({self.trait})"
+    # def __repr__(self):
+    #     return f"TraitMatcher({self.trait})"
 
 
 class ValueMatcher(Matcher):
@@ -150,17 +162,16 @@ class ValueMatcher(Matcher):
     def equivalent(self, other):
         return isinstance(other, ValueMatcher) and other.value == self.value
 
-    def __repr__(self):
-        return f"ValueMatcher({self.value})"
+    # def __repr__(self):
+    #     return f"ValueMatcher({self.value})"
 
 
 class FunctionMatcher(Matcher):
-    # signature: ArgsMatcher
+    # signature: ParamSet
     # return_type: Matcher
-    def __init__(self, signature, return_type, name=None, guard=None, inverse=False):
+    def __init__(self, signature, return_type):
         self.signature = signature
         self.return_type = return_type
-        super().__init__(name, guard, inverse)
 
     def basic_score(self, arg):
         if not hasattr(arg, 'op_list'):
@@ -171,8 +182,9 @@ class FunctionMatcher(Matcher):
             yield from arg.op_list
             yield from arg.op_map.values()
 
-        if all((option.pattern.issubset(self.signature) and option.return_type.issubset(self.return_type)
-                for option in options())):
+        if all(option.pattern.issubset(self.signature)
+               and option.return_type.issubset(self.return_type)
+               for option in options()):
             return True
 
     def issubset(self, other):
@@ -188,6 +200,9 @@ class FunctionMatcher(Matcher):
                 and other.signature == self.signature
                 and other.return_type == self.return_type)
 
+    def __repr__(self):
+        return '!' * self.invert + f"FunctionMatcher({self.signature} => {self.return_type})"
+
 
 class AnyMatcher(Matcher):
     rank = 100, 0
@@ -200,8 +215,8 @@ class AnyMatcher(Matcher):
     def equivalent(self, other):
         return isinstance(other, AnyMatcher)
 
-    def __repr__(self):
-        return f"AnyMatcher()"
+    # def __repr__(self):
+    #     return f"AnyMatcher()"
 
 class EmptyMatcher(Matcher):
     rank = 3, 0
@@ -213,6 +228,8 @@ class EmptyMatcher(Matcher):
                 return len(v) == 0
             case Function(op_list=options, op_map=hashed_options):
                 return bool(len(options) + len(hashed_options))
+            case Record(table=Table(traits=traits)) if BuiltIns['seq'] in traits:
+                return BuiltIns['len'].call(arg).value == 0
             case _:
                 return False
 
@@ -222,19 +239,22 @@ class EmptyMatcher(Matcher):
     def equivalent(self, other):
         return isinstance(other, EmptyMatcher)
 
-    def __repr__(self):
-        return f"EmptyMatcher()"
+    # def __repr__(self):
+    #     return f"EmptyMatcher()"
 
 
 class IterMatcher(Matcher):
     parameters: tuple
     def __init__(self, *params):
+        raise NotImplementedError
         self.parameters = params
 
     def basic_score(self, arg: Record):
+        raise NotImplementedError
         return self.match_zip(arg)[0]
 
     def match_zip(self, arg: Record):
+        raise NotImplementedError
         try:
             it = iter(arg)  # noqa
         except TypeError:
@@ -244,16 +264,21 @@ class IterMatcher(Matcher):
 
 
 class FieldMatcher(Matcher):
-    fields: dict
+    fields: dict  # dict[str, Parameter]
 
-    def __init__(self, **fields):
+    def __init__(self, fields: dict = None, **kwargs):
+        if fields is None:
+            fields = kwargs
+        else:
+            fields.update(kwargs)
         self.fields = fields
 
     def basic_score(self, arg: Record):
         for name, param in self.fields.items():
             prop = arg.get(name, None)
+            param = dot_fn(arg, py_value(name), suppress_error=True)
             if prop is None:
-                if not param.optional:
+                if param.required:
                     return False
                 continue
             if not param.pattern.match_score(prop):
@@ -265,8 +290,8 @@ class FieldMatcher(Matcher):
         # state = MatchState((), Args(**dict(((name, arg.get(name)) for name in self.fields))))
         # return state.match_zip()
 
-    def __repr__(self):
-        return f"FieldMatcher{self.fields}"
+    # def __repr__(self):
+    #     return f"FieldMatcher{self.fields}"
 
 class ExprMatcher(Matcher):
     expr: any  # Node
@@ -293,11 +318,17 @@ class IntersectionMatcher(Matcher):
     # eg foo[(num+) & (int*, ratio*)]: ...
     # but somehow it's getting compared with matchers now.
     matchers: tuple[Matcher, ...]
-    def __init__(self, *matchers: Matcher, binding=None):
-        if binding is not None:
-            raise Exception("This should be a parameter, not an Intersection.")
+    def __init__(self, *matchers: Matcher):
+        # if binding is not None:
+        #     raise Exception("This should be a parameter, not an Intersection.")
+        match len(matchers):
+            case 0:
+                raise ValueError(f"Line {Context.line}: IntersectionMatcher called with 0 matchers.  "
+                                 f"Use AnyMatcher(invert=True) instead.")
+            case 1:
+                raise ValueError(f"Line {Context.line}: IntersectionMatcher called with only 1 matcher."
+                                 f"Catch this and return that single matcher na lang.")
         self.matchers = matchers
-        super().__init__()
 
     def get_rank(self):
         return "Why is this being called?"
@@ -327,7 +358,7 @@ class IntersectionMatcher(Matcher):
             return vm
         except AssertionError:
             raise NotImplementedError("I don't yet know how to do intersection of multi-parameters")
-        # if any(isinstance(patt, Parameter) and patt.multi or isinstance(patt, ArgsMatcher)
+        # if any(isinstance(patt, Parameter) and patt.multi or isinstance(patt, ParamSet)
         #        for patt in self.patterns):
         #     raise NotImplementedError("I don't yet know how to do intersection of multi-parameters")
 
@@ -351,31 +382,35 @@ class IntersectionMatcher(Matcher):
             case _:
                 raise NotImplementedError
 
-    def __hash__(self):
-        return hash(frozenset(self.matchers))
+    # def __hash__(self):
+    #     return hash(frozenset(self.matchers))
 
-    def __eq__(self, other):
-        match other:
-            case IntersectionMatcher(matchers=matchers):
-                return matchers == self.matchers
-            case UnionMatcher(matchers=(Matcher() as patt, )):
-                return self == patt
-            case Matcher() as m:
-                return len(self.matchers) == 1 and self.matchers[0] == m
-        return False
+    # def __eq__(self, other):
+    #     match other:
+    #         case IntersectionMatcher(matchers=matchers):
+    #             return matchers == self.matchers
+    #         case UnionMatcher(matchers=(Matcher() as patt, )):
+    #             return self == patt
+    #         case Matcher() as m:
+    #             return len(self.matchers) == 1 and self.matchers[0] == m
+    #     return False
 
-    def __repr__(self):
-        return f"Intersection{self.matchers}"
+    # def __repr__(self):
+    #     return f"Intersection{self.matchers}"
 
 
 class UnionMatcher(Matcher):
     rank = 7, 0
     matchers: tuple[Matcher, ...]
-    def __init__(self, *matchers, binding=None):
+    def __init__(self, *matchers):
+        match len(matchers):
+            case 0:
+                raise ValueError(f"Line {Context.line}: UnionMatcher called with 0 matchers.  "
+                                 f"Use AnyMatcher() instead.")
+            case 1:
+                raise ValueError(f"Line {Context.line}: UnionMatcher called with only 1 matcher."
+                                 f"Catch this and return that single matcher na lang.")
         self.matchers = matchers
-        if binding is not None:
-            raise Exception("Shoulda been a Parameter!")
-        super().__init__()
 
     def match_score(self, arg: Record):
         return any(p.match_score(arg) for p in self.matchers)
@@ -411,23 +446,22 @@ class UnionMatcher(Matcher):
             case _:
                 raise NotImplementedError
 
-    def __eq__(self, other):
-        match self.matchers:
-            case ():
-                return isinstance(other, UnionMatcher) and other.matchers == ()
-            case (Pattern() as patt, ):
-                return patt == other
-        return isinstance(other, UnionMatcher) and self.matchers == other.matchers
+    # def __eq__(self, other):
+    #     match self.matchers:
+    #         case ():
+    #             return isinstance(other, UnionMatcher) and other.matchers == ()
+    #         case (Pattern() as patt, ):
+    #             return patt == other
+    #     return isinstance(other, UnionMatcher) and set(self.matchers) == set(other.matchers)
+    #
+    # __hash__ = Matcher.__hash__
 
-    def __hash__(self):
-        return hash(frozenset(self.matchers))
-
-    def __repr__(self):
-        return f"Union{self.matchers}"
+    # def __repr__(self):
+    #     return f"Union{self.matchers}"
 
 
 class Parameter(Pattern):
-    pattern: Pattern | None = None
+    pattern: Matcher | None = None
     binding: str = None  # property
     quantifier: str  # "+" | "*" | "?" | "!" | ""
     # count: tuple[int, int | float]
@@ -590,7 +624,7 @@ class Parameter(Pattern):
                 pass
             case Matcher() | Pattern():
                 param = Parameter(other)
-            case ArgsMatcher(parameters=(param, ), named_params={}):
+            case ParamSet(parameters=(param, ), named_params={}):
                 pass
             case _:
                 return False
@@ -635,6 +669,7 @@ class Inst:
     Split = 'Split'
     Save = 'Save'
     Bind = 'Bind'
+    BindRemaining = 'BindRemaining'
     BackRef = 'BackRef'
     Merge = 'Merge'
     # def __init__(self, opcode: str = 'tail', *, ch=None, i=None, next=None, branches=None, complements=None):
@@ -696,6 +731,11 @@ class Inst:
         self.opcode = Inst.Bind
         self.name = name
         self.default = default
+        return self
+
+    def bind_remaining(self, name: str):
+        self.opcode = Inst.BindRemaining
+        self.name = name
         return self
 
     def back_ref(self, i: int, next=None):
@@ -1029,7 +1069,7 @@ def prime(index: int):
         return PRIMES[index]
 
 
-def virtualmachine(prog: list[Inst], args: list[Record], kwargs: dict[str, Record]):
+def OLD_virtualmachine(prog: list[Inst], args: list[Record], kwargs: dict[str, Record]):
     saved = frozendict()
     bindings = {}
     current = ThreadStack(Thread(0, saved, saved, 1))
@@ -1114,18 +1154,18 @@ def virtualmachine(prog: list[Inst], args: list[Record], kwargs: dict[str, Recor
 class ThreadList(list):
     pass
 
-def new_virtual_machine(prog: list[Inst], args: Args, initial_bindings: dict):
+def virtual_machine(prog: list[Inst], args: tuple, kwargs: dict, initial_bindings: dict, allow_arbitrary_kwargs=False):
     arg_idx: int
     arg: Record
-    kwargs = args.named_arguments
-    args = args.positional_arguments
+    # kwargs = dict(args.named_arguments)
+    # args = args.positional_arguments
     initial_bindings = frozendict(initial_bindings)
 
     def outer_loop():
         yield from enumerate(args)
         yield len(args), None
 
-    def make_thread(step_idx: int, bindings=initial_bindings, saved=frozendict()):  # noqa
+    def make_thread(step_idx: int, bindings=initial_bindings, saved=frozendict(), kwargs=frozendict(kwargs)):  # noqa
         # arg: Record = args[arg_idx]
         while step_idx < len(prog):
             step = prog[step_idx]
@@ -1137,6 +1177,7 @@ def new_virtual_machine(prog: list[Inst], args: Args, initial_bindings: dict):
                             pass
                         if step.matcher.match_score(kwargs[step.binding]):
                             bindings += {step.binding: kwargs[step.binding]}
+                            kwargs -= step.binding
                         else:
                             # name found in kwargs, but did not match.  No possibility of any threads succeeding.
                             yield 'WHOLE PATTERN FAILURE'
@@ -1172,7 +1213,7 @@ def new_virtual_machine(prog: list[Inst], args: Args, initial_bindings: dict):
                     continue
                 case Inst.Split:
                     for branch in reversed(step.branches):
-                        current.append(make_thread(step_idx + branch, bindings, saved))
+                        current.append(make_thread(step_idx + branch, bindings, saved, kwargs))
                     step_idx += step.next
                     continue
                 case Inst.Save:
@@ -1183,6 +1224,9 @@ def new_virtual_machine(prog: list[Inst], args: Args, initial_bindings: dict):
                         saved += {step.name: slice(item, arg_idx)}
                 case Inst.Bind:
                     bindings += {step.binding: step.default}
+                # case Inst.BindRemaining:
+                #     remaining = {k: v for k, v in kwargs.items() if k not in bindings}
+                #     bindings += {step.name: py_value(remaining)}
                 case Inst.Merge:
                     for slc in reversed(step.slices):
                         matched, bindings = virtualmachine(prog[slc], args, kwargs)
@@ -1190,9 +1234,12 @@ def new_virtual_machine(prog: list[Inst], args: Args, initial_bindings: dict):
                     raise AssertionError("unrecognized opcode: ", step.opcode)
             step_idx += 1
         # prog reached the end
-        if arg_idx == len(args) and all(name in bindings or name in saved for name in kwargs):
+        if arg_idx == len(args) and (not kwargs or allow_arbitrary_kwargs):
+            # and all(name in bindings or name in saved for name in kwargs):
             # SUCCESS
             bindings = dict(bindings)
+            if allow_arbitrary_kwargs:
+                bindings.update(kwargs)
             for name, part in saved.items():
                 bindings[name] = py_value(tuple(args[part]))
             yield bindings
@@ -1213,33 +1260,37 @@ def new_virtual_machine(prog: list[Inst], args: Args, initial_bindings: dict):
                     pending.append(thread)
                 case 'DEAD':
                     pass
-                case _:
-                    raise AssertionError
+                case other:
+                    raise AssertionError(f"thread yielded unexpected {other}")
         current, pending = pending, ThreadList()
     return 0, {}
 
 
-class ArgsMatcher(Matcher):
+class ParamSet(Pattern):
     parameters: tuple
     named_params: frozendict
     names_of_ordered_params: frozenset
+    allow_arbitrary_kwargs: str | bool | None
     vm: list
-    def __init__(self, *parameters, named_params: dict = None):
+    def __init__(self, *parameters, named_params: dict = None, kwargs: str = None):
         self.parameters = parameters
         self.named_params = frozendict(named_params or {})
         self.names_of_ordered_params = frozenset(param.binding for param in parameters
                                                  if param.binding and not param.multi)
+        self.allow_arbitrary_kwargs = kwargs
         # self.vm = VM(parameters)
         super().__init__()
         self.vm = []
         for param in self.parameters:
             self.vm.extend(param.bytecode())
+        # if kwargs:
+        #     self.vm.append(Inst().bind_remaining(kwargs))
 
     def match_score(self, *values: Record) -> int | float:
         return self.match_zip(values)[0]
 
     def issubset(self, other):
-        return (isinstance(other, ArgsMatcher)
+        return (isinstance(other, ParamSet)
                 and all(p1.issubset(p2) for (p1, p2) in zip(self.parameters, other.parameters))
                 and all(self.named_params[k].issubset(other.named_params[k])
                         for k in set(self.named_params).union(other.named_params)))
@@ -1318,13 +1369,14 @@ class ArgsMatcher(Matcher):
             raise NotImplementedError("My VM can't yet handle flags... sorry.")
 
         # check for agreement of named parameters
-        kwargs = args.named_arguments
+        kwargs = dict(args.named_arguments)
         bindings = {}
         for name, param in self.named_params.items():
             param: Parameter
             if name in kwargs:
                 if param.pattern.match_score(kwargs[name]):
                     bindings[name] = kwargs[name]
+                    del kwargs[name]
                 else:
                     return 0, {}
             elif param.default:
@@ -1332,12 +1384,13 @@ class ArgsMatcher(Matcher):
             elif param.required:
                 return 0, {}
 
-        # check for illegal kwargs
-        for name in kwargs:
-            if name not in self.names_of_ordered_params and name not in bindings:
-                return 0, {}
+        if not self.allow_arbitrary_kwargs:
+            # check for illegal kwargs
+            for name in kwargs:
+                if name not in self.names_of_ordered_params and name not in bindings:
+                    return 0, {}
 
-        return new_virtual_machine(self.vm, args, bindings)
+        return virtual_machine(self.vm, args.positional_arguments, kwargs, bindings, self.allow_arbitrary_kwargs)
 
         return self.vm.run(args.positional_arguments, args.named_arguments)
         return MatchState(self.parameters, args).match_zip()
@@ -1345,17 +1398,17 @@ class ArgsMatcher(Matcher):
         # return self.match_zip_recursive(state)
 
     def __lt__(self, other):
-        if not isinstance(other, ArgsMatcher):
+        if not isinstance(other, ParamSet):
             return NotImplemented
         return self.parameters < other.parameters
 
     def __le__(self, other):
-        if not isinstance(other, ArgsMatcher):
+        if not isinstance(other, ParamSet):
             return NotImplemented
         return self.parameters <= other.parameters
 
     def __eq__(self, other):
-        return (isinstance(other, ArgsMatcher)
+        return (isinstance(other, ParamSet)
                 and self.parameters == other.parameters
                 and self.named_params == other.named_params)
 
@@ -1363,17 +1416,17 @@ class ArgsMatcher(Matcher):
         return hash((self.parameters, self.named_params))
 
     def __gt__(self, other):
-        if not isinstance(other, ArgsMatcher):
+        if not isinstance(other, ParamSet):
             return NotImplemented
         return self.parameters > other.parameters
 
     def __ge__(self, other):
-        if not isinstance(other, ArgsMatcher):
+        if not isinstance(other, ParamSet):
             return NotImplemented
         return self.parameters >= other.parameters
 
     def __repr__(self):
-        return f"ArgsMatcher({', '.join(map(repr, self.parameters))}{'; ' + str(self.named_params) if self.named_params else ''})"
+        return f"ParamSet({', '.join(map(repr, self.parameters))}{'; ' + str(self.named_params) if self.named_params else ''})"
 
 #
 # class Pattern(Record):
@@ -1514,7 +1567,7 @@ class ArgsMatcher(Matcher):
 #
 #
 # class FunctionMatcher(Matcher):
-#     # pattern: ArgsMatcher
+#     # pattern: ParamSet
 #     # return_type: Matcher
 #     def __init__(self, pattern, return_type, name=None, guard=None, inverse=False):
 #         self.pattern = pattern
@@ -1652,7 +1705,7 @@ class ArgsMatcher(Matcher):
 #             if isinstance(default, Option):
 #                 self.default = default
 #             else:
-#                 self.default = Option(ArgsMatcher(), default)
+#                 self.default = Option(ParamSet(), default)
 #             match quantifier:
 #                 case "":
 #                     quantifier = '?'
@@ -1755,7 +1808,7 @@ class ArgsMatcher(Matcher):
 #                 pass
 #             case Matcher() | Pattern():
 #                 param = Parameter(other)
-#             case ArgsMatcher(parameters=(param, ), named_params={}):
+#             case ParamSet(parameters=(param, ), named_params={}):
 #                 pass
 #             case _:
 #                 return False
@@ -1833,7 +1886,7 @@ def param_byte_code(self: Parameter):
 #
 # Union.bytecode = union_bytecode
 
-# class ArgsMatcher(Matcher):
+# class ParamSet(Matcher):
 #     parameters: tuple
 #     named_params: frozendict
 #     vm: VM
@@ -1857,7 +1910,7 @@ def param_byte_code(self: Parameter):
 #         return self.match_zip(values)[0]
 #
 #     def issubset(self, other):
-#         return (isinstance(other, ArgsMatcher)
+#         return (isinstance(other, ParamSet)
 #                 and all(p1.issubset(p2) for (p1, p2) in zip(self.parameters, other.parameters))
 #                 and all(self.named_params[k].issubset(other.named_params[k])
 #                         for k in set(self.named_params).union(other.named_params)))
@@ -1946,17 +1999,17 @@ def param_byte_code(self: Parameter):
 #         return len(self.parameters)
 #
 #     def __lt__(self, other):
-#         if not isinstance(other, ArgsMatcher):
+#         if not isinstance(other, ParamSet):
 #             return NotImplemented
 #         return self.parameters < other.parameters
 #
 #     def __le__(self, other):
-#         if not isinstance(other, ArgsMatcher):
+#         if not isinstance(other, ParamSet):
 #             return NotImplemented
 #         return self.parameters <= other.parameters
 #
 #     def __eq__(self, other):
-#         return (isinstance(other, ArgsMatcher)
+#         return (isinstance(other, ParamSet)
 #                 and self.parameters == other.parameters
 #                 and self.named_params == other.named_params)
 #
@@ -1964,22 +2017,24 @@ def param_byte_code(self: Parameter):
 #         return hash((self.parameters, self.named_params))
 #
 #     def __gt__(self, other):
-#         if not isinstance(other, ArgsMatcher):
+#         if not isinstance(other, ParamSet):
 #             return NotImplemented
 #         return self.parameters > other.parameters
 #
 #     def __ge__(self, other):
-#         if not isinstance(other, ArgsMatcher):
+#         if not isinstance(other, ParamSet):
 #             return NotImplemented
 #         return self.parameters >= other.parameters
 #
 #     def __repr__(self):
-#         return f"ArgsMatcher({', '.join(self.parameters)}{'; ' + str(self.named_params) if self.named_params else ''})"
+#         return f"ParamSet({', '.join(self.parameters)}{'; ' + str(self.named_params) if self.named_params else ''})"
 
 
-def patternize(val):
+def patternize(val) -> Pattern | Matcher:
     match val:
-        case Pattern():
+        case Parameter():
+            raise Exception("Can you patternize a parameter?")
+        case Pattern() | Matcher():
             return val
         case Table():
             return TableMatcher(val)

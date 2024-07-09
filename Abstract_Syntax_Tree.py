@@ -222,7 +222,10 @@ class AST:
             self.block = self.read_block(0)
         except Exception as e:
             self.block = None
-            print(f"AST failed at {self.tok.pos}: {self.tok}")
+            if self.tok:
+                print(f"AST failed at {self.tok.pos}: {self.tok}")
+            else:
+                print("AST failed at end.")
             raise e
 
     def peek(self, count=1):
