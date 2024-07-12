@@ -7,7 +7,7 @@ from enum import Enum, EnumMeta
 from Env import *
 from operators import Operator
 from tables import *
-from patterns import Inst, virtualmachine, VM
+# from patterns import Inst, virtualmachine, VM
 
 print(f"loading module: {__name__} ...")
 
@@ -130,20 +130,34 @@ class Node:
     pos: tuple[int, int]
     type = TokenType.Unknown
     source_text: str
+    token_slice: int | slice
 
-    def getline(self):
+    def get_line(self) -> int:
         return getattr(self, '_line', self.pos[0])
 
-    def setline(self, line: int):
+    def set_line(self, line: int):
         self._line = line
 
     def evaluate(self):
         return eval_node(self)
 
-    line = property(getline, setline)
+    line = property(get_line, set_line)
+
+    @property
+    def tokens(self):
+        return Context.tokens[self.token_slice]
+
+    @property
+    def real_source_text(self):
+        toks = Context.tokens
+        start = toks[0].idx
+        end = toks[1].idx + len(toks[1].source_text)
+        return Context.source_code[start:end]
 
 
 class Token(Node):
+    this_is_a_dumb_hack = None  # purely for making a stupid shortcut in the matching portion of eval_colon_args
+    __match_args__ = ('this_is_a_dumb_hack',)
     def __init__(self, text: str, pos: tuple[int, int] = (-1, -1), type: TokenType = None):
         self.pos = pos[0], pos[1]
         self.type = type
@@ -303,11 +317,9 @@ class ListType(Enum):
     Function = "{function}"
     Args = '[args]'
     Params = '[params]'
+    FieldMatcher = '(field: matcher)'
 
 class ListNode(ArrayNode):
-    """
-    :param list_type: [list], (tuple), {function}, [args]
-    """
     items: list[Node]
     list_type: ListType
     def __init__(self, items: list[Node], list_type: ListType):
@@ -338,9 +350,24 @@ class ListNode(ArrayNode):
                                 yield node.evaluate()
                 return Args(*generate_args(self.nodes), flags=flags, named_arguments=named_args)
             case ListType.Function:
-                print(f'WARNING: Line {self.line}: Function literal not yet implemented.  Producing empty function.')
-                return Function()
-                raise NotImplementedError(f'Line {self.line}: Function literal not yet implemented.')
+                fn = Function()
+                Closure(Block(self.items)).execute(fn=fn)
+                return fn
+            case ListType.FieldMatcher:
+                field_dict = {}
+                def generate_matchers(nodes: list[Node]):
+                    for node in nodes:
+                        match node:
+                            case OpExpr(op=Operator(text=':'),
+                                        terms=(Token(type=TokenType.Name, source_text=name), patt_node)):
+                                match patt_node:
+                                    case Token(type=TokenType.Name, source_text=binding):
+                                        field_dict[name] = Parameter(AnyMatcher(), binding)
+                                    case _:
+                                        field_dict[name] = patternize(patt_node.evaluate())
+                            case _:
+                                yield node.evaluate()
+                return FieldMatcher(tuple(generate_matchers(self.nodes)), field_dict)
         raise NotImplementedError(f'Line {self.line}: ListNode<{self.list_type}> not yet implemented.')
 
     def __repr__(self):
@@ -657,6 +684,14 @@ class IfElse(Expression):
         else:
             return self.alt.evaluate()
 
+    def eval_patt(self):
+        condition = self.condition.evaluate()
+        condition = BuiltIns['bool'].call(condition).value
+        if condition:
+            return self.do.eval_patt()
+        else:
+            return self.alt.eval_patt()
+
     def __repr__(self):
         return f"IfElse({self.do} if {self.condition} else {self.alt})"
 
@@ -805,6 +840,7 @@ class CommandWithExpr(Command):
                 exit()
             case 'debug':
                 Context.debug = True
+                print('Start debugging...')
                 result = self.expr.evaluate()
                 return result
             case 'return':
@@ -1182,23 +1218,25 @@ class Declaration(Command):
 
 class LocalExpr(Declaration):
     def evaluate(self):
-        value = self.value_expr.evaluate() if self.value_expr else None
-        # if self.context_expr:
-        #     if value is None:
-        #         raise SyntaxErr(f"Line {self.line}: I guess I should have caught this error in the parsing phase...")
-        #     rec = self.context_expr.evaluate()
-        #     rec: Record
-        #     rec.set(self.var_name, value)
-        #     # also raise an error here
-        # else:
+        value = self.value_expr.evaluate() if self.value_expr else BuiltIns['blank']
         Context.env.locals[self.var_name] = value
-        return value or BuiltIns['blank']
+        return value
+
+    def eval_patt(self):
+        value = self.value_expr.evaluate() if self.value_expr else BuiltIns['blank']
+        Context.env.locals[self.var_name] = value
+        return Parameter(AnyMatcher(), self.var_name, default=value)
 
 class VarExpr(Declaration):
     def evaluate(self):
         value = self.value_expr.evaluate() if self.value_expr else BuiltIns['blank']
         Context.env.vars[self.var_name] = value
         return value
+
+    def eval_patt(self):
+        value = self.value_expr.evaluate() if self.value_expr else BuiltIns['blank']
+        Context.env.vars[self.var_name] = value
+        return Parameter(AnyMatcher(), self.var_name, default=value)
 
 
 expressions = {

@@ -63,6 +63,10 @@ class Tokenizer:
                 text = self.read_word()
             elif re.match(op_char_patt, self.char):
                 text = self.read_operator()
+                if (text == ':' and len(tokens) > 2
+                        and tokens[-1].type == TokenType.Operator and tokens[-2].source_text == '.'):
+                    # .>:
+                    tokens[-1].type = TokenType.Name
             elif self.char in "{}":
                 text = self.char
                 if self.in_string:
@@ -150,7 +154,10 @@ class Tokenizer:
                 num_text += self.char
             else:
                 break
-        if self.char in 'fbtqphsond':
+        if self.char in 'btqphsond':
+            num_text += self.char
+            self.next_char()
+        if self.char == 'f':
             num_text += self.char
             self.next_char()
         return num_text
@@ -210,6 +217,129 @@ class Tokenizer:
     def peek(self, offset=1, count=1):
         i = self.idx + offset
         return self.script[i:i + count]
+
+
+class CST:
+    """
+    Takes a list of tokens from a Tokenizer object and returns a Concrete Syntax Tree.
+    The root Node is Block self.block.  Each node has an operation, and a sequence or struct of nodes.
+    The CST simply transforms a flat list of tokens into a hierarchical tree structure with the highest level operators
+    and syntax.  Ie:
+        lines
+        ;, =, :, and ,
+        ... if ... else ... statements
+        commands
+        control blocks (if, while, etc)
+        ArrayNodes (Strings, lists, tuples, functions, etc)
+    The AST then has the following primary purposes:
+        insert implicit operators (ie function call, bind, and sub-pattern intersection)
+        hierarchicalize remaining lists of nodes into operator expressions
+        disambiguate certain cases (eg ParamsNode vs ArgsNode, Tuple vs FieldMatcher, key: value vs params: block, etc)
+    """
+    tokens: list[Token]
+    idx: int
+    tok: Token
+    indent: int
+    block: Block | None
+    def __init__(self, toks: Tokenizer):
+        self.tokens = toks.tokens
+        self.idx = 0
+        self.tok = self.tokens[0] if self.tokens else None
+        self.indent = 0
+        try:
+            self.block = self.read_block(0)
+        except Exception as e:
+            self.block = None
+            if self.tok:
+                print(f"CST failed at {self.tok.pos}: {self.tok}")
+            else:
+                print("CST failed at end.")
+            raise e
+
+    def peek(self, count=1):
+        i = self.idx + count
+        if 0 <= i < len(self.tokens):
+            return self.tokens[i]
+        else:
+            return None
+
+    def seek(self, count=1):
+        self.idx += count
+        if self.idx >= len(self.tokens):
+            self.tok = None
+            return None
+        self.tok = self.tokens[self.idx]
+        return self.tok
+
+    def read_block(self, indent: int) -> Block:
+        statements: list[Node] = []
+        table_names: set[str] = set()
+        trait_names: set[str] = set()
+        func_names: set[str] = set()
+        while self.tok:
+            stmt_nodes = self.read_statement(TokenType.NewLine, TokenType.BlockEnd)
+            if stmt_nodes:
+                stmt = mathological(stmt_nodes)
+                statements.append(stmt)
+                match stmt:
+                    case TableExpr(table_name=tbl):
+                        if tbl in table_names:
+                            raise SyntaxErr(f'Line {stmt.line}: Duplicate table name "{tbl}"')
+                        table_names.add(tbl)
+                    case TraitExpr(trait_name=trait):
+                        if trait in trait_names:
+                            raise SyntaxErr(f'Line {stmt.line}: Duplicate trait name "{trait}"')
+                        trait_names.add(trait)
+                    case FunctionExpr(fn_name=fn):
+                        if fn in func_names:
+                            raise SyntaxErr(f'Line {stmt.line}: Duplicate function name "{fn}"')
+                        func_names.add(fn)
+            if self.tok is None:
+                break
+            elif self.tok.type == TokenType.NewLine:
+                self.seek()
+            elif self.tok.type == TokenType.BlockEnd:
+                self.indent = len(self.tok.source_text)
+                if self.indent < indent:
+                    break
+                else:
+                    self.seek()
+        return Block(statements, table_names, trait_names, func_names)
+
+    def read_statement(self, *end_of_statement: TokenType) -> list[Node]:
+        nodes: list[Node] = []
+        while self.tok and self.tok.type not in end_of_statement:
+            match self.tok.type:
+                case TokenType.GroupEnd | TokenType.ListEnd | TokenType.FnEnd:
+                    raise Env.SyntaxErr(f'Unexpected {repr(self.tok)} found at {self.tok.pos}!')
+                case TokenType.NewLine | TokenType.BlockEnd:
+                    pass
+                case TokenType.BlockStart:
+                    if TokenType.GroupEnd in end_of_statement:
+                        self.seek()
+                        continue
+                    indent = len(self.tok.source_text)
+                    self.seek()
+                    nodes.append(self.read_block(indent))
+                    # this is a slight opportunity for optimization: ExprWtithBlock repeatedly slices the nodes in order
+                    # to make the block ladder, but it would be more efficient to do it here so no slicing is necessary.
+                    # if self.indent == indent - 1 and self.peek() and self.peek().type == TokenType.Else:
+                    #     nodes.append(self.seek())
+                    #     self.seek()
+                    #     nodes.extend(self.read_statement(*end_of_statement))
+                    if self.indent == indent - 1 and self.peek() and self.peek().type == TokenType.Else:
+                        self.seek()
+                    continue
+                case TokenType.GroupStart:
+                    pass
+                case TokenType.Debug:
+                    pass  # #debug
+                case _:
+                    nodes.append(self.tok)
+            self.seek()
+            if self.tok is None:
+                raise Env.SyntaxErr('EOF reached.  Expected ', end_of_statement)
+            return nodes
 
 
 class AST:
@@ -289,6 +419,9 @@ class AST:
                 case TokenType.NewLine | TokenType.BlockEnd:
                     pass
                 case TokenType.BlockStart:
+                    if TokenType.GroupEnd in end_of_statement:
+                        self.seek()
+                        continue
                     indent = len(self.tok.source_text)
                     self.seek()
                     nodes.append(self.read_block(indent))
@@ -304,27 +437,39 @@ class AST:
                 case TokenType.GroupStart:
                     if nodes and nodes[-1].type not in (TokenType.Operator, TokenType.Command, TokenType.Keyword):
                         nodes.append(Token('&', self.tok.pos))
-                    self.seek()
-                    group = self.read_statement(TokenType.GroupEnd)
-                    if group:
-                        nodes.append(mathological(group))
+                        self.seek()
+                        items, params = self.read_list(TokenType.GroupEnd, ignore_whitespace=True)
+                        if params:
+                            raise SyntaxErr(f"Line {self.tok.line}: "
+                                            f"Sorry, can't handle semicolons (;) in tuples/groups yet 🙁")
+                        nodes.append(ListNode(items, ListType.FieldMatcher))
                     else:
-                        nodes.append(ListNode([], ListType.Tuple))
+                        self.seek()
+                        group = self.read_statement(TokenType.GroupEnd)
+                        if group:
+                            nodes.append(mathological(group))
+                        else:
+                            nodes.append(ListNode([], ListType.Tuple))
                 case TokenType.ListStart:
                     if self.idx and self.peek(-1).type in \
-                            (TokenType.Name, TokenType.GroupEnd, TokenType.ListEnd, TokenType.FnEnd):
+                            (TokenType.Name, TokenType.GroupEnd, TokenType.ListEnd, TokenType.FnEnd,
+                             TokenType.StringEnd, TokenType.StringLiteral, TokenType.Number, TokenType.Singleton):
                         nodes.append(Token('.', self.tok.pos))
+                        # TODO: eventually I would really like to replace this with another operator, or no operator
+                        #  at all and catch it in mathological instead
                         list_type = ListType.Args
                     else:
                         list_type = ListType.List
                     self.seek()
                     items, params = self.read_list(TokenType.ListEnd)
                     # conditions for interpreting as params:
-                    if (params is not None  # read_list found parameters
-                            or self.peek().source_text == ':'):
-                            # and (self.peek(2).type == TokenType.BlockStart or nodes)):
-                        # the colon is followed by a block OR there are nodes preceding the params (eg foo[params]: ...)
+                    if params is not None or self.peek().source_text in (':', '=>'):
                         ls = ParamsNode(items, params or [])
+                        if nodes and (last := nodes[-1]).type == TokenType.Operator \
+                                 and last.source_text != '.' and self.peek().source_text != '=>':  # noqa
+                            # >[params]: ...
+                            last.type = TokenType.Name
+                            nodes.append(Token('.', last.pos))
                     else:
                         ls = ListNode(items, list_type)
                     nodes.append(ls)
@@ -340,9 +485,10 @@ class AST:
                         pass
                     Cmd = expressions.get(command, CommandWithExpr)
                     pos = self.tok.pos
+                    expr_nodes: list[Node] = [self.seek()] if Cmd in (SlotExpr, FormulaExpr, SetterExpr) else []
                     self.seek()
-                    expr = self.read_statement(*end_of_statement)
-                    nodes.append(Cmd(command, expr, pos[0], ''))
+                    expr_nodes.extend(self.read_statement(*end_of_statement))
+                    nodes.append(Cmd(command, expr_nodes, pos[0], ''))
                     return nodes
                 case TokenType.Comma | TokenType.Semicolon:
                     self.tok.type = TokenType.Operator
@@ -373,7 +519,7 @@ class AST:
                     # alt_nodes = self.read_block_ladder(*end_of_statement)
                     nodes.append(Cmd(header, blk_node, line, ''))
                     return nodes
-                case _ if self.tok.source_text == ':':
+                case _ if self.tok.source_text == ':':  # Token(source_text=':'):
                     nodes.append(self.tok)
                     if self.seek() and self.tok.type == TokenType.BlockStart:
                         continue
@@ -388,28 +534,29 @@ class AST:
                         nodes.extend(expr_nodes)
                     return nodes
                 case TokenType.Debug:
-                    pass
+                    pass  # #debug
                 case _:
                     nodes.append(self.tok)
             self.seek()
         if self.tok is None:
             raise Env.SyntaxErr('EOF reached.  Expected ', end_of_statement)
-
         return nodes
 
-    def read_list(self, end: TokenType) -> tuple[list[Node], list[Node] | None]:
+    def read_list(self, end: TokenType, ignore_whitespace=False) -> tuple[list[Node], list[Node] | None]:
         named_params: list[Node] | None = None  # this only gets set if read_list detects parameters
-        white_space_tokens = TokenType.NewLine, TokenType.BlockStart, TokenType.BlockEnd
+        whitespace = TokenType.NewLine, TokenType.BlockStart, TokenType.BlockEnd
+        delimiters = () if ignore_whitespace else whitespace
+        delimiters += (TokenType.Comma, TokenType.Semicolon)
         items: list[Node] = []
         current = items
         while self.tok:
-            while self.tok and self.tok.type in white_space_tokens:
+            while self.tok and self.tok.type in whitespace:
                 self.seek()
             if self.tok is None:
                 break
             if self.tok.type == end:
                 return items, named_params
-            statement = self.read_statement(end, TokenType.Comma, TokenType.Semicolon, *white_space_tokens)
+            statement = self.read_statement(end, *delimiters)
             if statement:
                 current.append(mathological(statement))
                 # if named_params is None and isinstance(current[-1], BindExpr):
@@ -426,7 +573,6 @@ class AST:
                     #     named_params = []
                     current = named_params = []
                     self.seek()
-
         raise Env.SyntaxErr("Reached EOF: Expected " + repr(end))
 
     def read_string(self) -> StringNode:
@@ -450,9 +596,6 @@ class AST:
 
     def __repr__(self):
         return '\n'.join(f"{expr.line}. {expr}" for expr in self.block.statements)
-
-
-
 
 
 if __name__ == "__main__":

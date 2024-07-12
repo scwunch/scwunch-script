@@ -51,3 +51,19 @@ def read_number(text: str, base=6) -> int | float | Fraction: ...
 def write_number(num: int|float|Fraction, base=6, precision=12, sep="_") -> str: ...
 
 def call(fn: PyFunction, args: Args): ...
+
+
+class BindTarget:
+    def bind(self, value: Record): ...
+
+
+class BindTargetName(BindTarget):
+    name: str
+    scope: Frame
+    def __init__(self, name: str, scope: Frame): ...
+
+
+class BindTargetKey(BindTarget):
+    key: Record
+    fn: Function
+    def __init__(self, key: Record, fn: Function): ...

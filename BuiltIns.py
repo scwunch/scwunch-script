@@ -157,14 +157,13 @@ BuiltIns['iter'].assign_option(Option(UnionMatcher(*(TraitMatcher(BuiltIns[t])
                                       lambda x: x))
 
 
-bases = {'b': 2, 't': 3, 'q': 4, 'p': 5, 'h': 6, 's': 7, 'o': 8, 'n': 9, 'd': 10}
 def setting_set(prop: str, val: PyValue):
     val = val.value
     if prop == 'base' and isinstance(val, str):
-        if val not in bases:
+        if val not in BASES:
             raise RuntimeErr(f'Line {Context.line}: {val} is not a valid base.  Valid base symbols are the following:\n'
                              f"b: 2\nt: 3\nq: 4\np: 5\nh: 6\ns: 7\no: 8\nn: 9\nd: 10")
-        val = bases[val[0]]
+        val = BASES[val[0]]
     Context.settings[prop] = val
     return BuiltIns['settings']
 # def setting_get(prop: str):
@@ -236,6 +235,7 @@ BuiltIns['type'] = Function({AnyParam: lambda v: v.table})
 
 BuiltIns['len'] = Function({SeqParam: lambda s: py_value(len(s.value)),
                             PatternParam: lambda p: py_value(len(p)),
+                            FunctionParam: lambda fn: py_value(len(fn.op_map)),
                             ParamSet(Parameter(TableMatcher(BuiltIns['Table']))): lambda t: py_value(len(t.records))
                             })
 # BuiltIns['traits'] = Function({Parameter(BuiltIns['Table']): lambda t: py_value(t.traits)})
@@ -243,9 +243,7 @@ BuiltIns['len'] = Function({SeqParam: lambda s: py_value(len(s.value)),
 # #                                 lambda a, b: py_value(b in (opt.value for opt in a.options)))
 # # BuiltIns['options'] = Function({AnyParam: lambda x: piliize([py_value(lp.pattern) for lp in x.options])})
 # # BuiltIns['names'] = Function({AnyParam: lambda x: piliize([py_value(k) for k in x.named_options.keys()])})
-# # BuiltIns['keys'] = Function({AnyParam:
-# #                             lambda x: piliize([lp.pattern[0].pattern.value for lp in x.options
-# #                                                if len(lp.pattern) == 1 and isinstance(lp.pattern[0].pattern, ValueMatcher)])})
+BuiltIns['keys'] = Function({FunctionParam: lambda fn: py_value({k.positional_arguments for k in fn.op_map.keys()})})
 #
 # BuiltIns['max'] = Function({Parameter(BuiltIns["num"], quantifier='+'):
 #                                 lambda *args: py_value(max(*[arg.value for arg in args])),
@@ -409,7 +407,7 @@ for tbl in ('List', 'Tuple', 'String'):
     BuiltIns[tbl].catalog.assign_option(list_slice_option2)
 
 BuiltIns['push'] = Function({ParamSet(ListParam, AnyParam):
-                             lambda ls, item: ls.value.append(item)})
+                             lambda ls, item: ls.value.append(item) or ls})
 BuiltIns['join'] = Function({ParamSet(SeqParam, StringParam):
                              lambda ls, sep: py_value(sep.value.join(BuiltIns['str'].call(item).value
                                                                      for item in iter(ls))),

@@ -22,10 +22,21 @@ class Matcher:
     #     self.invert = inverse
     #     super().__init__()
 
-    def match_score(self, arg: Record) -> bool | float:
+    def match_score(self, arg: Record) -> None | dict[str, Record]:
         if self.invert:
+            raise NotImplementedError
             return not self.basic_score(arg)
-        return self.basic_score(arg)
+        try:
+            return self.match(arg)
+        except NotImplementedError:
+            if self.basic_score(arg):
+                return {}
+        # return self.basic_score(arg)
+
+    def match(self, arg: Record) -> None | dict[str, Record]:
+        if self.basic_score(arg):
+            return {}
+        # raise NotImplementedError(f'Implement {self.__class__.__name__}.match()')
 
     def basic_score(self, arg):
         # implemented by subclasses
@@ -262,33 +273,76 @@ class IterMatcher(Matcher):
         state = MatchState(self.parameters, list(it))
         return state.match_zip()
 
+def dot_fn(a: Record, b: Record, *, caller=None, suppress_error=False):
+    match b:
+        case Args() as args:
+            return a.call(args, caller=caller)
+        case PyValue(value=str() as name):
+            prop = a.get(name, None)
+            if prop is not None:
+                return prop
+            fn = a.table.get(name, Context.deref(name, None))
+            if fn is None:
+                if suppress_error:
+                    return  # this is for pattern matching
+                raise MissingNameErr(f"Line {Context.line}: {a.table} {a} has no field \"{name}\", "
+                                     f"and also not found as function name in scope.")
+            return fn.call(a, caller=caller)
+        # case PyValue(value=tuple() | list() as args):
+        #     return a.call(*args)
+        case _:
+            print(f"WARNING: Line {Context.line}: "
+                  f"right-hand operand of dot operator should be string or list of arguments.  Found {b}.")
+            return a.call(b)
+    # raise OperatorError(f"Line {Context.line}: "
+    #                     f"right-hand operand of dot operator should be string or list of arguments.  Found {b}.")
 
 class FieldMatcher(Matcher):
+    ordered_fields: tuple
     fields: dict  # dict[str, Parameter]
-
-    def __init__(self, fields: dict = None, **kwargs):
+    def __init__(self, ordered_fields: tuple[Pattern], fields: dict = None, **kwargs):
+        self.ordered_fields = tuple(f if isinstance(f, Parameter) else Parameter(f)
+                                    for f in ordered_fields)
         if fields is None:
             fields = kwargs
         else:
             fields.update(kwargs)
-        self.fields = fields
+        for f, p in fields.items():
+            if not isinstance(p, Parameter):
+                fields[f] = Parameter(p)
+        self.fields = frozendict(fields)
 
-    def basic_score(self, arg: Record):
-        for name, param in self.fields.items():
-            prop = arg.get(name, None)
-            param = dot_fn(arg, py_value(name), suppress_error=True)
+    def match(self, arg: Record) -> None | dict[str, Record]:
+        bindings = {}
+        for key, param in self.items():
+            if isinstance(key, int):
+                try:
+                    prop = arg.data[key]
+                except IndexError:
+                    if param.required:
+                        raise RuntimeErr(f"Line {Context.line}: "
+                                         f"{arg} does not have enough slots to unpack for Field Matcher.  "
+                                         f"Try using fewer fields, or named fields instead.")
+                    continue
+            else:
+                prop = dot_fn(arg, py_value(key), suppress_error=True)
             if prop is None:
                 if param.required:
-                    return False
+                    return None
                 continue
-            if not param.pattern.match_score(prop):
-                return False
-        return True
+            sub_bindings = param.match(prop)
+            if sub_bindings is None:
+                return None
+            else:
+                bindings.update(sub_bindings)
+        return bindings
 
-    def match_zip(self, arg: Record):
-        raise NotImplementedError
-        # state = MatchState((), Args(**dict(((name, arg.get(name)) for name in self.fields))))
-        # return state.match_zip()
+    def items(self):
+        yield from self.fields.items()
+        yield from enumerate(self.ordered_fields)
+
+    def get_rank(self):
+        return 2, -1
 
     # def __repr__(self):
     #     return f"FieldMatcher{self.fields}"
@@ -333,8 +387,17 @@ class IntersectionMatcher(Matcher):
     def get_rank(self):
         return "Why is this being called?"
 
-    def match_score(self, arg: Record):
-        return all(m.match_score(arg) for m in self.matchers)
+    def match(self, arg: Record) -> None | dict[str, Record]:
+        bindings = {}
+        for m in self.matchers:
+            sub_match = m.match(arg)
+            if sub_match is None:
+                return
+            bindings.update(sub_match)
+        return bindings
+
+    # def match_score(self, arg: Record):
+    #     return all(m.match_score(arg) for m in self.matchers)
 
     def issubset(self, other):
         match other:
@@ -412,8 +475,15 @@ class UnionMatcher(Matcher):
                                  f"Catch this and return that single matcher na lang.")
         self.matchers = matchers
 
-    def match_score(self, arg: Record):
-        return any(p.match_score(arg) for p in self.matchers)
+    def match(self, arg: Record) -> None | dict[str, Record]:
+        for m in self.matchers:
+            sub_match = m.match(arg)
+            if sub_match is None:
+                continue
+            return sub_match
+
+    # def match_score(self, arg: Record):
+    #     return any(p.match_score(arg) for p in self.matchers)
 
     def issubset(self, other):
         return all(p.issubset(other) for p in self.matchers)
@@ -464,15 +534,10 @@ class Parameter(Pattern):
     pattern: Matcher | None = None
     binding: str = None  # property
     quantifier: str  # "+" | "*" | "?" | "!" | ""
-    # count: tuple[int, int | float]
     optional: bool
     required: bool
     multi: bool
     default = None
-
-    # @property
-    # def binding(self): return self.pattern.binding
-
     def __init__(self, pattern, binding: str = None, quantifier="", default=None):
         self.pattern = patternize(pattern)
         self.binding = binding
@@ -495,100 +560,46 @@ class Parameter(Pattern):
             return False
         return self.pattern.issubset(other.pattern)
 
-    # def _get_quantifier(self) -> str:
-    #     return self._quantifier
-    # def _set_quantifier(self, quantifier: str):
-    #     self._quantifier = quantifier
-    #     match quantifier:
-    #         case "":
-    #             self.count = (1, 1)
-    #         case "?":
-    #             self.count = (0, 1)
-    #         case "+":
-    #             self.count = (1, math.inf)
-    #         case "*":
-    #             self.count = (0, math.inf)
-    #         case "!":
-    #             self.count = (1, 1)
-    #             # union matcher with `nonempty` pattern
-    #     self.optional = quantifier in ("?", "*")
-    #     self.required = quantifier in ("", "+")
-    #     self.multi = quantifier in ("+", "*")
-    # quantifier = property(_get_quantifier, _set_quantifier)
-
     optional = property(lambda self: self.default or self.quantifier[:1] in ('?', '*'))
     required = property(lambda self: self.default is None and self.quantifier[:1] in ('', '+'))
     multi = property(lambda self: self.quantifier[:1] in ('+', '*'))
 
-    def match_score(self, value) -> int | float: ...
+    # def match_score(self, value) -> int | float: ...
+    def match(self, arg: Record) -> None | dict[str, Record]:
+        bindings = self.pattern.match(arg)
+        if bindings is None:
+            return
+        if self.binding:
+            bindings.update({self.binding: arg})
+        return bindings
 
     def compare_quantifier(self, other):
         return "_?+*".find(self.quantifier) - "_?+*".find(other.quantifier)
-
-    # def bytecode(self):
-    #     vm = self.pattern.bytecode()
-    #     head, tail = vm.head, vm.tail
-    #
-    #     match self.quantifier:
-    #         case '?':
-    #             if isinstance(self.pattern, Matcher):
-    #                 bind
-    #
-    #             tail.bind(self.binding, Inst())
-    #             tail = tail.next
-    #             head = Inst().split(head, tail)
-    #         case '+':
-    #             head = Inst().save(self.binding, head)
-    #             t = Inst().save(self.binding, Inst())
-    #             tail.split(head, t)
-    #             tail = t.next
-    #         case '*':
-    #             t = Inst()
-    #             h = Inst().split(head, t)
-    #             tail.jump(h)
-    #             head = h
-    #             tail = t
-    #         case '??':
-    #             head = Inst().split(tail, head)
-    #         case '+?':
-    #             t = Inst()
-    #             tail.split(t, head)
-    #             tail = t
-    #         case '*?':
-    #             t = Inst()
-    #             h = Inst().split(t, head)
-    #             tail.jump(h)
-    #             head = h
-    #             tail = t
-    #         case '':
-    #             tail.bind(self.binding, Inst())
-    #             tail = tail.next
-    #         case _:
-    #             assert False
-    #
-    #     tail.success()
-    #     return VM(head, tail)
 
     def bytecode(self):
         vm: list
         match self.pattern:
             case Matcher() as matcher:
-                vm = [Inst().match(matcher, self.binding if not self.multi else None, self.default)]
+                vm = [Inst().match(matcher, self.binding if not self.multi else None)]  # , self.default)]
             case _:
                 vm = self.pattern.bytecode()
 
         match self.quantifier:
-            case '?' | '':
+            case '':
                 pass
+            case '?':
+                prepend = [Inst().bind(self.binding, self.default)] * bool(self.binding) \
+                          + [Inst().split(1, len(vm)+1)]
+                vm[:0] = prepend
             case '+':
                 vm.append(Inst().split(-len(vm), 1))
             case '*':
                 vm = [Inst().jump(len(vm)+1), *vm, Inst().split(-len(vm), 1)]
             case '??':
                 # prioritize the non-matching (default) branch
-                vm = [Inst().split(len(vm)+1, 1), *vm]
-                if self.binding:
-                    vm.append(Inst().bind(self.binding, self.default))
+                prepend = [Inst().bind(self.binding, self.default)] * bool(self.binding) \
+                          + [Inst().split(len(vm) + 1, 1)]
+                vm[:0] = prepend
             case '+?':
                 # prioritize the shortest branch
                 vm.append(Inst().split(1, -len(vm)))
@@ -772,11 +783,13 @@ class Inst:
             case Inst.Match:
                 props = self.matcher, self.binding, self.default
             case Inst.Jump:
-                props = self.next
+                props = self.next,
             case Inst.Split:
                 props = self.next, *self.branches
             case Inst.Save:
                 props = self.name, self.i
+            case Inst.Bind:
+                props = self.name, self.default
             case _:
                 props = ()
         props = (str(el) for el in props if el is not None)
@@ -959,7 +972,7 @@ class ThreadStack(list):
         self.push(Thread(parent.step, parent.saved, parent.bindings, thread_id), jump)
 
 
-def virtualmachine(prog: Inst, args: list[Record], kwargs: dict[str, Record]):
+def OLDER_virtualmachine(prog: Inst, args: list[Record], kwargs: dict[str, Record]):
     saved = {}
     bindings = {}
     current = ThreadStack(Thread(prog, saved, bindings))
@@ -1151,7 +1164,8 @@ def OLD_virtualmachine(prog: list[Inst], args: list[Record], kwargs: dict[str, R
 
     return matched, bindings
 
-class ThreadList(list):
+from collections import deque
+class ThreadList(deque):
     pass
 
 def virtual_machine(prog: list[Inst], args: tuple, kwargs: dict, initial_bindings: dict, allow_arbitrary_kwargs=False):
@@ -1172,24 +1186,27 @@ def virtual_machine(prog: list[Inst], args: tuple, kwargs: dict, initial_binding
             match step.opcode:
                 case Inst.Match:
                     if step.binding in kwargs:
-                        if step.binding in bindings:
-                            print('DEBUG NOTE: what if positional param already matched by named arg?')
-                            pass
-                        if step.matcher.match_score(kwargs[step.binding]):
+                        # if step.binding in bindings:
+                        #     print('DEBUG NOTE: what if positional param already matched by named arg?')
+                        #     pass
+                        if (match := step.matcher.match(kwargs[step.binding])) is not None:
+                            bindings += match
                             bindings += {step.binding: kwargs[step.binding]}
                             kwargs -= step.binding
                         else:
                             # name found in kwargs, but did not match.  No possibility of any threads succeeding.
                             yield 'WHOLE PATTERN FAILURE'
-                    elif arg is not None and step.matcher.match_score(arg):
+                    elif arg is not None and (match := step.matcher.match(arg)) is not None:
+                        bindings += match
                         if step.binding:
                             bindings += {step.binding: arg}
                         yield 'NEXT'
-                    elif step.default:
-                        bindings += {step.binding: step.default}
+                    # elif step.default:
+                    #     bindings += {step.binding: step.default}
                     else:
                         yield 'DEAD'
                 case Inst.MatchAll:
+                    raise DeprecationWarning
                     if step.binding in kwargs:
                         pass  # positional param already matched by named arg
                     elif arg is not None and all(patt.match_score(arg) for patt in step.matchers):
@@ -1223,13 +1240,13 @@ def virtual_machine(prog: list[Inst], args: tuple, kwargs: dict, initial_binding
                     else:
                         saved += {step.name: slice(item, arg_idx)}
                 case Inst.Bind:
-                    bindings += {step.binding: step.default}
+                    bindings += {step.name: step.default}
                 # case Inst.BindRemaining:
                 #     remaining = {k: v for k, v in kwargs.items() if k not in bindings}
                 #     bindings += {step.name: py_value(remaining)}
-                case Inst.Merge:
-                    for slc in reversed(step.slices):
-                        matched, bindings = virtualmachine(prog[slc], args, kwargs)
+                # case Inst.Merge:
+                #     for slc in reversed(step.slices):
+                #         matched, bindings = virtual_machine(prog[slc], args, kwargs)
                 case _:
                     raise AssertionError("unrecognized opcode: ", step.opcode)
             step_idx += 1
@@ -1253,17 +1270,17 @@ def virtual_machine(prog: list[Inst], args: tuple, kwargs: dict, initial_binding
             thread = current.pop()
             match next(thread):
                 case dict() as bindings:
-                    return 1, bindings
+                    return bindings
                 case 'WHOLE PATTERN FAILURE':
-                    return 0, {}
+                    return
                 case 'NEXT':
-                    pending.append(thread)
+                    pending.appendleft(thread)
                 case 'DEAD':
                     pass
                 case other:
                     raise AssertionError(f"thread yielded unexpected {other}")
         current, pending = pending, ThreadList()
-    return 0, {}
+    # return 0, {}
 
 
 class ParamSet(Pattern):
@@ -1287,7 +1304,12 @@ class ParamSet(Pattern):
         #     self.vm.append(Inst().bind_remaining(kwargs))
 
     def match_score(self, *values: Record) -> int | float:
+        raise DeprecationWarning("Use ParamSet.match() instead.")
         return self.match_zip(values)[0]
+
+    def prepend(self, param: Parameter):
+        self.parameters = (param, *self.parameters)
+        self.vm[:0] = param.bytecode()
 
     def issubset(self, other):
         return (isinstance(other, ParamSet)
@@ -1356,39 +1378,32 @@ class ParamSet(Pattern):
                 return math.inf
         return len(self.parameters)
 
-    def match_zip(self, args=None) -> tuple[float | int, dict[str, Record]]:
-        # if args is None:
-        #     return 1, {}
-        # if len(args) == 0 == self.min_len():
-        #     return 1, {}
-        # if not self.min_len() <= len(args) <= self.max_len():
-        #     return 0, {}
-        # if isinstance(args, tuple):
-        #     args = Args(*args)
-        if args.flags:
-            raise NotImplementedError("My VM can't yet handle flags... sorry.")
+    def match(self, args=None) -> None | dict[str, Record]:
+        kwargs: dict[str, Record] = dict(args.named_arguments)
+        for f in args.flags:
+            kwargs[f] = BuiltIns['true']
+        bindings: dict[str, Record] = {}
 
         # check for agreement of named parameters
-        kwargs = dict(args.named_arguments)
-        bindings = {}
         for name, param in self.named_params.items():
             param: Parameter
             if name in kwargs:
-                if param.pattern.match_score(kwargs[name]):
-                    bindings[name] = kwargs[name]
-                    del kwargs[name]
-                else:
-                    return 0, {}
+                match = param.match(kwargs[name])
+                if match is None:
+                    return
+                bindings.update(match)
+                bindings[name] = kwargs[name]
+                del kwargs[name]
             elif param.default:
                 bindings[name] = param.default
             elif param.required:
-                return 0, {}
+                return
 
         if not self.allow_arbitrary_kwargs:
             # check for illegal kwargs
             for name in kwargs:
                 if name not in self.names_of_ordered_params and name not in bindings:
-                    return 0, {}
+                    return
 
         return virtual_machine(self.vm, args.positional_arguments, kwargs, bindings, self.allow_arbitrary_kwargs)
 

@@ -161,7 +161,8 @@ class OptionCatalog:
         option = bindings = None
         high_score = 0
         for opt in self.op_list:
-            score, saves = opt.pattern.match_zip(key)
+            bindings = opt.pattern.match(key)
+            score, saves = bindings is not None, bindings
             if score == 1:
                 if Context.debug is 0:
                     Context.debug = True  # unpause debug
@@ -369,8 +370,18 @@ class PyValue(Record, Generic[T]):
             return py_value(write_number(self.value, Context.settings['base']))
         # if self.instanceof(BuiltIns['list']):
         #     return py_value(f"[{', '.join(v.to_string().value for v in self.value)}]")
-        if isinstance(self.value, frozenset):
-            return py_value(str(set(self.value)))
+        if BuiltIns['seq'] in self.table.traits:
+            gen = (f'"{el.value}"' if isinstance(el.value, str) else el.to_string().value
+                   for el in self.value)
+            items = ', '.join(gen)
+            match self.value:
+                case list():
+                    return py_value(f'[{items}]')
+                case tuple():
+                    return py_value(f'({items}{"," * (len(self.value) == 1)})')
+                case set() | frozenset():
+                    return py_value('{' + items + '}')
+
         return py_value(str(self.value))
 
     def __index__(self) -> int | None:
@@ -409,6 +420,8 @@ class PyValue(Record, Generic[T]):
                 return repr(set(f))
             case Fraction(numerator=n, denominator=d):
                 return f"{n}/{d}"
+            case None:
+                return 'blank'
             case v:
                 return repr(v)
         # return f"Record({self.value})"

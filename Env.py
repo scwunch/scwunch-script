@@ -45,7 +45,7 @@ class Context:
         scope = Context.env
         while scope:
             val = scope.locals.get(name, scope.vars.get(name, False))
-            # I think this maybe should be val = scope[name]
+            # this should be scope[name] but for some reason it breaks if I don't search local first...
             if val:
                 return val
             if val is None:
@@ -91,12 +91,12 @@ class SlotErr(TypeErr):
 Op = {}
 BuiltIns = {}
 TypeMap = {}
+BASES = {'b': 2, 't': 3, 'q': 4, 'p': 5, 'h': 6, 's': 7, 'o': 8, 'n': 9, 'd': 10}
 
-
-def read_number(text: str, base) -> int | float | Fraction:
+def read_number(text: str, base, force_float=False) -> int | float | Fraction:
     """ take a number in the form of a string of digits, or digits separated by a / or .
         if the number ends with a d, it will be read as a decimal"""
-    if isinstance(text, int) or isinstance(text, float) or isinstance(text, Fraction):
+    if isinstance(text, int | float | Fraction):
         return text
     if text.endswith('d'):
         text = text[:-1]
@@ -110,11 +110,14 @@ def read_number(text: str, base) -> int | float | Fraction:
     if text.endswith('f'):
         force_float = True
         text = text[:-1]
-    else:
+    if text[-1] in BASES:
+        base = BASES[text[-1]]
+        text = text[:-1]
+    if not force_float:
         try:
             return int(text, base)
         except ValueError:
-            force_float = False
+            pass
     if '/' in text:
         numerator, _, denominator = text.partition('/')
         if force_float:
@@ -316,3 +319,22 @@ def call(fn, args):
     """ call a python function on an Args object"""
     kwargs = {**args.named_arguments, **dict(zip(args.flags, [BuiltIns['true']] * len(args.flags)))}
     return fn(*args.positional_arguments, **kwargs)
+
+
+class BindTarget:
+    pass
+
+class BindTargetName(BindTarget):
+    def __init__(self, name, scope=None):
+        self.name = name
+        self.scope = scope
+    def bind(self, value):
+        scope = self.scope or Context.env
+        return scope.assign(self.name, value)
+
+class BindTargetKey(BindTarget):
+    def __init__(self, key, fn):
+        self.key = key
+        self.fn = fn
+    def bind(self, value):
+        self.fn.assign_option(self.key, value)
