@@ -26,6 +26,7 @@ BuiltIns['float'] = Trait(name='float')
 BuiltIns['ratio'] = RatioTrait = Trait(name='ratio')
 BuiltIns['int'] = IntTrait = Trait(name='int')
 BuiltIns['bool'] = Trait(name='bool')
+BuiltIns['index'] = IndexTrait = Trait(name='index')
 
 # Collection Traits
 BuiltIns['iter'] = IterTrait = Trait(name='iter')
@@ -36,13 +37,14 @@ BuiltIns['set'] = SetTrait = Trait(name='set')
 BuiltIns['frozenset'] = FrozenSetTrait = Trait(name='frozenset')
 BuiltIns['list'] = ListTrait = Trait(name='list')
 BuiltIns['dict'] = DictTrait = Trait(name='dict')
+BuiltIns['range'] = RangeTrait = Trait(name='range')
 
 # Numeric Tables
-BuiltIns['Bool'] = SetTable(BuiltIns['bool'], IntTrait, RatioTrait, NumTrait, name='Bool')
+BuiltIns['Bool'] = SetTable(BuiltIns['bool'], IntTrait, RatioTrait, NumTrait, IndexTrait, name='Bool')
 BuiltIns['false'] = PyValue(BuiltIns['Bool'], False)
 BuiltIns['true'] = PyValue(BuiltIns['Bool'], True)
 
-BuiltIns['Integer'] = VirtTable(IntTrait, RatioTrait, NumTrait, name='Integer')
+BuiltIns['Integer'] = VirtTable(IntTrait, RatioTrait, NumTrait, IndexTrait, name='Integer')
 BuiltIns['Fraction'] = VirtTable(RatioTrait, NumTrait, name='Fraction')
 BuiltIns['Float'] = VirtTable(BuiltIns['float'], NumTrait, name='Float')
 
@@ -52,6 +54,7 @@ BuiltIns['Tuple'] = VirtTable(TupTrait, SeqTrait, IterTrait, name='Tuple')
 BuiltIns['Set'] = VirtTable(SetTrait, IterTrait, name='Set')
 BuiltIns['List'] = VirtTable(ListTrait, SeqTrait, IterTrait, name='List')
 BuiltIns['Dictionary'] = VirtTable(DictTrait, IterTrait, name='Dictionary')
+BuiltIns['Range'] = VirtTable(RangeTrait, IterTrait, IndexTrait, name='Range')
 BuiltIns['Args'] = VirtTable(SeqTrait, DictTrait, IterTrait, name='Args')
 for rec in IntermediateArgsTable.records:
     rec.table = BuiltIns['Args']
@@ -91,6 +94,10 @@ FuncTrait.fields.append(Slot('options', TraitMatcher(BuiltIns['seq'])))
 # upsert_field_fields(BuiltIns['Field'].trait.fields)
 BuiltIns['Field'].records = BuiltIns['Field'].records[5:]
 
+BuiltIns['range'].fields = [Slot('start', UnionMatcher(TraitMatcher(NumTrait), ValueMatcher(BuiltIns['blank']))),
+                            Slot('end', UnionMatcher(TraitMatcher(NumTrait), ValueMatcher(BuiltIns['blank']))),
+                            Slot('step', UnionMatcher(TraitMatcher(NumTrait), ValueMatcher(BuiltIns['blank']))),]
+
 BuiltIns['PythonObject'] = ListTable(name='PythonObject')
 
 print("DONE ADDING BUILTIN TABLES.")
@@ -129,7 +136,6 @@ AnyPattern = ParamSet(Parameter(AnyMatcher(), quantifier="*"))
 #                                                                NonZeroIntParam.match_score(x.value[0]))))
 
 
-
 BuiltIns['bool'].assign_option(ParamSet(AnyParam), lambda x: py_value(bool(x.value)))
 BuiltIns['num'].assign_option(ParamSet(BoolParam), lambda x: py_value(int(x.value)))
 BuiltIns['num'].assign_option(ParamSet(NumericParam), lambda x: py_value(x.value))
@@ -150,10 +156,11 @@ BuiltIns['str'].assign_option(Option(StringParam, lambda x: x))
 BuiltIns['str'].assign_option(ParamSet(NumericParam, IntegralParam),
                               lambda n, b: py_value(write_number(n.value, b.value)))
 BuiltIns['list'].assign_option(ParamSet(SeqParam), lambda x: py_value(list(x.value)))
+BuiltIns['list'].assign_option(ParamSet(IterParam), lambda x: py_value(list(x)))
 BuiltIns['tuple'].assign_option(ParamSet(SeqParam), lambda x: py_value(tuple(x.value)))
 BuiltIns['set'].assign_option(ParamSet(SeqParam), lambda x: py_value(set(x.value)))
 BuiltIns['iter'].assign_option(Option(UnionMatcher(*(TraitMatcher(BuiltIns[t])
-                                                     for t in ('tuple', 'list', 'set', 'frozenset', 'str'))),
+                                                     for t in ('tuple', 'list', 'set', 'frozenset', 'str', 'range'))),
                                       lambda x: x))
 
 
@@ -291,6 +298,7 @@ def inclusive_range(*args: PyValue):
                 raise RuntimeErr(f"Line {Context.line}: Third argument in range (step) cannot be 0.")
         case _:
             raise RuntimeErr(f"Line {Context.line}: Too many arguments for range")
+    return Range()
     i = start
     ls = []
     while step > 0 and i <= stop or step < 0 and i >= stop:
@@ -299,7 +307,7 @@ def inclusive_range(*args: PyValue):
     return piliize(ls)
 
 
-BuiltIns['range'] = Function({Parameter(BuiltIns["num"], quantifier="*"): inclusive_range})
+RangeTrait.assign_option(Parameter(BuiltIns["num"], quantifier="*"), lambda *args: Range(*args))
 # BuiltIns['map'] = Function({ParamSet(SeqParam, FunctionParam): lambda ls, fn: piliize([fn.call(val) for val in ls.value]),
 #                             ParamSet(FunctionParam, SeqParam): lambda fn, ls: piliize([fn.call(val) for val in ls.value])})
 # BuiltIns['filter'] = Function({ParamSet(ListParam, FunctionParam):
@@ -401,10 +409,14 @@ list_get_option = Option(ParamSet(IntegralParam), Native(list_get))
 list_slice_option1 = Option(ParamSet(IntegralParam, IntegralParam), Native(list_slice))
 list_slice_option2 = Option(ParamSet(IntegralParam, IntegralParam, IntegralParam), Native(list_slice))
 
-for tbl in ('List', 'Tuple', 'String'):
-    BuiltIns[tbl].catalog.assign_option(list_get_option)
-    BuiltIns[tbl].catalog.assign_option(list_slice_option1)
-    BuiltIns[tbl].catalog.assign_option(list_slice_option2)
+# for tbl in ('List', 'Tuple', 'String'):
+#     BuiltIns[tbl].catalog.assign_option(list_get_option)
+#     BuiltIns[tbl].catalog.assign_option(list_slice_option1)
+#     BuiltIns[tbl].catalog.assign_option(list_slice_option2)
+
+SeqTrait.assign_option(list_get_option)
+SeqTrait.assign_option(list_slice_option1)
+SeqTrait.assign_option(list_slice_option2)
 
 BuiltIns['push'] = Function({ParamSet(ListParam, AnyParam):
                              lambda ls, item: ls.value.append(item) or ls})
@@ -461,3 +473,7 @@ BuiltIns['python'] = Function({StringParam: None})
 #         case Table() | Function():
 #             if v.name is None:
 #                 v.name = k
+
+for tbl in TableTable.records:
+    tbl: Table
+    tbl.integrate_traits()

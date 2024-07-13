@@ -356,7 +356,9 @@ Op['..'].fn = Function({ParamSet(SeqParam, StringParam):
                             lambda ls, name: py_value([dot_fn(el, name) for el in ls.value]),
                         ParamSet(NumericParam, NumericParam): inclusive_range,
                         ParamSet(SeqParam, FunctionParam):
-                            lambda ls, fn: py_value([fn.call(el) for el in ls.value])
+                            lambda ls, fn: py_value([fn.call(el) for el in ls.value]),
+                        ParamSet(Parameter(TraitMatcher(IterTrait)), FunctionParam):
+                            lambda it, fn: py_value([fn.call(el) for el in it]),
                         }, name='..')
 Op['.'].eval_args = Op['.?'].eval_args = Op['..'].eval_args = eval_dot_args
 BuiltIns['call'] = Op['.'].fn

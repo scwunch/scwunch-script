@@ -590,7 +590,7 @@ test[121] &= bind_weight[grape] == "Weight of purple fruit: {grape.weight_in_gra
 print_test[121]
 
 iter[@test]:
-    return list[range[0, test.len-1]]
+    return range[0, test.len-1]
 failed_tests = []
 for t in test
 	if not t in test or not test[t]
@@ -603,5 +603,20 @@ else
 
 end_time = now[]
 execution_time = end_time - start_time
-print 'Execution time (hms): {float[round[10000 * execution_time, 4]]}'
-return "Execution time (decimal ms): {str[1000d * execution_time, 10d]}"
+
+start_time = now[]
+function long_loop
+    [int n]:
+        for i in range[n]
+            (print i) if i % 1000 == 0 else blank
+
+long_loop[10_0000]
+print str[10_0000, 10d]
+
+end_time = now[]
+loop_time = end_time - start_time
+print 'MAIN Execution time (hms): {float[round[10000 * execution_time, 4]]}'
+print "MAIN Execution time (decimal ms): {str[1000d * execution_time, 10d]}"
+print 'LOOP Execution time (hms): {float[round[10000 * loop_time, 4]]}'
+print "LOOP Execution time (decimal ms): " + str[1000d * loop_time, 10d]
+return 'TOTAL time: ' + str[1000d * loop_time, 10d] + "ms"

@@ -471,7 +471,38 @@ class PyObj(Record, Generic[A]):
     def to_string(self):
         return py_value(repr(self.obj))
 
-List = py_value
+class Range(Record):
+    def __init__(self, *args: PyValue):
+        step = py_value(1)
+        match args:
+            case []:
+                start = BuiltIns['blank']
+                end = BuiltIns['blank']
+            case [end]:
+                if end.value == 0:
+                    start = BuiltIns['blank']
+                elif end.value > 0:
+                    start = step = py_value(1)
+                else:
+                    start = step = py_value(-1)
+            case [start, end]:
+                step = py_value(int(end.value >= start.value) or -1)
+            case [start, end, step]:
+                start, stop, step = (a.value for a in args)
+                if not step:
+                    raise RuntimeErr(f"Line {Context.line}: Third argument in range (step) cannot be 0.")
+            case _:
+                raise RuntimeErr(f"Line {Context.line}: Too many arguments for range")
+        super().__init__(BuiltIns['Range'], start, end, step)
+
+    def __iter__(self):
+        start, end, step = tuple(f.value for f in self.data)
+        if start is None:
+            return
+        i = start
+        while i <= end:
+            yield py_value(i)
+            i += step
 
 class Function(Record, OptionCatalog):
     frame = None
