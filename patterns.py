@@ -173,8 +173,23 @@ class ValueMatcher(Matcher):
     def equivalent(self, other):
         return isinstance(other, ValueMatcher) and other.value == self.value
 
-    # def __repr__(self):
-    #     return f"ValueMatcher({self.value})"
+class ArgsMatcher(Matcher):
+    rank = 5, 0
+    params = None  # : ParamSet | None = None
+
+    def __init__(self, *params):
+        match params:
+            case [ParamSet() as params]:
+                self.params = params
+            case _ if params:
+                self.params = ParamSet(*params)
+
+    def match(self, arg: Record) -> None | dict[str, Record]:
+        if not isinstance(arg, Args):
+            return
+        if self.params is None:
+            return {}
+        return self.params.match(arg)
 
 
 class FunctionMatcher(Matcher):
@@ -274,6 +289,9 @@ class IterMatcher(Matcher):
         return state.match_zip()
 
 def dot_fn(a: Record, b: Record, *, caller=None, suppress_error=False):
+    if hasattr(a, "uninitialized"):
+        raise InitializationErr(f"Line {Context.line}: "
+                                f"Cannot call or get property of {a.table} {a.name or str(a)} before initialization.")
     match b:
         case Args() as args:
             return a.call(args, caller=caller)
@@ -367,6 +385,24 @@ class LambdaMatcher(Matcher):
     def basic_score(self, arg: Record) -> bool:
         return self.fn(arg)
 
+
+class NotMatcher(Matcher):
+    def __init__(self, matcher: Matcher):
+        self.matcher = matcher
+
+    def match(self, arg: Record) -> None | dict[str, Record]:
+        if self.matcher.match(arg) is None:
+            return {}
+
+    def get_rank(self):
+        return AnyMatcher.rank[0] - self.matcher.get_rank()[0], 0
+
+    def __lt__(self, other):
+        return other <= self.matcher
+
+    def __le__(self, other):
+        return other < self.matcher
+
 class IntersectionMatcher(Matcher):
     # I'm confused.  I think I made this inherit from "Pattern" rather than "Matcher" so that you could do intersections of multiple parameters in a row
     # eg foo[(num+) & (int*, ratio*)]: ...
@@ -384,9 +420,6 @@ class IntersectionMatcher(Matcher):
                                  f"Catch this and return that single matcher na lang.")
         self.matchers = matchers
 
-    def get_rank(self):
-        return "Why is this being called?"
-
     def match(self, arg: Record) -> None | dict[str, Record]:
         bindings = {}
         for m in self.matchers:
@@ -396,8 +429,9 @@ class IntersectionMatcher(Matcher):
             bindings.update(sub_match)
         return bindings
 
-    # def match_score(self, arg: Record):
-    #     return all(m.match_score(arg) for m in self.matchers)
+    def get_rank(self):
+        ranks = [m.get_rank()[0] for m in self.matchers]
+        return tuple(sorted(ranks))
 
     def issubset(self, other):
         match other:
@@ -620,6 +654,8 @@ class Parameter(Pattern):
             case Parameter():
                 q = self.compare_quantifier(other)
                 return q < 0 or q == 0 and self.pattern < other.pattern
+            case Matcher():
+                return self < Parameter(other)
         return NotImplemented
 
     def __le__(self, other):
@@ -627,6 +663,8 @@ class Parameter(Pattern):
             case Parameter():
                 q = self.compare_quantifier(other)
                 return q < 0 or q == 0 and self.pattern <= other.pattern
+            case Matcher():
+                return self <= Parameter(other)
         return NotImplemented
 
     def __eq__(self, other):
@@ -649,6 +687,8 @@ class Parameter(Pattern):
             case Parameter():
                 q = self.compare_quantifier(other)
                 return q < 0 or q == 0 and self.pattern > other.pattern
+            case Matcher():
+                return self > Parameter(other)
         return NotImplemented
 
     def __ge__(self, other):
@@ -656,6 +696,8 @@ class Parameter(Pattern):
             case Parameter():
                 q = self.compare_quantifier(other)
                 return q < 0 or q == 0 and self.pattern >= other.pattern
+            case Matcher():
+                return self >= Parameter(other)
         return NotImplemented
 
     def __repr__(self):
@@ -2047,8 +2089,6 @@ def param_byte_code(self: Parameter):
 
 def patternize(val) -> Pattern | Matcher:
     match val:
-        case Parameter():
-            raise Exception("Can you patternize a parameter?")
         case Pattern() | Matcher():
             return val
         case Table():

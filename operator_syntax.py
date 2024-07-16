@@ -155,13 +155,13 @@ def eval_colon_args(lhs: Node, rhs: Node) -> Args:
                         raise EnvironmentError(f"Line {Context.line}: illegal .dot option found")
                     key: ParamSet = params.evaluate() if params else ParamSet()
                     key.prepend(Parameter(location, 'self'))
-                    fn = Context.deref(name, None)
-                    if fn is None:
-                        fn = Function(name=name)
-                        Context.env.locals[name] = fn
-                        if not isinstance(location, Table | Trait):
-                            print(f"WARNING: {name} not yet defined in current scope.  Newly created function is "
-                                  f" currently only accessible as `{location}.{name}`.")
+                    fn = Context.deref(name)
+                    # if fn is None:
+                    #     fn = Function(name=name)
+                    #     Context.env.locals[name] = fn
+                    #     if not isinstance(location, Table | Trait):
+                    #         print(f"WARNING: {name} not yet defined in current scope.  Newly created function is "
+                    #               f" currently only accessible as `{location}.{name}`.")
                     return Args(fn, key, resolution)
                 case [fn_node, ParamsNode() as params]:
                     """ foo[key]: ... """
@@ -184,10 +184,10 @@ def eval_colon_args(lhs: Node, rhs: Node) -> Args:
                             key = ParamSet()
                         case _:
                             raise EnvironmentError(f"Line {Context.line}: illegal .dot option found")
-                    fn = Context.deref(name, None)
-                    if fn is None:
-                        fn = Function(name=name)
-                        Context.env.locals[name] = fn
+                    fn = Context.deref(name)
+                    # if fn is None:
+                    #     fn = Function(name=name)
+                    #     Context.env.locals[name] = fn
                     # maybe this should have no self parameter if in Function context?
                     return Args(fn, key, resolution)
                 case [table_or_trait, Token(type=TokenType.Name, source_text=name)]:
@@ -247,19 +247,21 @@ def eval_dot_args(lhs: Node, rhs: Node) -> Args:
                      terms=(left_term, Token(type=TokenType.Name, source_text=name))),
               ListNode(list_type=ListType.Args) as args_node):
             # case left_term.name[args_node]
-            # is name in left_term?
             left = left_term.evaluate()
-            prop = left.get(name, None, search_table_frame_too=False)
+            # 1. Try to resolve slot/formula in left
+            prop = left.get(name, None)  # , search_table_frame_too=True)
             if prop is not None:
-                # the name resolved a slot in left
-                return Args(prop, right_arg, caller=left)
-            # else: no slot named "name" in fn
-            args = Args(left) + right_arg
-            fn = left.table.get(name, Context.deref(name, None))
+                return Args(prop, right_arg)
+            # 2. Try to find function in table
+            method = left.table.get(name, None)
+            if method is not None:
+                return Args(method, right_arg, caller=left)
+            # 3. Finally, try  to resolve name in scope
+            fn = Context.deref(name, None)
             if fn is None:
-                raise KeyErr(f"Line {Context.line}: {left.table} {left} has no slot '{name}' and no variable with that "
+                raise KeyErr(f"Line {Context.line}: {left.table} {left} has no slot '{name}' and no record with that "
                              f"name found in current scope either.")
-            return Args(fn, args)
+            return Args(fn, Args(left) + right_arg)
         case _:
             pass
 
@@ -313,6 +315,31 @@ def eval_dot_args(lhs: Node, rhs: Node) -> Args:
 #     #                     f"right-hand operand of dot operator should be string or list of arguments.  Found {b}.")
 """
 
+def list_get(seq: PyValue, args: Args):
+    try:
+        seq = seq.value  # noqa
+    except AttributeError:
+        raise TypeErr(f"Line {Context.line}: Could not find sequence value of non PyValue {seq}")
+    match args:
+        case Args(positional_arguments=(PyValue() as index,)):
+            pass
+        case Args(named_arguments={'index': PyValue() as index}):
+            pass
+        case Args(positional_arguments=[Range() as rng]):
+            return py_value(seq[rng.slice])
+        case _:
+            raise AssertionError
+    try:
+        if isinstance(seq, str):
+            return py_value(seq[index])
+        return seq[index]
+    except IndexError as e:
+        raise KeyErr(f"Line {Context.line}: {e}")
+    except TypeError as e:
+        if index.value is None:
+            raise KeyErr(f"Line {Context.line}: Pili sequence indices start at 1, not 0.")
+        raise KeyErr(f"Line {Context.line}: {e}")
+
 def extract_pyvalue(rec: Record):
     match rec:
         case PyValue(value=value) | PyObj(obj=value):
@@ -334,10 +361,12 @@ def py_dot(a: PyObj, b: Args | PyValue[str]):
 
 
 caller_patt = ParamSet(AnyParam, AnyParam, named_params={'caller': Parameter(AnyMatcher(), 'caller', '?')})
+# note: caller_patt should be (FunctionParam, ArgsParam), but I just made it any, any for a slight speed boost
 
 Op['.'].fn = Function({caller_patt: dot_fn,
-                       # ParamSet(AnyParam, AnyParam, caller=AnyParam): temp_new_dot_fn,
                        StringParam: lambda a: Context.deref(a.value),
+                       ParamSet(AnyParam, StringParam): dot_fn,
+                       ParamSet(SeqParam, ArgsParam): list_get,
                        ParamSet(Parameter(TableMatcher(BuiltIns['PythonObject'])),
                                 Parameter(UnionMatcher(TraitMatcher(FuncTrait), TableMatcher(BuiltIns['Table'])))):
                            py_dot,  # I don't remember why the second parameter for the pydot is func|table ???
@@ -553,6 +582,12 @@ Op['has'].fn = Function({ParamSet(AnyParam, NonStrSeqParam): has_option,
 Op['&'].fn = Function({AnyPlusPattern: lambda *args: IntersectionMatcher(*map(patternize, args))},
                       name='&')
 Op['@'].fn = Function({AnyParam: lambda rec: Parameter(ValueMatcher(rec))})
+def invert_pattern(rec: Record):
+    match patternize(rec):
+        case Parameter(pattern=patt, binding=b, quantifier=q, default=d):
+            return
+
+Op['!'].fn = Function({AnyParam: lambda rec: Parameter(ValueMatcher(rec))})
 
 
 

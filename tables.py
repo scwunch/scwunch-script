@@ -154,8 +154,12 @@ class OptionCatalog:
     def select_and_bind(self, key):
         if isinstance(key, tuple):
             key = Args(*key)  # I don't think this should happen anymore
-        if key in self.op_map:
-            return self.op_map[key], {}
+        try:
+            if key in self.op_map:
+                return self.op_map[key], {}
+        except TypeError as e:
+            if not (e.args and e.args[0].startswith('unhashable type')):
+                raise e
         if Context.debug and self is BuiltIns['.']:
             Context.debug = 0  # pause debugger
         option = bindings = None
@@ -275,7 +279,7 @@ class Record:
 
         option, bindings = self.select(args)
         if option:
-            return option.resolve(args, caller or self, bindings)
+            return option.resolve(args, caller, bindings, self)
         raise NoMatchingOptionError(f"Line {Context.line}: {args} not found in {self.name or self}")
 
         # if not isinstance(args, Args):
@@ -371,7 +375,7 @@ class PyValue(Record, Generic[T]):
         # if self.instanceof(BuiltIns['list']):
         #     return py_value(f"[{', '.join(v.to_string().value for v in self.value)}]")
         if BuiltIns['seq'] in self.table.traits:
-            gen = (f'"{el.value}"' if isinstance(el.value, str) else el.to_string().value
+            gen = (f'"{el.value}"' if isinstance(getattr(el, 'value', None), str) else el.to_string().value
                    for el in self.value)
             items = ', '.join(gen)
             match self.value:
@@ -471,25 +475,21 @@ class PyObj(Record, Generic[A]):
     def to_string(self):
         return py_value(repr(self.obj))
 
+
 class Range(Record):
     def __init__(self, *args: PyValue):
         step = py_value(1)
         match args:
             case []:
-                start = BuiltIns['blank']
-                end = BuiltIns['blank']
+                start = py_value(1)
+                end = py_value(-1)
             case [end]:
-                if end.value == 0:
-                    start = BuiltIns['blank']
-                elif end.value > 0:
-                    start = step = py_value(1)
-                else:
-                    start = step = py_value(-1)
+                start = step = py_value(1)
             case [start, end]:
-                step = py_value(int(end.value >= start.value) or -1)
+                step = py_value(1)
             case [start, end, step]:
-                start, stop, step = (a.value for a in args)
-                if not step:
+                # start, stop, step = (a.value for a in args)
+                if step.value == 0:
                     raise RuntimeErr(f"Line {Context.line}: Third argument in range (step) cannot be 0.")
             case _:
                 raise RuntimeErr(f"Line {Context.line}: Too many arguments for range")
@@ -504,11 +504,37 @@ class Range(Record):
             yield py_value(i)
             i += step
 
+    @property
+    def slice(self) -> slice | None:
+        start, end, step = tuple(f.value for f in self.data)
+        if start > 0:
+            start -= 1
+        if end < 0:
+            if step > 0:
+                end += 1
+            else:
+                end -= 1
+        if end == 0:
+            end = start
+        if end > 0 and step < 0:
+            end -= 2
+
+        """
+        1..3      => [0:3]
+        1..-2     => [0:-1]
+        -1..-3:-1 => [-1:-4:-1]
+        4..2:-1   => [3:0:-1]
+        """
+        return slice(start or None, end or None, step)
+
 class Function(Record, OptionCatalog):
     frame = None
-    def __init__(self, options=None, *fields, name=None, table_name='Function', traits=(), frame=None):
+    def __init__(self, options=None, *fields, name=None,
+                 table_name='Function', traits=(), frame=None, uninitialized=False):
         if name:
             self.name = name
+        if uninitialized:
+            self.uninitialized = True
         # self.slot_dict = {}
         # self.formula_dict = {}
         # self.setter_dict = {}
@@ -579,22 +605,10 @@ class Function(Record, OptionCatalog):
 class Trait(Function):
     # trait = None
     # noinspection PyDefaultArgument
-    def __init__(self, options={}, *fields, name=None, fn_options={}, fn_fields=[]):
-        # if name:
-        #     self.name = name
-        # if own_trait:
-        #     self.trait = own_trait
+    def __init__(self, options={}, *fields, name=None, fn_options={}, fn_fields=[], uninitialized=False):
         self.options = [Option(patt, res) for (patt, res) in options.items()]
-        # self.hashed_options = {}
-        # self.field_ids = {}
         self.fields = list(fields)
-        # if options:
-        #     for patt, val in options.items():
-        #         self.add_option(patt, val)
-        # for field in fields:
-        #     for field in fields:
-        #         self.fields.append(field)
-        super().__init__(fn_options, *fn_fields, name=name, table_name='Trait')
+        super().__init__(fn_options, *fn_fields, name=name, table_name='Trait', uninitialized=uninitialized)
 
     # def add_option(self, pattern, resolution=None):
     #     option = Option(pattern, resolution)
@@ -715,7 +729,7 @@ class Table(Function):
     # setters = dict[str, tuple[int, Field]]
     # fields = list[Field]
     # noinspection PyDefaultArgument
-    def __init__(self, *traits: Trait, name=None, fn_options={}, fn_fields=[]):
+    def __init__(self, *traits: Trait, name=None, fn_options={}, fn_fields=[], uninitialized=False):
         self.traits = (Trait(name=name), *traits)
         self.getters = {}
         self.setters = {}
@@ -723,7 +737,10 @@ class Table(Function):
         # for field in fields:
         #     self.fields.append(field)
         super().__init__(fn_options, *fn_fields, name=name, table_name='Table', traits=traits)
-        self.integrate_traits()
+        if uninitialized:
+            self.uninitialized = True
+        else:
+            self.integrate_traits()
         match self:
             case VirtTable():
                 pass
@@ -801,8 +818,10 @@ class Table(Function):
                                        "?" * (defaults[name] is not None))
                           for name in defaults))
 
+        def make_option(table: Table):
+            return Native(lambda args: BuiltIns['new'].call(Args(table) + args))
         self.assign_option(patt,
-                           Native(lambda args: BuiltIns['new'].call(Args(Context.env.caller) + args)),
+                           make_option(self),
                            no_clobber=True)
 
         self.catalog = OptionCatalog({}, *self.traits)
@@ -859,7 +878,7 @@ class ListTable(Table):
 
 class MetaTable(ListTable):
     def __init__(self):
-        self.name = 'MetaTable'
+        self.name = 'Table'
         self.records = [self]
         self.table = self
         self.data = []
@@ -1897,11 +1916,11 @@ class Closure:
         Context.push(Context.line, env)
 
         for tbl in self.block.table_names:
-            env.locals[tbl] = ListTable(name=tbl)
+            env.locals[tbl] = ListTable(name=tbl, uninitialized=True)
         for trait in self.block.trait_names:
-            env.locals[trait] = Trait(name=trait)
+            env.locals[trait] = Trait(name=trait, uninitialized=True)
         for fn in self.block.function_names:
-            env.locals[fn] = Function(name=fn)
+            env.locals[fn] = Function(name=fn, uninitialized=True)
         self.block.execute()
         Context.pop()
         return env.return_value or caller or fn
@@ -2028,11 +2047,11 @@ class Option(Record):
 
     resolution = property(get_resolution, set_resolution, nullify)
 
-    def resolve(self, args=None, caller=None, bindings=None):
+    def resolve(self, args, caller, bindings=None, _self=None):
         if isinstance(args, tuple):
             print("WARNING: encountered tuple of args rather than Args object.")
         if self.alias:
-            return self.alias.resolve(args, caller, bindings)
+            return self.alias.resolve(args, caller, bindings, _self)
         if self.value is not None:
             return self.value
         if self.fn:

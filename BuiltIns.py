@@ -123,6 +123,7 @@ PatternParam = Parameter(TableMatcher(BuiltIns['Pattern']))
 FunctionParam = Parameter(TraitMatcher(BuiltIns["fn"]))
 TableParam = Parameter(TableMatcher(BuiltIns['Table']))
 AnyParam = Parameter(AnyMatcher())
+ArgsParam = Parameter(ArgsMatcher())
 NormalBinopPattern = ParamSet(NormalParam, NormalParam)
 AnyBinopPattern = ParamSet(AnyParam, AnyParam)
 AnyPlusPattern = ParamSet(Parameter(AnyMatcher(), quantifier="+"))
@@ -317,14 +318,14 @@ RangeTrait.assign_option(Parameter(BuiltIns["num"], quantifier="*"), lambda *arg
 #                                    lambda fn, ls: piliize([v for v in ls.value
 #                                                            if BuiltIns['bool'].call(fn.call(v)).value])})
 # BuiltIns['sum'] = Function({SeqParam: lambda ls: BuiltIns['+'].call(*ls.value)})
-# BuiltIns['trim'] = Function({StringParam: lambda text: py_value(text.value.strip()),
-#                             ParamSet(StringParam, StringParam): lambda t, c: py_value(t.value.strip(c.value))})
-# BuiltIns['upper'] = Function({StringParam: lambda text: py_value(text.value.upper())})
-# BuiltIns['lower'] = Function({StringParam: lambda text: py_value(text.value.lower())})
-# BuiltIns['match'] = Function({ParamSet(StringParam, StringParam):
-#                                   lambda s, p: py_value(re.match(p.value, s.value)),
-#                               ParamSet(StringParam, StringParam, StringParam):
-#                                   lambda s, p, f: py_value(re.match(p.value, s.value, f.value))})
+BuiltIns['trim'] = Function({StringParam: lambda text: py_value(text.value.strip()),
+                            ParamSet(StringParam, StringParam): lambda t, c: py_value(t.value.strip(c.value))})
+BuiltIns['upper'] = Function({StringParam: lambda text: py_value(text.value.upper())})
+BuiltIns['lower'] = Function({StringParam: lambda text: py_value(text.value.lower())})
+BuiltIns['match'] = Function({ParamSet(StringParam, StringParam):
+                                  lambda s, p: py_value(re.match(p.value, s.value)),
+                              ParamSet(StringParam, StringParam, StringParam):
+                                  lambda s, p, f: py_value(re.match(p.value, s.value, f.value))})
 # # BuiltIns['self'] = lambda: Context.env.caller or Context.env or py_value(None)
 # # def Args(fn: Function):
 # #     arg_list = piliize([opt.value for opt in fn.args])

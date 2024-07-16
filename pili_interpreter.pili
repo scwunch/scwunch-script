@@ -1,0 +1,135 @@
+function Context
+    test_script = `print 3 "hello world"`
+
+table TokenType
+    slot name str
+    var name
+    var number
+    var operator
+    var newline
+    var tab
+    var string
+    .str:
+        return "TokenType.{self.name}"
+
+TokenType.name = TokenType['name']
+TokenType.number = TokenType['number']
+TokenType.operator = TokenType['operator']
+TokenType.newline = TokenType['newline']
+TokenType.tab = TokenType['tab']
+TokenType.string = TokenType['string']
+
+table Tokenizer
+    slot program str
+    slot tokens list = []
+    slot idx = 0
+    slot line = 1
+    slot ch = 1
+    formula char:
+        if self.idx == 0
+            return ''
+#         print "get token @{self.idx}: "
+#         return self.program[self.idx] if self.idx <= len[self.program] else blank
+        return self.program[range[self.idx, self.idx]]
+    next[]:
+        if self.char == '\n'
+            self.line += 1
+            self.ch = 0
+        self.idx += 1
+        self.ch += 1
+        return self.char
+    peek[int offset = 1, int count = 1]:
+        start = self.idx + offset
+        return self.program[start .. (start + count - 1)]
+
+    var buffer = ''
+    slot token_type TokenType?
+
+    push[]:
+        if buffer
+            print 'push buffer into new token'
+            start = self.idx - buffer.len
+            tok = Token[buffer, token_type, start, self.idx-1, self.line, self.ch]
+            print buffer + " :: " + tok.str
+            self.tokens.push[tok]
+            buffer = ''
+            if c == blank
+                print 'EOF'
+        token_type = blank
+
+    function handle_char
+        [str c, _]:
+            buffer += c
+            token_type ??= TokenType.name
+        ['0'|'1'|'2'|'3'|'4'|'5'|'6'|'7'|'8'|'9' d,
+         Tokenizer(token_type: !(debug TokenType.string))]:
+            buffer += d
+            token_type ??= TokenType.number
+            print 'number {d}'
+        ['"', Tokenizer(token_type: type)]:
+            if type is TokenType.string
+                self.push[]
+            else
+                token_type = TokenType.string
+        [' ' | @blank c, Tokenizer(token_type: !TokenType.string)]:
+            self.push[]
+        [any c]:
+            print 'other: {c}'
+            exit
+
+    [str program]:
+        self = Tokenizer.new[program]
+        print "Starting Tokenizer"
+        while char = self.next[]
+            print "char@{self.idx}: {char}"
+            handle_char[char, self]
+        if buffer
+            self.push[]
+        return self
+
+    .str:
+        return self.tokens.join[' ']
+
+
+trait Node
+    slot text str?
+    slot place range?
+    slot line int = 0
+    slot ch int = 0
+    formula pos:
+        return self.line, self.ch
+    setter pos[tuple(len: 2) pos]:
+        self.line = pos[1]
+        self.ch = pos[2]
+    formula source:
+        if self.place == blank
+            return blank
+        return Context.test_script[self.place]
+
+table Token(Node)
+    slot type TokenType
+    [str text?, TokenType type, int idx?, int end?, int line, int ch]:
+        print "New token: {type} {text} @({line}, {ch})"
+        if idx and end
+            place = range[idx, end]
+        else
+            place = blank
+        self = Token.new[type=type, text=text, place=place, line=line, ch=ch]
+        return self
+
+    .str:
+        return "Token<{self.type.name}>[{self.source ?? self.text}]"
+
+table Position(range)
+    slot line int?
+    slot ch   int?
+    [range r, int line?, int ch?]:
+        return Position.new[r.start, r.end, line=line, ch=ch]
+
+
+
+
+# MAIN
+print 'start'[range[0,0]]
+prog = Tokenizer[Context.test_script]
+print prog

@@ -7,7 +7,6 @@ from enum import Enum, EnumMeta
 from Env import *
 from operators import Operator
 from tables import *
-# from patterns import Inst, virtualmachine, VM
 
 print(f"loading module: {__name__} ...")
 
@@ -132,7 +131,7 @@ class Node:
     source_text: str
     token_slice: int | slice
 
-    def get_line(self) -> int:
+    def get_line(self):
         return getattr(self, '_line', self.pos[0])
 
     def set_line(self, line: int):
@@ -149,7 +148,7 @@ class Node:
 
     @property
     def real_source_text(self):
-        toks = Context.tokens
+        toks = self.tokens
         start = toks[0].idx
         end = toks[1].idx + len(toks[1].source_text)
         return Context.source_code[start:end]
@@ -911,10 +910,12 @@ class FunctionExpr(Command):
                 raise SyntaxErr(f"Line {self.line}: Function syntax should be `function <fn_name> <block>`.")
 
     def evaluate(self):
-        fn = Context.env.locals[self.fn_name]
-        assert isinstance(fn, Function)
-        # fn = Function(name=self.fn_name)
-        Context.env.assign(self.fn_name, fn)
+        fn = Context.deref(self.fn_name)
+        if isinstance(fn, Function):
+            del fn.uninitialized
+        else:
+            fn = Function(name=self.fn_name)
+            Context.env.assign(self.fn_name, fn)
         if self.body is not None:
             Closure(self.body).execute(fn=fn)
         return fn
@@ -935,10 +936,12 @@ class TraitExpr(Command):
                 raise SyntaxErr(f"Line {self.line}: Trait syntax should be `trait <trait_name> <block>`.")
 
     def evaluate(self):
-        # trait = Trait(name=self.trait_name)
-        trait = Context.env.locals[self.trait_name]
-        assert isinstance(trait, Trait)
-        Context.env.assign(self.trait_name, trait)
+        trait = Context.deref(self.trait_name)
+        if isinstance(trait, Trait) and hasattr(trait, 'uninitialized'):
+            del trait.uninitialized
+        else:
+            trait = Trait(name=self.trait_name)
+            Context.env.assign(self.trait_name, trait)
         if self.body is not None:
             Closure(self.body).execute(fn=trait)
         return trait
@@ -948,38 +951,56 @@ class TraitExpr(Command):
 
 class TableExpr(Command):
     table_name: str
-    traits: list[str]
+    traits: list[Node]
     body: Block = None
     def __init__(self, cmd: str, nodes: list[Node], line: int | None, source: str):
         super().__init__(cmd, line, source)
         match nodes:
             case [Token(type=TokenType.Name, source_text=name), *trait_nodes, Block() as blk]:
                 self.body = blk
-            case [Token(type=TokenType.Name, source_text=name), *trait_nodes]:
-                pass
+            # case [Token(type=TokenType.Name, source_text=name), *trait_nodes]:
+            #     pass
             case _:
-                raise SyntaxErr(f"Line {self.line}: Table syntax should be `table <table_name> (@<trait>)* <block>`.")
+                raise SyntaxErr(f"Line {self.line}: Table syntax should be `table <table_name> (<trait>)* <block>`.\n"
+                                f"Eg, `table MyList(list, seq, iter)`")
         self.table_name = name
-        self.traits = []
-        for i in range(0, len(trait_nodes), 2):
-            match trait_nodes[i:i+2]:
-                case [Token(source_text='@'), Token(type=TokenType.Name, source_text=name)]:
-                    self.traits.append(name)
-                case _:
-                    raise SyntaxErr(f"Line {self.line}: "
-                                    f"Table traits must be listed like `@trait_name` separated only by whitespace.")
+        match trait_nodes:
+            case [Token(), ListNode(items=items)]:
+                self.traits = items
+            case []:
+                self.traits = []
+            case _:
+                raise SyntaxErr(f"Line {self.line}: Table syntax should be `table <table_name> (<trait>)* <block>`.\n"
+                                f"Eg, `table MyList(list, seq, iter)`")
+        # for i in range(0, len(trait_nodes), 2):
+        #     match trait_nodes[i:i+2]:
+        #         case [Token(source_text='@'), Token(type=TokenType.Name, source_text=name)]:
+        #             self.traits.append(name)
+        #         case _:
+        #             raise SyntaxErr(f"Line {self.line}: "
+        #                             f"Table traits must be listed like `@trait_name` separated only by whitespace.")
 
     def evaluate(self):
         # table = ListTable(name=self.table_name)
         # Context.env.assign(self.table_name, table)
         table = Context.deref(self.table_name)
-        if not isinstance(table, Table):
-            table = ListTable()
-        traits = tuple(Context.deref(tname) for tname in self.traits)
-        table.traits += traits
-        for trait, name in zip(table.traits, self.traits):
-            if not isinstance(trait, Trait):
-                raise TypeErr(f"Line: {Context.line}: expected trait, but '{name}' is {repr(trait)}")
+        if isinstance(table, Table):
+            del table.uninitialized
+        else:
+            table = ListTable(name=self.table_name)
+            Context.env.assign(self.table_name, table)
+
+        def gen_traits():
+            for node in self.traits:
+                trait = node.evaluate()
+                if not isinstance(trait, Trait):
+                    raise TypeErr(f"Line: {Context.line}: expected trait, but '{node}' is {repr(trait)}")
+                yield trait
+
+        table.traits = (*table.traits, *gen_traits())
+        # for trait, name in zip(table.traits, self.traits):
+        #     if not isinstance(trait, Trait):
+        #         raise TypeErr(f"Line: {Context.line}: expected trait, but '{name}' is {repr(trait)}")
         if self.body is not None:
             Closure(self.body).execute(fn=table)
         table.integrate_traits()
@@ -1100,7 +1121,7 @@ class SetterExpr(Command):
         super().__init__(cmd, line, source)
         match nodes:
             case [Token(type=TokenType.Name, source_text=name), Token(source_text='.'),
-                  ListNode(items=[Expression() as stmt]) as param_list,
+                  ParamsNode(items=[Node() as param_node]) as param_list,
                   Token(source_text=':'), Block() as blk]:
                 self.field_name = name
                 # self.param_nodes = stmt.nodes

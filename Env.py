@@ -80,6 +80,8 @@ class NoMatchingOptionError(KeyErr):
     pass
 class MissingNameErr(KeyErr):
     pass
+class InitializationErr(KeyErr):
+    pass
 class OperatorErr(SyntaxErr):
     pass
 class TypeErr(RuntimeErr):

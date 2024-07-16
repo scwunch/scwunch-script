@@ -26,7 +26,7 @@ else:
     # script_path = 'fibonacci.pili'
     # script_path = 'test.pili'
     # script_path = 'Tables.pili'
-    # script_path = 'pili_interpreter.pili'
+    script_path = 'pili_interpreter.pili'
     print('(test mode) running script', script_path, '...')
 
 # pili = Function({ParamSet(): lambda: NotImplemented}, name='pili')
