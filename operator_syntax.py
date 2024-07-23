@@ -41,27 +41,35 @@ def eval_assign_args(lhs: Node, rhs: Node) -> Args:
         case ListNode():
             # [key] = value
             return Args(lhs.evaluate(), val)
-        case OpExpr(op=Operator(text='.'),
-                    terms=(Node() as fn_node, Token(type=TokenType.Name, source_text=name))):
+        case OpExpr('.', [Node() as fn_node, Token(type=TokenType.Name, source_text=name)]):
             # foo.bar = value
             if isinstance(val, Closure):
                 raise SyntaxErr("Line {Context.line}: "
                                 "Cannot assign block to a name.  Blocks are only assignable to options.")
             location = fn_node.evaluate()
             return Args(location, py_value(name), val)  # any, str, any
-        case OpExpr(op=Operator(text='.'),
-                    terms=(Node() as fn_node, ListNode(list_type=ListType.Args) as args)):
+        case OpExpr('.', [Node() as fn_node, ListNode(list_type=ListType.Args) as args]):
             # foo[key] = value
             location = fn_node.evaluate()  # note: if location is not a function or list, a custom option must be added to =
             key: Args = args.evaluate()
             return Args(location, key, val)  # fn/list, args, any
-        # case OpExpr(op=Operator(text=','), terms=keys):
+        # case OpExpr(',', keys):
         #     pass
-        case OpExpr(op=Operator(text=',')):
+        case OpExpr(','):
             raise SyntaxErr(f"Line {lhs.line}: Invalid LHS for assignment.  If you want to assign to a key, use either "
                             f"`[key1, key2] = value` or `key1, key2: value`")
         case _:
             raise SyntaxErr(f"Line {lhs.line}: Invalid lhs for assignment: {lhs}")
+
+def eval_eq_args(lhs: Node, rhs: Node) -> Args:
+    if isinstance(rhs, Block):
+        val = Closure(rhs)
+    else:
+        val = rhs.evaluate()
+
+    target = lhs.eval_pattern()
+    return Args(target, val)
+
 
 def set_or_assign_option(*args, operation: Function = None):
     match args:
@@ -81,12 +89,14 @@ def set_or_assign_option(*args, operation: Function = None):
             raise ValueError("Incorrect value types for assignment")
     return val
 
-Op['='].eval_args = eval_assign_args
+Op['='].eval_args = eval_eq_args
 Op['='].fn = Function({ParamSet(StringParam, AnyParam): lambda name, val: Context.env.assign(name.value, val),
                        ParamSet(FunctionParam, AnyParam, AnyParam): set_or_assign_option,
                        ParamSet(ListParam, AnyParam, AnyParam): set_or_assign_option,
                        ParamSet(AnyParam, StringParam, AnyParam): set_or_assign_option
                        }, name='=')
+Op['='].fn = Function({ParamSet(PatternParam, AnyParam): lambda patt, val: patt.match_and_bind(val)},
+                      name='=')
 
 def null_assign(rec_or_name: Record | PyValue, name_or_val: PyValue | Record, val_or_none: Record = None):
     if val_or_none is None:
@@ -123,7 +133,7 @@ Op['??='].fn = Function({ParamSet(StringParam, AnyParam): null_assign,
                                                 or BuiltIns['blank'],
                          ParamSet(AnyParam, StringParam, AnyParam): null_assign
                          }, name='??=')
-Op['??='].eval_args = eval_assign_args
+Op['??='].eval_args = eval_eq_args
 
 
 def eval_colon_args(lhs: Node, rhs: Node) -> Args:
@@ -136,9 +146,9 @@ def eval_colon_args(lhs: Node, rhs: Node) -> Args:
         case ParamsNode():
             """ [params]: ... """
             return Args(lhs.evaluate(), resolution)
-        case OpExpr(op=Operator(text='.'), terms=terms):
+        case OpExpr('.', terms):
             match terms:
-                case [OpExpr(op=Operator(text='.'), terms=[Token(type=TokenType.Name, source_text=name)]),
+                case [OpExpr('.', [Token(type=TokenType.Name, source_text=name)]),
                       ParamsNode() as params] \
                       | [Token(params, type=TokenType.Name, source_text=name)]:
                     """ .foo[params] """
@@ -205,7 +215,7 @@ def eval_colon_args(lhs: Node, rhs: Node) -> Args:
                     return Args(fn, pattern, resolution)
                 case _:
                     raise SyntaxErr(f"Line {Context.line}: Unrecognized syntax for LHS of assignment.")
-        case OpExpr(op=Operator(text=','), terms=keys):
+        case OpExpr(',', keys):
             """ key1, key2: ... """
             key = Args(*(n.evaluate() for n in keys))
             return Args(key, resolution)
@@ -243,8 +253,8 @@ def eval_dot_args(lhs: Node, rhs: Node) -> Args:
         right_arg = rhs.evaluate()  # should evaluate to Args
 
     match lhs, rhs:
-        case (OpExpr(op=Operator(text='.' | '.?' | '..'),
-                     terms=(left_term, Token(type=TokenType.Name, source_text=name))),
+        case (OpExpr('.' | '.?' | '..',
+                     [left_term, Token(type=TokenType.Name, source_text=name)]),
               ListNode(list_type=ListType.Args) as args_node):
             # case left_term.name[args_node]
             left = left_term.evaluate()
@@ -397,16 +407,16 @@ def eval_right_arrow_args(lhs: Node, rhs: Node):
     match lhs:
         case ParamsNode() as params:
             pass
-        case OpExpr(op=Operator(text=','), terms=terms):
+        case OpExpr(',', terms):
             params = ParamsNode(terms, [])
-        case OpExpr(op=Operator(text=';'), terms=[lhs, rhs]):
+        case OpExpr(';', [lhs, rhs]):
             match lhs:
-                case OpExpr(op=Operator(text=','), terms=terms):
+                case OpExpr(',', terms):
                     ord_params = terms
                 case _:
                     ord_params = [lhs]
             match rhs:
-                case OpExpr(op=Operator(text=','), terms=terms):
+                case OpExpr(',', terms):
                     named_params = terms
                 case _:
                     named_params = (rhs,)
@@ -589,6 +599,16 @@ def invert_pattern(rec: Record):
 
 Op['!'].fn = Function({AnyParam: lambda rec: Parameter(ValueMatcher(rec))})
 
+def eval_declaration_arg(arg: Node) -> PyValue[str]:
+    match arg:
+        case Token(type=TokenType.Name, text=name):
+            return py_value(name)
+    raise AssertionError
+
+
+Op['var'].eval_args = Op['local'].eval_args = eval_declaration_arg
+Op['var'].fn = Function({StringParam: lambda x: VarPatt(x)})
+Op['local'].fn = Function({StringParam: lambda x: LocalPatt(x)})
 
 
 
@@ -1609,9 +1629,9 @@ Op['!'].fn = Function({AnyParam: lambda rec: Parameter(ValueMatcher(rec))})
 
 def make_op_equals_functions(sym: str):
     match sym:
-        case '&':
+        case '&&':
             op_fn = Op['and'].fn
-        case '|':
+        case '||':
             op_fn = Op['or'].fn
         case _:
             op_fn = Op[sym].fn
@@ -1624,10 +1644,10 @@ def make_op_equals_functions(sym: str):
                                ParamSet(AnyParam, StringParam, AnyParam):
                                    lambda rec, name, val: rec.set(name.value, op_fn.call(rec.get(name.value), val))
                                }, name=op_name)
-    Op[op_name].eval_args = eval_assign_args
+    Op[op_name].eval_args = eval_eq_args
 
 
-for sym in ('+', '-', '*', '/', '//', '**', '%', '&', '|'):  # ??= got special treatment
+for sym in ('+', '-', '*', '/', '//', '**', '%', '&', '|', '&&', '||'):  # ??= got special treatment
     make_op_equals_functions(sym)
 
 

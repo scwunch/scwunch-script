@@ -6,6 +6,19 @@ print(f"loading module: {__name__} ...")
 class Pattern(Record):
     def __init__(self):
         super().__init__(BuiltIns['Pattern'])
+
+    def match(self, arg: Record) -> None | dict[BindTarget, Record]:
+        raise NotImplementedError(self.__class__.__name__)
+
+    def match_and_bind(self, arg: Record):
+        match = self.match(arg)
+        if match is None:
+            raise MatchErr(f"Line {Context.line}: "
+                           f"pattern '{self}' did not match value {arg}")
+        for target, value in match:
+            target.bind(value)
+
+
     def bytecode(self):
         raise NotImplementedError(self.__class__.__name__)
 
@@ -33,7 +46,7 @@ class Matcher:
                 return {}
         # return self.basic_score(arg)
 
-    def match(self, arg: Record) -> None | dict[str, Record]:
+    def match(self, arg: Record) -> None | dict[BindTarget, Record]:
         if self.basic_score(arg):
             return {}
         # raise NotImplementedError(f'Implement {self.__class__.__name__}.match()')
@@ -184,7 +197,7 @@ class ArgsMatcher(Matcher):
             case _ if params:
                 self.params = ParamSet(*params)
 
-    def match(self, arg: Record) -> None | dict[str, Record]:
+    def match(self, arg: Record) -> None | dict[BindTarget, Record]:
         if not isinstance(arg, Args):
             return
         if self.params is None:
@@ -318,7 +331,7 @@ def dot_fn(a: Record, b: Record, *, caller=None, suppress_error=False):
 class FieldMatcher(Matcher):
     ordered_fields: tuple
     fields: dict  # dict[str, Parameter]
-    def __init__(self, ordered_fields: tuple[Pattern], fields: dict = None, **kwargs):
+    def __init__(self, ordered_fields: tuple[Pattern, ...], fields: dict = None, **kwargs):
         self.ordered_fields = tuple(f if isinstance(f, Parameter) else Parameter(f)
                                     for f in ordered_fields)
         if fields is None:
@@ -330,7 +343,7 @@ class FieldMatcher(Matcher):
                 fields[f] = Parameter(p)
         self.fields = frozendict(fields)
 
-    def match(self, arg: Record) -> None | dict[str, Record]:
+    def match(self, arg: Record) -> None | dict[BindTarget, Record]:
         bindings = {}
         for key, param in self.items():
             if isinstance(key, int):
@@ -390,7 +403,7 @@ class NotMatcher(Matcher):
     def __init__(self, matcher: Matcher):
         self.matcher = matcher
 
-    def match(self, arg: Record) -> None | dict[str, Record]:
+    def match(self, arg: Record) -> None | dict[BindTarget, Record]:
         if self.matcher.match(arg) is None:
             return {}
 
@@ -420,7 +433,7 @@ class IntersectionMatcher(Matcher):
                                  f"Catch this and return that single matcher na lang.")
         self.matchers = matchers
 
-    def match(self, arg: Record) -> None | dict[str, Record]:
+    def match(self, arg: Record) -> None | dict[BindTarget, Record]:
         bindings = {}
         for m in self.matchers:
             sub_match = m.match(arg)
@@ -509,7 +522,7 @@ class UnionMatcher(Matcher):
                                  f"Catch this and return that single matcher na lang.")
         self.matchers = matchers
 
-    def match(self, arg: Record) -> None | dict[str, Record]:
+    def match(self, arg: Record) -> None | dict[BindTarget, Record]:
         for m in self.matchers:
             sub_match = m.match(arg)
             if sub_match is None:
@@ -566,14 +579,16 @@ class UnionMatcher(Matcher):
 
 class Parameter(Pattern):
     pattern: Matcher | None = None
-    binding: str = None  # property
+    binding: BindTarget = None  # property
     quantifier: str  # "+" | "*" | "?" | "!" | ""
     optional: bool
     required: bool
     multi: bool
     default = None
-    def __init__(self, pattern, binding: str = None, quantifier="", default=None):
+    def __init__(self, pattern, binding: BindTarget | str = None, quantifier="", default=None):
         self.pattern = patternize(pattern)
+        if isinstance(binding, str):
+            self.binding = BindTargetName(binding)
         self.binding = binding
         self.quantifier = quantifier
         if default:
@@ -599,7 +614,7 @@ class Parameter(Pattern):
     multi = property(lambda self: self.quantifier[:1] in ('+', '*'))
 
     # def match_score(self, value) -> int | float: ...
-    def match(self, arg: Record) -> None | dict[str, Record]:
+    def match(self, arg: Record) -> None | dict[BindTarget, Record]:
         bindings = self.pattern.match(arg)
         if bindings is None:
             return
@@ -1485,7 +1500,22 @@ class ParamSet(Pattern):
     def __repr__(self):
         return f"ParamSet({', '.join(map(repr, self.parameters))}{'; ' + str(self.named_params) if self.named_params else ''})"
 
-#
+
+class VarPatt(Pattern):
+    def __init__(self, name: PyValue[str]):
+        self.dec_name = name.value
+
+    def match(self, arg: Record) -> None | dict[BindTarget, Record]:
+        Context.env.vars[self.dec_name] = arg
+        return {}
+
+
+class LocalPatt(VarPatt):
+    def match(self, arg: Record) -> None | dict[BindTarget, Record]:
+        Context.env.locals[self.dec_name] = arg
+        return {}
+
+
 # class Pattern(Record):
 #     vm: VM
 #     def __init__(self, vm: VM):

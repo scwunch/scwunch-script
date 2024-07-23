@@ -1,11 +1,11 @@
 import timeit
 settings.base = 'h'
-now[]: python['timeit.default_timer()']
-start_time = now[]
+now[]: python ['timeit.default_timer()']
+start_time = now  []
 
 
 function foo
-	[int a, str b+; num c = 0, num d, *]:
+	[int a, #debug str b+; num c = 0, num d, *]:
 		if has 'other_name'
 			return other_name
 		return a, b, c, d

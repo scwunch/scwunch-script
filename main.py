@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 import importlib
-
 print(f"importing modules...")
 import sys
 import timeit
 from Env import *
 from BuiltIns import *
-from Abstract_Syntax_Tree import Tokenizer, AST
+from Abstract_Syntax_Tree import Tokenizer, AST, mathological, Block
 import operator_syntax
 
 print(f"starting module {__name__} ...")
@@ -26,7 +25,7 @@ else:
     # script_path = 'fibonacci.pili'
     # script_path = 'test.pili'
     # script_path = 'Tables.pili'
-    script_path = 'pili_interpreter.pili'
+    # script_path = 'pili_interpreter.pili'
     print('(test mode) running script', script_path, '...')
 
 # pili = Function({ParamSet(): lambda: NotImplemented}, name='pili')
@@ -87,10 +86,11 @@ def execute_script(path):
     with open(path) as f:
         script_string = f.read()
 
+    Context.source_code = script_string
     tokenizer = Tokenizer(script_string)
-    # print(tokenizer)
-    # print('**********************************')
+    print(tokenizer)
     ast = AST(tokenizer)
+    block = ast.block
     # print(ast)
     # print('**********************************')
     # pili.assign_option(ParamSet(), CodeBlock(ast.block))
@@ -102,7 +102,7 @@ def execute_script(path):
     #     root.add_option(ListPatt(Parameter(key)), builtin)
     # Context.root = root
     try:
-        output = Closure(ast.block).execute(Args())
+        output = Closure(block).execute(Args())
     except PiliException as e:
         raise e
     except Exception as e:

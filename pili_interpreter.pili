@@ -19,6 +19,9 @@ TokenType.newline = TokenType['newline']
 TokenType.tab = TokenType['tab']
 TokenType.string = TokenType['string']
 
+func[Foo(bar: a=1; a+1, ) foo, 4]
+func = {something = "value"; "one": 1; [int n]: n+1}
+
 table Tokenizer
     slot program str
     slot tokens list = []
@@ -89,7 +92,6 @@ table Tokenizer
 
     .str:
         return self.tokens.join[' ']
-
 
 trait Node
     slot text str?

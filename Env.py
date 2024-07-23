@@ -84,9 +84,11 @@ class InitializationErr(KeyErr):
     pass
 class OperatorErr(SyntaxErr):
     pass
-class TypeErr(RuntimeErr):
+class PatternErr(RuntimeErr):
     pass
-class SlotErr(TypeErr):
+class TypeErr(PatternErr):
+    pass
+class MatchErr(PatternErr):
     pass
 
 
@@ -333,6 +335,10 @@ class BindTargetName(BindTarget):
     def bind(self, value):
         scope = self.scope or Context.env
         return scope.assign(self.name, value)
+    def __eq__(self, other):
+        return isinstance(other, BindTargetName) and self.name == other.name and self.scope == other.scope
+    def __hash__(self):
+        return hash((self.name, self.scope))
 
 class BindTargetKey(BindTarget):
     def __init__(self, key, fn):
@@ -340,3 +346,7 @@ class BindTargetKey(BindTarget):
         self.fn = fn
     def bind(self, value):
         self.fn.assign_option(self.key, value)
+    def __eq__(self, other):
+        return isinstance(other, BindTargetKey) and self.key == other.key and self.fn == other.fn
+    def __hash__(self):
+        return hash((self.key, self.fn))
