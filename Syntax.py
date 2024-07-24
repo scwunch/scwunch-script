@@ -366,6 +366,7 @@ class Token(Node):
     text: str
     this_is_a_dumb_hack = None  # purely for making a stupid shortcut in the matching portion of eval_colon_args
     __match_args__ = ('this_is_a_dumb_hack',)
+    __match_args__ = ('type',)
     def __init__(self, text: str,
                  type: TokenType = None,
                  pos: tuple[int, int | None] = None,
@@ -373,15 +374,10 @@ class Token(Node):
         self.text = text
         if pos:
             self.pos = Position(pos, start, stop)
-        if type is None:
-            self.type = TokenType.map.get(text, TokenType.Name)
-        else:
-            self.type = type
-        # if start is not None:
-        #     self.source_slice = slice(start, stop)
+        self.type = type or TokenType.map.get(text, TokenType.Name)
 
     def evaluate(self):
-        s = self.source_text
+        s = self.text
         match self.type:
             case TokenType.Singleton:
                 return py_value(SINGLETONS[s])
@@ -627,7 +623,7 @@ class ListLiteral(ListNode):
         return py_value(list(n.evaluate() for n in self.nodes))
 
     def eval_pattern(self):
-        raise NotImplementedError
+        return ParamSet(*(item.eval_pattern() for item in self.nodes))
 
     # def old_eval(self):
     #     items = (n.evaluate() for n in self.nodes)
@@ -760,17 +756,12 @@ class FieldMatcherNode(ListNode):
         def generate_matchers(nodes: list[Node]):
             for node in nodes:
                 match node:
-                    case OpExpr(':',
-                                terms=(Token(type=TokenType.Name, source_text=name), patt_node)):
-                        match patt_node:
-                            case Token(type=TokenType.Name, source_text=binding):
-                                field_dict[name] = Parameter(AnyMatcher(), binding)
-                            case _:
-                                field_dict[name] = patternize(patt_node.evaluate())
+                    case OpExpr(':', [Token(type=TokenType.Name, text=name), patt_node]):
+                        field_dict[name] = patt_node.eval_pattern()
                     case _:
-                        yield node.evaluate()
+                        yield node.eval_pattern()
 
-        return FieldMatcher(tuple(n.eval_pattern() for n in self.nodes), field_dict)
+        return FieldMatcher(tuple(generate_matchers(self.nodes)), field_dict)
 
     def eval_pattern(self):
         return Parameter(self.evaluate())
@@ -808,6 +799,65 @@ class OpExpr(Node):
         args: Args = self.op.eval_args(*self.terms)
         return self.op.fn.call(args)
 
+    def eval_pattern(self) -> Pattern:
+        match self.op.text:
+            # case '.':
+            #     rec_node, target_name = self.terms
+            #     rec: Record = rec_node.evaluate()
+            #     # if not isinstance(fn, Function):
+            #     #     raise PatternErr(f'Line {self.line}: could not evaluate pattern "{self.source_text}" '
+            #     #                      f'because {fn_node} is not a function.  It is {fn}')
+            #     # if fn.frame is None:
+            #     #     raise PatternErr(f'Line {self.line}: could not evaluate pattern "{self.source_text}" '
+            #     #                      f'because {fn_node} is a frameless function: {fn}')
+            #     assert isinstance(target_name, Token)
+            #     target = BindTargetName(target_name.text, rec)
+            #     if isinstance(rec, Function) and rec.frame and target_name.text in rec.frame:
+            #         # targets a free name inside a function
+            #         return Parameter(AnyMatcher(), target)
+            #     return Parameter(rec.table.types[target_name.text], target)
+            # case '@':
+            #     lhs, rhs = self.terms
+            #     if not (isinstance(rhs, Token) and rhs.type == TokenType.Name):
+            #         raise SyntaxErr(f'Line {self.line}: could not patternize "{self.source_text}"; '
+            #                         f'right-hand-side of bind expression must be a name.')
+            #     return Parameter(lhs.eval_pattern(), rhs.text)
+            case ',':
+                return ParamSet(*(t.eval_pattern() for t in self.terms))
+            # case '[':
+            #     lhs, rhs = self.terms
+            #     location = lhs.evaluate()
+            #     args = rhs.evaluate()
+            #     target = BindTargetKey(args, location)
+            #     return Parameter(AnyMatcher(), target)
+            case ':':
+                lhs, rhs = self.terms
+                if not (isinstance(lhs, Token) and lhs.type == TokenType.Name):
+                    raise SyntaxErr(f'Line {self.line}: could not patternize "{self.source_text}"; '
+                                    f'left-hand-side of colon must be a name.')
+                    # TODO: but at some point I will make this work for options too like Foo(["key"]: str value)
+                field_name = lhs.text
+                return Parameter(FieldMatcher((), {field_name: rhs.eval_pattern()}))
+            case '=':
+                lhs, rhs = self.terms
+                default = rhs.evaluate()
+                left = lhs.eval_pattern()
+                if not isinstance(left, Parameter):
+                    return Parameter(left, default=default)
+                if left.default is not None:
+                    raise PatternErr(f'Line {self.line}: parameter "{lhs.source_text}" already has a default value '
+                                     f'{left.default}; Cannot reassign default value to "{rhs.source_text}"')
+                left.default = default
+                return left
+            case '+' if len(self.terms) == 1:
+                param = self.terms[0].eval_pattern()
+                if not isinstance(param, Parameter):
+                    return Parameter(param, quantifier='+')
+            case _:
+                pass
+
+        return patternize(self.evaluate())
+
     def __repr__(self):
         if self.op.text == '[':
             return f"{self.terms[0]}[{self.terms[1]}]"
@@ -816,16 +866,18 @@ class OpExpr(Node):
 
 class BindExpr(Node):
     node: Node
-    name: str
+    name: str | None
     quantifier: str
-    def __init__(self, node: Node, name: str, quantifier: str = '', pos: Position = None):
+    def __init__(self, node: Node, name: str = None, quantifier: str = '', pos: Position = None):
         self.node = node
         self.name = name
         self.quantifier = quantifier
         self.pos = pos
 
     def evaluate(self):
-        return Parameter(patternize(self.node.evaluate()), self.name, self.quantifier)
+        if self.node.type is TokenType.Name:
+            return Parameter(patternize(self.node.evaluate()), self.name, self.quantifier)
+        return Parameter(self.node.eval_pattern(), self.name, self.quantifier)
 
     eval_pattern = evaluate
 
@@ -1223,11 +1275,12 @@ class SlotExpr(NamedExpr):
     default: None | Node | Block | str = None
     def __init__(self, cmd: str, field_name: str, node: Node, pos: Position = None):
         super().__init__(cmd, field_name, pos)
-        match node:
-            case OpExpr('='|':', terms):
-                self.field_type, self.default = terms
-            case _:
-                self.field_type = node
+        self.field_type = BindExpr(node, '')
+        # match node:
+        #     case OpExpr('='|':', terms):
+        #         self.field_type, self.default = terms
+        #     case _:
+        #         self.field_type = node
         # other_nodes = nodes
         # for i, node in enumerate(other_nodes):
         #     if node.source_text == '=':

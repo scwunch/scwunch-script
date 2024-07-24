@@ -770,12 +770,20 @@ class AST:
     tok: Token | None
     indent: int
     block: Block | None
+    trait_name: str | None = None
+    in_trait_block: str | None
+    trait_blocks: list[str]
+
+    @property
+    def in_trait_block(self):
+        return self.trait_blocks[-1] if self.trait_blocks else None
 
     def __init__(self, toks: Tokenizer):
         self.tokens = toks.tokens
         self.idx = 0
         self.seek(0)
         self.indent = 0
+        self.trait_blocks = []
         try:
             self.block = self.read_block(0)
         except Exception as e:
@@ -802,6 +810,8 @@ class AST:
         return self.tok
 
     def read_block(self, indent: int) -> Block:
+        self.trait_blocks.append(self.trait_name)
+        self.trait_name = None
         statements: list[Node] = []
         table_names: set[str] = set()
         trait_names: set[str] = set()
@@ -815,7 +825,7 @@ class AST:
                     if tbl in table_names:
                         raise SyntaxErr(f'Line {stmt.line}: Duplicate table name "{tbl}"')
                     table_names.add(tbl)
-                case TraitExpr(trait_name=trait):
+                case TraitExpr(fn_name=trait):
                     if trait in trait_names:
                         raise SyntaxErr(f'Line {stmt.line}: Duplicate trait name "{trait}"')
                     trait_names.add(trait)
@@ -833,6 +843,7 @@ class AST:
                     break
                 else:
                     self.seek()
+        self.trait_blocks.pop()
         pos += self.tok.pos
         return Block(statements, table_names, trait_names, func_names, pos)
 
@@ -907,25 +918,6 @@ class AST:
                         unary_state = False
                     case _:
                         raise AssertionError
-                        if ops:
-                            op, fixity, op_pos = ops.pop()
-                            if op.postfix:
-                                reduce(op.postfix)
-                                ops.append([op, 'postfix', op_pos])
-                            else:
-                                raise OperatorErr(f"Line {op_pos.ln}: expected operand after {ops[-1]}")
-                        elif len(terms) == 0:
-                            return EmptyExpr(Position(self.tok.pos.pos))
-                        else:
-                            raise OperatorErr(f"Line {terms[-1].line}: expected operand.")
-                            # line = terms[-1].line if terms else self.tok.line
-                            # raise OperatorErr(f'Line {line}: expected operand at {self.tok.pos}')
-                        # if ops and ops[-1][0].postfix:
-                        #     ops[-1][1] = 'postfix'
-                        # elif ops:
-                        #     raise OperatorErr(f"Line {line}: expected operand after {ops[-1]}")
-                        # else:
-                        #     raise OperatorErr(f"Line")
             else:
                 match node:
                     case Token(text='if', pos=pos):
@@ -937,6 +929,10 @@ class AST:
                         alt = self.read_expression(*end_of_statement)
                         # I guess the term stack could be 1 here, or it could be more with = on the ops stack
                         terms.append(IfElse(terms.pop(), cond, alt))
+                    case Token(TokenType.Name, text=name, pos=pos):
+                        reduce(3)
+                        pos = terms[-1].pos + pos
+                        terms.append(BindExpr(terms.pop(), name, pos=pos))
                     case Token(text=op_text, pos=pos):
                         # assert node.type in {TokenType.Operator, TokenType.LeftBracket, TokenType.LeftParen, TokenType.Comma, TokenType.Semicolon}
                         try:
@@ -1051,8 +1047,11 @@ class AST:
                 self.seek()
                 return str_node
             case TokenType.Keyword:
-                Cmd = EXPRMAP[self.tok.text]
+                command = self.tok.text
+                Cmd = EXPRMAP[command]
                 self.seek()
+                if command in ('table', 'trait'):
+                    self.trait_name = self.tok.text
                 header = self.read_expression(TokenType.BlockStart, *end_of_statement)
                 if self.tok.type != TokenType.BlockStart:
                     raise SyntaxErr(f"Line {pos.ln}: missing block after {Cmd} statement.")
@@ -1087,7 +1086,7 @@ class AST:
         while self.tok.type in {TokenType.NewLine, TokenType.BlockStart, TokenType.BlockEnd}:
             self.seek()
         match self.tok.type:
-            case TokenType.Operator | TokenType.Comma | TokenType.Semicolon | TokenType.Else:
+            case TokenType.Operator | TokenType.Comma | TokenType.Semicolon | TokenType.Else | TokenType.Name:
                 yield self.tok
                 self.seek()
             case TokenType.LeftParen:
@@ -1112,16 +1111,20 @@ class AST:
                 #     param_nodes = []
                 pos += self.tok.pos
                 if self.peek().source_text in (':', '=>'):
+                    if self.in_trait_block and self.peek().text == ':':
+                        nodes.insert(0, BindExpr(Token(self.in_trait_block, TokenType.Name, pos.pos),
+                                                 'self', pos=pos.pos))
                     yield ParamsNode(nodes, named_params, pos)
                 elif named_params:
                     raise SyntaxErr(f"Line {pos.ln}: semicolon not allowed in argument list")
                 else:
                     yield ArgsNode(nodes, pos)
                 self.seek()
-            case TokenType.Name:
-                yield Token('@', TokenType.Operator, self.tok.pos.pos)
-                yield self.tok
-                self.seek()
+            # switched this out in favor of BindExpr again, it's a little easier to deal with
+            # case TokenType.Name:
+            #     yield Token('@', TokenType.Operator, self.tok.pos.pos)
+            #     yield self.tok
+            #     self.seek()
             case _ if self.tok.text == 'if':
                 yield self.tok
             case TokenType.Debug:
