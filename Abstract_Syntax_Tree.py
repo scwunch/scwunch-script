@@ -1112,8 +1112,10 @@ class AST:
                 pos += self.tok.pos
                 if self.peek().source_text in (':', '=>'):
                     if self.in_trait_block and self.peek().text == ':':
-                        nodes.insert(0, BindExpr(Token(self.in_trait_block, TokenType.Name, pos.pos),
-                                                 'self', pos=pos.pos))
+                        # insert self param (if not already exists)
+                        if not (nodes and isinstance(nodes[0], BindExpr) and nodes[0].name == 'self'):
+                            nodes.insert(0, BindExpr(Token(self.in_trait_block, TokenType.Name, pos.pos),
+                                                     'self', pos=pos.pos))
                     yield ParamsNode(nodes, named_params, pos)
                 elif named_params:
                     raise SyntaxErr(f"Line {pos.ln}: semicolon not allowed in argument list")
