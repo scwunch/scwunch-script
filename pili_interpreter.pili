@@ -19,29 +19,28 @@ TokenType.newline = TokenType['newline']
 TokenType.tab = TokenType['tab']
 TokenType.string = TokenType['string']
 
-func[Foo(bar: a=1; a+1, ) foo, 4]
-func = {something = "value"; "one": 1; [int n]: n+1}
 
 table Tokenizer
     slot program str
     slot tokens list = []
-    slot idx = 0
-    slot line = 1
-    slot ch = 1
-    formula char:
+    debug slot idx int = 0  # the default isn't working
+    slot line int = 1
+    slot ch int = 1
+    .char:
         if self.idx == 0
             return ''
 #         print "get token @{self.idx}: "
 #         return self.program[self.idx] if self.idx <= len[self.program] else blank
-        return self.program[range[self.idx, self.idx]]
-    next[]:
+        print self.idx
+        return self.program[self.idx]
+    .next[]:
         if self.char == '\n'
             self.line += 1
             self.ch = 0
         self.idx += 1
         self.ch += 1
         return self.char
-    peek[int offset = 1, int count = 1]:
+    .peek[int offset = 1, int count = 1]:
         start = self.idx + offset
         return self.program[start .. (start + count - 1)]
 
@@ -65,7 +64,7 @@ table Tokenizer
             buffer += c
             token_type ??= TokenType.name
         ['0'|'1'|'2'|'3'|'4'|'5'|'6'|'7'|'8'|'9' d,
-         Tokenizer(token_type: !(debug TokenType.string))]:
+         Tokenizer(token_type: !(TokenType.string))]:
             buffer += d
             token_type ??= TokenType.number
             print 'number {d}'
@@ -95,16 +94,16 @@ table Tokenizer
 
 trait Node
     slot text str?
-    slot place range?
+    slot span range?
     slot line int = 0
     slot ch int = 0
-    formula pos:
+    .pos:
         return self.line, self.ch
     setter pos[tuple(len: 2) pos]:
         self.line = pos[1]
         self.ch = pos[2]
-    formula source:
-        if self.place == blank
+    .source:
+        if self.span is blank
             return blank
         return Context.test_script[self.place]
 
@@ -128,10 +127,42 @@ table Position(range)
     [range r, int line?, int ch?]:
         return Position.new[r.start, r.end, line=line, ch=ch]
 
-
+eval_nodes[Node nodes*]:
+    function gen_nodes
+        count = len[nodes]
+        idx = 1
+        .done:
+            idx > count
+        .next:
+            return node.evaluate
+    return gen_nodes
 
 
 # MAIN
-print 'start'[range[0,0]]
+print 'start'
 prog = Tokenizer[Context.test_script]
 print prog
+
+
+do_something[int x, int y]:
+    a = x + y
+    loop coroutine[a]
+        print 'starting main loop'
+        [int n]:
+            print "coroutine returned an int"
+            a = n
+            resume n + x
+            continue
+        [@blank]:
+            print "coroutine blanked"
+            break
+    return 'a got up to {a}'
+
+coroutine[int a]:
+    if a < 0
+        a = -a
+    if a == 0
+        yield blank
+    while a < 100
+        a = yield a
+    yield blank

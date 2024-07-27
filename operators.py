@@ -35,10 +35,10 @@ class Operator:
 
         assert self.binop or self.prefix or self.postfix
 
-    def eval_args(self, *terms) -> Args:
-        # terms: list[Node]
-        return Args(*(t.evaluate() for t in terms))
-        raise NotImplementedError('Operator.prepare_args not implemented')
+    @staticmethod
+    def eval_args(*terms) -> Args:
+        raise NotImplementedError('This function is defined in syntax.py')
+        return Args(*(t.evaluate() for t in terms if not isinstance(t, EmptyExpr)))
 
     def __repr__(self):
         return self.text
@@ -47,17 +47,17 @@ class Operator:
 Operator(';', binop=1)
 Operator(':', binop=2, associativity='right')
 Operator('=', binop=2, associativity='right')
-
-for op in ('+', '-', '*', '/', '//', '**', '%', '&', '|'):
+for op in ('+', '-', '*', '/', '//', '**', '%', '&', '|', '&&', '||'):
     Operator(op+'=', binop=2, associativity='right')
-
 Operator('??=', binop=2, associativity='right')
 Operator('=>', binop=2)
 Operator(',', binop=2, postfix=2, chainable=True)
 # Operator('if', binop=3, ternary='else')
 Operator('??', binop=4)
 Operator('or', binop=5, chainable=True)
+Operator('||', binop=5, chainable=True)
 Operator('and', binop=6, chainable=True)
+Operator('&&', binop=6, chainable=True)
 Operator('not', prefix=7)
 Operator('in', binop=8)
 Operator('==', binop=9)
@@ -71,9 +71,12 @@ Operator('<', binop=11, chainable=True)
 Operator('>', binop=11, chainable=True)
 Operator('<=', binop=11, chainable=True)
 Operator('>=', binop=11, chainable=True)
+Operator('>>', binop=11, prefix=11, postfix=11)
+Operator('to', binop=11, prefix=11, postfix=11)
+Operator('by', binop=11)
 Operator('+', binop=12, prefix=14, postfix=3)
-Operator('-', binop=12, chainable=False, prefix=14)
-Operator('*', binop=13, postfix=3)
+Operator('-', binop=12, prefix=14)
+Operator('*', binop=13, prefix=13, postfix=3)
 Operator('/', binop=13, chainable=False)
 Operator('//', binop=13, chainable=False)
 Operator('%', binop=13, chainable=False)
@@ -84,9 +87,10 @@ Operator('has', binop=15, prefix=15)
 Operator('&', binop=15)
 Operator('@', binop=3, prefix=15)
 Operator('!', prefix=15)
-Operator('.', binop=16, prefix=16)
+Operator('.', binop=16, prefix=3)
 Operator('.?', binop=16)
-Operator('..', binop=16)
+Operator('..', binop=16)  # serious issue: for numbers, I want this to have low precedence,
+                               # but for everything else it should have high precedence... yikes
 Operator('[', binop=16)
 Operator('var', prefix=17)
 Operator('local', prefix=17)

@@ -45,6 +45,8 @@ class Tokenizer:
         text: str
         token_type = None
         while self.char:
+            while self.char and self.char in ' \t':
+                self.next_char()
             start = self.idx
             pos = (self.ln, self.col)
             if re.match(r'\d', self.char):
@@ -63,6 +65,14 @@ class Tokenizer:
                     self.in_string.append(text)
             elif re.match(r'\w', self.char):
                 text = self.read_word()
+                if text == 'not' and tokens and tokens[-1].text == 'is':
+                    tokens[-1].text = 'is not'
+                    tokens[-1].pos.stop_index = self.idx
+                    continue
+                if text == 'in' and tokens and tokens[-1].text == 'not':
+                    tokens[-1].text = 'not in'
+                    tokens[-1].pos.stop_index = self.idx
+                    continue
             elif re.match(op_char_patt, self.char):
                 text = self.read_operator()
                 if text == ':':
@@ -121,9 +131,8 @@ class Tokenizer:
                 start = self.idx  # ie, the index after the last token, which was a quote or brace
                 text = self.read_string(self.in_string[-1])
                 tokens.append(Token(text, TokenType.StringPart, pos, start, self.idx))
-            while self.char and self.char in ' \t':
-                self.next_char()
-        tokens.append(Token('', TokenType.BlockEnd, (self.ln, self.col)))
+
+        # tokens.append(Token('', TokenType.BlockEnd, (self.ln, self.col)))
         tokens.append(Token('', TokenType.EOF, (self.ln, self.col)))
         return tokens
 
@@ -159,21 +168,23 @@ class Tokenizer:
         # self.col = 1
 
     def read_number(self):
-        num_text = self.char
+        start = self.idx
+        has_radix = False
         while self.next_char():
-            if self.char == '_':
+            if re.match(r'\d|_', self.char):
                 continue
-            elif re.match(r'\d|\.', self.char):
-                num_text += self.char
+            elif not has_radix and re.match(r'\.\d', self.peek(0, 2)):
+                # this pattern disallows number literals from ending in a dot.
+                # if I ever go back to interpreting dotted numbers as floats, then I need to re-allow this
+                has_radix = True
+                self.next_char()
             else:
                 break
         if self.char in 'btqphsond':
-            num_text += self.char
             self.next_char()
         if self.char == 'f':
-            num_text += self.char
             self.next_char()
-        return num_text
+        return self.script[start:self.idx]
 
     def read_string(self, quote: str) -> str:
         # str_text = ""
@@ -224,6 +235,8 @@ class Tokenizer:
         if chars[:2] in Op and chars[1:] != "==":
             # second condition is to disambiguate these two cases: +== and *==
             self.next_char(2)
+            # op_text = chars[:2]
+            # if op_text == 'is' and self.peek(1, 3)
             return chars[:2]
         self.next_char()
         return chars[0]
@@ -770,20 +783,26 @@ class AST:
     tok: Token | None
     indent: int
     block: Block | None
-    trait_name: str | None = None
-    in_trait_block: str | None
-    trait_blocks: list[str]
+    function_name: str | None = None
+    in_function_body: str | None
+    function_blocks: list[str]
 
     @property
-    def in_trait_block(self):
-        return self.trait_blocks[-1] if self.trait_blocks else None
+    def in_function_body(self):
+        return self.function_blocks[-1] if self.function_blocks else None
+
+    def in_group_or_function_block(self, end_of_statement: tuple):
+        return (self.in_function_body
+                or TokenType.RightParen in end_of_statement
+                or TokenType.RightBracket in end_of_statement
+                or TokenType.RightBrace in end_of_statement)
 
     def __init__(self, toks: Tokenizer):
         self.tokens = toks.tokens
         self.idx = 0
         self.seek(0)
         self.indent = 0
-        self.trait_blocks = []
+        self.function_blocks = []
         try:
             self.block = self.read_block(0)
         except Exception as e:
@@ -810,8 +829,8 @@ class AST:
         return self.tok
 
     def read_block(self, indent: int) -> Block:
-        self.trait_blocks.append(self.trait_name)
-        self.trait_name = None
+        self.function_blocks.append(self.function_name)
+        self.function_name = None
         statements: list[Node] = []
         table_names: set[str] = set()
         trait_names: set[str] = set()
@@ -843,7 +862,7 @@ class AST:
                     break
                 else:
                     self.seek()
-        self.trait_blocks.pop()
+        self.function_blocks.pop()
         pos += self.tok.pos
         return Block(statements, table_names, trait_names, func_names, pos)
 
@@ -868,17 +887,39 @@ class AST:
                         t0.terms += t1,
                     elif fixity == 'binop':
                         if not terms:
-                            raise OperatorErr(f"Line {op_pos.ln}: binary operator {op} missing right-hand-side.")
+                            raise OperatorErr(f"Line {op_pos.ln}: binary operator '{op}' missing right-hand-side.")
                         terms.pop()
                         pos = t0.pos + t1.pos
+                        if op.text == ':':
+                            # try to insert self param in dot methods
+                            match t0:
+                                case OpExpr('.', [EmptyExpr(), method], pos=t0pos):
+                                    if not self.in_function_body:
+                                        raise SyntaxErr(f'Line {pos.ln}: dot methods not allowed '
+                                                        f'outside of table/trait/function blocks.')
+                                    match method:
+                                        case OpExpr('[', [loc, ParamsNode(pos=pp) as params]) as t0:
+                                            t0.pos = t0pos
+                                            params.nodes.insert(0, BindExpr(Token(self.in_function_body, TokenType.Name, pp.pos),
+                                                                            'self', pos=pp.pos))
+                                        case fn_node:
+                                            ppos = Position((t0pos.stop_index,)*2)
+                                            t0 = OpExpr(Op['['], fn_node,
+                                                        ParamsNode([BindExpr(Token(self.in_function_body, TokenType.Name, ppos.pos),
+                                                                             'self', pos=ppos)],
+                                                                   []), pos=t0pos)
                         terms.append(OpExpr(op, t0, t1, pos=pos))
-                    elif fixity == 'postfix' and isinstance(t1, BindExpr):
+                    elif fixity == 'postfix' and op.text[0] in '?+*' and isinstance(t1, BindExpr):
                         t1.quantifier = op.text
                         t1.pos += op_pos
                         terms.append(t1)
                     else:
                         pos = op_pos + t1.pos
-                        terms.append(OpExpr(op, t1, pos=pos))
+                        if fixity == 'prefix':
+                            op_terms = (EmptyExpr(pos.pos), t1)
+                        elif fixity == 'postfix':
+                            op_terms = (t1, EmptyExpr((pos.ln, pos.ch + pos.stop_index - pos.start_index)))
+                        terms.append(OpExpr(op, *op_terms, pos=pos))
                 else:
                     return
 
@@ -902,17 +943,17 @@ class AST:
                         try:
                             op = Op[op_text]
                         except KeyError:
-                            raise OperatorErr(f"Line {pos.ln}: unrecognized operator: {op_text}")
+                            raise OperatorErr(f"Line {pos.ln}: unrecognized operator: '{op_text}'")
                         if op.prefix:
                             ops.append([op, 'prefix', pos])
                         elif op.binop and ops and ops[-1][0].postfix:
                             ops[-1][1] = 'postfix'
                             ops.append([op, 'binop', pos])
                         elif ops:
-                            raise OperatorErr(f"Line {pos.ln}: expected term or prefix operator after {ops[-1][0]}.  "
-                                              f"Instead got {op}.")
+                            raise OperatorErr(f"Line {pos.ln}: expected term or prefix operator after '{ops[-1][0]}'.  "
+                                              f"Instead got '{op}'.")
                         else:
-                            raise OperatorErr(f"Line {pos.ln}: expected term or prefix operator.  Got {op}")
+                            raise OperatorErr(f"Line {pos.ln}: expected term or prefix operator.  Got '{op}'")
                     case Node():
                         terms.append(node)
                         unary_state = False
@@ -935,6 +976,11 @@ class AST:
                         terms.append(BindExpr(terms.pop(), name, pos=pos))
                     case Token(text=op_text, pos=pos):
                         # assert node.type in {TokenType.Operator, TokenType.LeftBracket, TokenType.LeftParen, TokenType.Comma, TokenType.Semicolon}
+                        if (self.tok.text == ':' and self.peek().type != TokenType.BlockStart
+                                and not self.in_group_or_function_block(end_of_statement)):
+                            raise SyntaxErr(f'Line {self.tok.line}: invalid syntax outside function block.\n\t'
+                                            f'If you meant to define a function option, the body must be on an indented'
+                                            f' block.\n\tIf you meant to assign to a key, use "=" instead of ":"')
                         try:
                             op = Op[op_text]
                         except KeyError:
@@ -947,9 +993,10 @@ class AST:
                             reduce(op.postfix)
                             ops.append([op, 'postfix', pos])
                         else:
-                            raise OperatorErr(f"Line {pos.line}: Prefix {op} used as binary/postfix operator.")
+                            raise OperatorErr(f"Line {pos.line}: Prefix '{op}' used as binary/postfix operator.")
                     case None:
                         raise AssertionError  # end of statement
+
         if unary_state:
             # expression still looking for another operand
             if ops and ops[-1][1] == 'binop':
@@ -959,9 +1006,9 @@ class AST:
                     reduce(op.postfix)
                     ops.append([op, 'postfix', op_pos])
                 else:
-                    raise OperatorErr(f"Line {op_pos.ln}: expected operand after {ops[-1]}")
+                    raise OperatorErr(f"Line {op_pos.ln}: expected operand after '{op}' @ {op_pos}")
             elif len(terms) == 0:
-                return EmptyExpr(Position(self.tok.pos.pos))
+                return EmptyExpr(self.tok.pos.pos)
             else:
                 raise OperatorErr(f"Line {terms[-1].line}: expected operand.")
         reduce()
@@ -1027,10 +1074,11 @@ class AST:
             case TokenType.LeftBracket:
                 nodes, named_params = self.read_list(TokenType.RightBracket, semicolon_behaviour="split", pos=pos)
                 pos += self.tok.pos
-                if self.peek() and self.peek().source_text in (':', '=>'):
+                if self.peek(2) and (self.peek().text == '=>' or
+                                     self.peek().text == ':' and self.peek(2).type == TokenType.BlockStart):
                     node = ParamsNode(nodes, named_params, pos)
                 elif named_params:
-                    raise SyntaxErr(f"Line {pos.ln}: semicolon not allowed in list literals.")
+                    raise SyntaxErr(f"Line {pos.ln}: semicolon not allowed in list literals or argument list.")
                 else:
                     node = ListLiteral(nodes, pos)
                 self.seek()
@@ -1050,8 +1098,8 @@ class AST:
                 command = self.tok.text
                 Cmd = EXPRMAP[command]
                 self.seek()
-                if command in ('table', 'trait'):
-                    self.trait_name = self.tok.text
+                if command in ('table', 'trait', 'function'):
+                    self.function_name = self.tok.text
                 header = self.read_expression(TokenType.BlockStart, *end_of_statement)
                 if self.tok.type != TokenType.BlockStart:
                     raise SyntaxErr(f"Line {pos.ln}: missing block after {Cmd} statement.")
@@ -1110,12 +1158,13 @@ class AST:
                 # else:
                 #     param_nodes = []
                 pos += self.tok.pos
-                if self.peek().source_text in (':', '=>'):
-                    if self.in_trait_block and self.peek().text == ':':
-                        # insert self param (if not already exists)
-                        if not (nodes and isinstance(nodes[0], BindExpr) and nodes[0].name == 'self'):
-                            nodes.insert(0, BindExpr(Token(self.in_trait_block, TokenType.Name, pos.pos),
-                                                     'self', pos=pos.pos))
+                if self.peek(2) and (self.peek().text == '=>' or
+                                     self.peek().text == ':' and self.peek(2).type == TokenType.BlockStart):
+                    # if self.in_trait_block and self.peek().text == ':':
+                    #     # insert self param (if not already exists)
+                    #     if not (nodes and isinstance(nodes[0], BindExpr) and nodes[0].name == 'self'):
+                    #         nodes.insert(0, BindExpr(Token(self.in_trait_block, TokenType.Name, pos.pos),
+                    #                                  'self', pos=pos.pos))
                     yield ParamsNode(nodes, named_params, pos)
                 elif named_params:
                     raise SyntaxErr(f"Line {pos.ln}: semicolon not allowed in argument list")
@@ -1131,7 +1180,7 @@ class AST:
                 yield self.tok
             case TokenType.Debug:
                 self.seek()
-                yield from self.read_operator()
+                yield from self.read_operator(in_group)
             # case _ if self.tok.type in end_of_statement:
             #     yield None
             case _:
@@ -1142,6 +1191,10 @@ class AST:
         whitespace = TokenType.NewLine, TokenType.BlockStart, TokenType.BlockEnd
         delimiters = whitespace if whitespace_delimits else ()
         delimiters += (TokenType.Comma, TokenType.Semicolon)
+        # I thought about introducing interval syntax like (1, 4] to mean 2, 3, 4 and [1, 4) to mean 1, 2, 3
+        # ... but I changed my mind
+        # if end in {TokenType.RightBracket, TokenType.RightParen}:
+        #     delimiters += (TokenType.RightBracket, TokenType.RightParen)
         current = items = []
         named_params = []
         while self.seek().type != end:
@@ -1150,6 +1203,14 @@ class AST:
                 current.append(statement)
             if self.tok.type == end:
                 break
+            # *interval syntax*
+            # if self.tok.type in {TokenType.RightBracket, TokenType.RightParen}:
+            #     match items, named_params:
+            #         case [OpExpr('>>', [start, end])], []:
+            #             return IntervalExpr(start, end, end != TokenType.RightBracket, end == TokenType.RightBracket)
+            #         case [OpExpr('>>', [start, end]), step_node], []:
+            #             return IntervalExpr(start, end, end != TokenType.RightBracket, end == TokenType.RightBracket, step=step_node)
+            #     raise SyntaxErr(f'Line {self.tok.line}: mismatching brackets/parens')
             if self.tok.type == TokenType.Semicolon:
                 if semicolon_behaviour == 'end':
                     return items

@@ -25,7 +25,8 @@ else:
     # script_path = 'fibonacci.pili'
     # script_path = 'test.pili'
     # script_path = 'Tables.pili'
-    # script_path = 'pili_interpreter.pili'
+    script_path = 'pili_interpreter.pili'
+    script_path = 'advent.pili'
     print('(test mode) running script', script_path, '...')
 
 # pili = Function({ParamSet(): lambda: NotImplemented}, name='pili')
@@ -81,6 +82,10 @@ if mode == 'shell':
         except Exception as e:
             print("Exception: ", e, '\n***')
 
+def pili(code: str):
+    return AST(Tokenizer(code)).block.execute()
+
+Context.pili = pili
 
 def execute_script(path):
     with open(path) as f:
@@ -88,10 +93,9 @@ def execute_script(path):
 
     Context.source_code = script_string
     tokenizer = Tokenizer(script_string)
-    print(tokenizer)
     ast = AST(tokenizer)
     block = ast.block
-    # print(ast)
+    print(ast)
     # print('**********************************')
     # pili.assign_option(ParamSet(), CodeBlock(ast.block))
     # main_block = CodeBlock(ast.block)
@@ -141,10 +145,10 @@ def execute_script(path):
 # print(pattern.match_zip(args))
 # exit()
 
-
-if mode in ('test', 'script'):
-    repeats = 1
-    t = timeit.timeit(lambda: execute_script(script_path), number=repeats) / repeats
-    print('\n\n***************************************\n')
-    print(t)
-    # execute_script(script_path)
+if __name__ == "__main__":
+    if mode in ('test', 'script'):
+        repeats = 1
+        t = timeit.timeit(lambda: execute_script(script_path), number=repeats) / repeats
+        print('\n\n***************************************\n')
+        print(t)
+        # execute_script(script_path)

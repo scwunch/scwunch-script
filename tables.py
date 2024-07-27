@@ -160,7 +160,7 @@ class OptionCatalog:
         except TypeError as e:
             if not (e.args and e.args[0].startswith('unhashable type')):
                 raise e
-        if Context.debug and self is BuiltIns['.']:
+        if Context.debug and self is BuiltIns['call']:
             Context.debug = 0  # pause debugger
         option = bindings = None
         high_score = 0
@@ -249,7 +249,8 @@ class Record:
     def set(self, name: str, value):
         match self.table.setters.get(name):
             case int() as idx:
-                # TODO: check for type agreement
+                # TODO: check for type agreement ...
+                #  or skip it in this context, rely on the type-checking of foo.bar = "value"
                 self.data[idx] = value
                 return value
             case Function() as fn:
@@ -397,6 +398,16 @@ class PyValue(Record, Generic[T]):
             raise ValueError(f"Line {Context.line}: Pili indices start at ±1.  0 is not a valid index.")
         return self.value - (self.value > 0)
 
+    def assign_option(self, key, val: Record):
+        key: Args
+        assert self.table == BuiltIns['List']
+        index: PyValue[int] = key[0]  # noqa
+        if index.value == len(self.value) + 1:
+            self.value.append(val)
+        else:
+            self.value[index] = val
+        return val
+
     @property
     def truthy(self):
         return bool(self.value)
@@ -433,6 +444,7 @@ class PyValue(Record, Generic[T]):
 
 class2table = dict(bool='Bool', int="Integer", Fraction='Fraction', float="Float", str='String', tuple="Tuple",
                    list='List', set='Set', frozenset='FrozenSet', dict='Dictionary')
+
 
 def py_value(value: T | object):
     match value:
@@ -493,6 +505,10 @@ class Range(Record):
                     raise RuntimeErr(f"Line {Context.line}: Third argument in range (step) cannot be 0.")
             case _:
                 raise RuntimeErr(f"Line {Context.line}: Too many arguments for range")
+        if start == BuiltIns['blank']:
+            start = py_value(0)
+        if end == BuiltIns['blank']:
+            end = py_value(0)
         super().__init__(BuiltIns['Range'], start, end, step)
 
     def __iter__(self):
@@ -506,18 +522,19 @@ class Range(Record):
 
     @property
     def slice(self) -> slice | None:
-        start, end, step = tuple(f.value for f in self.data)
+        start, end, step = (f.value for f in self.data)
         if start > 0:
             start -= 1
-        if end < 0:
-            if step > 0:
-                end += 1
-            else:
+        if step < 0:
+            if end < 0:
                 end -= 1
-        if end == 0:
-            end = start
-        if end > 0 and step < 0:
-            end -= 2
+            elif end in (0, 1):
+                end = 0
+            else:
+                end -= 2
+        else:
+            if end < 0:
+                end += 1
 
         """
         1..3      => [0:3]
@@ -753,21 +770,6 @@ class Table(Function):
             case _:
                 raise TypeError("Oops, don't use the Table class — use a derived class instead.")
 
-
-        # match fields:
-        #     case list() | tuple():
-        #         self.fields += list(field_tuple)
-        #         for i, field in enumerate(fields):
-        #             self.field_ids[field.name] = i + 1
-        #     case dict():
-        #         for name, monad in fields.items():
-        #             self.field_ids[name] = len(self.fields)
-        #             self.fields.append(Slot(name, monad))
-        #     case None:
-        #         pass
-        #     case _:
-        #         raise TypeError(f"Invalid argument type for fields: {type(fields)} {fields}")
-
     @property
     def trait(self):
         return self.traits[0]
@@ -781,13 +783,15 @@ class Table(Function):
                 name = trait_field.name
                 pattern: Pattern = getattr(trait_field, 'type', None)
                 if pattern:
-                    if isinstance(pattern, Parameter):
-                        assert pattern.binding == name
+                    # if isinstance(pattern, Parameter):
+                    #     assert pattern.binding == name
                     if name in types and not types[name].issubset(pattern):
                         raise SlotErr(f"Line {Context.line}: Could not integrate table {self.name}; "
                                       f"type of Field \"{name}\" ({types[name]}) "
                                       f"doesn't match type of {trait_field.__class__.__name__} \"{name}\" "
                                       f"of trait {trait.name}.")
+                    elif isinstance(trait_field, Setter):
+                        types[name] = AnyMatcher()
                     else:
                         types[name] = pattern
 
@@ -811,11 +815,13 @@ class Table(Function):
                     case Setter(fn=fn):
                         if name not in self.setters:
                             self.setters[name] = fn
+                        types[name] = AnyMatcher()
 
         self.defaults = tuple(defaults[n] for n in defaults)
+        self.types = types
         patt = ParamSet(*(Parameter(types[name],
                                     name,
-                                       "?" * (defaults[name] is not None))
+                                    "?" * (defaults[name] is not None))
                           for name in defaults))
 
         def make_option(table: Table):
@@ -1762,22 +1768,20 @@ class MatchState:
         self.score /= len(self.parameters)
         return self.score, self.bindings
 
-
-
-
-
-def patternize(val):
-    match val:
-        case Pattern():
-            return val
-        case Table():
-            return TableMatcher(val)
-        case Trait():
-            return TraitMatcher(val)
-        case Record():
-            return ValueMatcher(val)
-        case _:
-            raise TypeErr(f"Line {Context.line}: Could not patternize {val}")
+# def patternize(val):
+#     match val:
+#         case Matcher():
+#             return Parameter(val)
+#         case Parameter():
+#             return val
+#         case Table():
+#             return Parameter(TableMatcher(val))
+#         case Trait():
+#             return Parameter(TraitMatcher(val))
+#         case Record():
+#             return Parameter(ValueMatcher(val))
+#         case _:
+#             raise TypeErr(f"Line {Context.line}: Could not patternize {val}")
 
 
 class Args(Record):
@@ -1976,6 +1980,10 @@ class Frame:
 
     def __getitem__(self, key: str):
         return self.vars.get(key, self.locals.get(key, None))
+
+    def update(self, bindings: dict):
+        for name, rec in bindings.items():
+            self.assign(name, rec)
 
     def __repr__(self):
         return (f"Frame({len(self.vars) + len(self.locals)} names; " 

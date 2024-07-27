@@ -1,11 +1,12 @@
 import timeit
 settings.base = 'h'
-now[]: python ['timeit.default_timer()']
+now[]:
+    return python ['timeit.default_timer()']
 start_time = now  []
 
 
 function foo
-	[int a, #debug str b+; num c = 0, num d, *]:
+	[int a, str b+; num c = 0, num d, *]:
 		if has 'other_name'
 			return other_name
 		return a, b, c, d
@@ -14,8 +15,9 @@ function foo
 	bar[int a, str b]:
 		return str[a] + b + str[self]
 
-	.bar[int a, str b]:
-		return str[a] + b + str[self]
+# 	.bar[int a, str b]:
+# 		return str[a] + b + str[self]
+
 
 print foo[a=-1, "one", "two", "three", d=20/30]
 print foo[1, "two", c=55, d=1/2]
@@ -28,12 +30,24 @@ function multiprint
 			print "{i}: {msg}"
 		return blank
 
+(repeats: n) = multiprint
+if n == multiprint.repeats
+    print "`(repeats: int n) = multiprint` set n to same value as multiprint.repeats"
+else
+    print "FAILURE to set `(repeats: int n) = multiprint`"
+
 multiprint['hello x3']
 print multiprint.repeats
 multiprint.repeats = 1
 print multiprint.repeats
 multiprint['hello once']
 
+a = 1
+a = (b = 2)
+a = b = 3
+(a = b) = 4
+print 'a: {a}'
+print 'b: {b}'
 
 function test
 	0: "test initialization success"
@@ -44,16 +58,18 @@ greet = "hello world"
 test[1] = greet == 'hello world'
 print 'test 1 passed' if test[1] == true else 'test 1 FAILED'
 
-greeting[str src]: 'Hello ' + src
+greeting[str src]:
+    return 'Hello ' + src
 test[2] = "Hello Veronica" == greeting['Veronica']
-print 'test 2 passed' if test[2] == True else 'test 2 FAILED'
+print 'test 2 passed' if test[2] == true else 'test 2 FAILED'
 
 my_var[int num]:
 	prop1 = "hello"
 	prop2 = "world"
 	return num + 5
 
-my_var[str text]: text + '!'
+my_var[str text]:
+    return text + '!'
 test[3] = my_var[1] == 10
 print 'test 3 passed' if test[3] else 'test 3 FAILED'
 
@@ -61,7 +77,8 @@ test[4] = my_var[2] == 11
 print 'test 4 passed' if test[4] else 'test 4 FAILED'
 
 function next_var
-	[str text]: text + '?!?!'
+	[str text]:
+	    return text + '?!?!'
 test[5] = next_var['hahahahaha'] == 'hahahahaha?!?!'
 print 'test 5 passed' if test[5] else 'test 5 FAILED'
 
@@ -69,14 +86,16 @@ my_var[3] = "three"
 test[6d] = my_var[3] == 'three'
 print 'test 10 passed' if test[6d] else 'test 10 FAILED'
 
-test[7d] = not 345 ~ type["345"] and 345 ~ type[3333]
+test[7d] = not 345 ~ type["345"] and 345 ~ type[3333] and 345 is not str
+
 print 'test 11 passed' if test[7d] else 'test 11 FAILED'
 
 table Dog
 	slot name str
 	slot breed str
-	bark[]: "hello my name is " + self.name
-	bark_breed[]:
+	.bark[]:
+	    return "hello my name is " + self.name
+	bark_breed[Dog|(breed: str) self]:
 		return self.breed
 	# .bark: "hello my name is " + self.name
 	# I really need to have the dot-option here, because otherwise, methods like str and len will work but
@@ -123,7 +142,7 @@ test[20] = r.index == 0 and r.next[] == 1 and r.next[] == 2 and r.next[] == 3 an
 print 'test 20 passed' if test[20] else 'test 20 FAILED'
 
 # test prototype modification
-Dog.bark_breed:
+Dog.bark_breed[Dog self]:
 	return "Hi, I'm a " + self.breed
 test[21] = (spot.bark_breed) == "Hi, I'm a terrier"
 print 'test 21 passed' if test[21] else 'test 21 FAILED'
@@ -136,11 +155,13 @@ print 'test 22 passed' if test[22] else 'test 22 FAILED'
 test[23] = (Dog.?[23] ?? "fall back") == "fall back" and (spot.?name ?? "no name") == 'Rover'
 print 'test 23 passed' if test[23] else 'test 23 FAILED'
 
-foo[str|int]: 'it worked'
+foo[str|int]:
+    return 'it worked'
 test[24] = foo[4] + foo["4"] == 'it worked' * 2
 print 'test 24 ' + ('passed' if test[24] else 'FAILED')
 
-foo2[str|int|bool var_name]: str[var_name] + ' worked'
+foo2[str|int|bool var_name]:
+    return str[var_name] + ' worked'
 test[25] = foo2[1] == "1 worked"
 print 'test 25 ' + ('passed' if test[25] else 'FAILED')
 
@@ -148,25 +169,27 @@ table Cat
 	slot name str
 	[str name]:
 		return Cat.new[name = "😸 " + name]
-	meow[]:
+	.meow[]:
 		return "hello my name is " + self.name
 	.str:
-		return "Cat " + self.name
+	    return "Cat {self.name}"
 
 my_cat = Cat["Ruby"]
+# return str[my_cat], my_cat.str
 test[30] = str[my_cat] == my_cat.str and my_cat.str == "Cat 😸 Ruby"
 print 'test 30 ' + ('passed' if test[30] else 'FAILED')
 
 numberlicious = int|float|bool|ratio  # this is actually basically the same as num
-add[numberlicious a, numberlicious b]: int[a] + b
+add[numberlicious a, numberlicious b]:
+    return int[a] + b
 fav_num = 5
 test[31] = add[fav_num, 5]  == fav_num.add[5]
 print 'test 31 ' + ('passed' if test[31] else 'FAILED')
 
 
 test[32] = type[-10 / 20].str == "Fraction" \
-	and type[4 * (1 + (-15 / 4))].str == "Integer" \
-		and type[1.0f / 1 + 1].str == "Float"
+	        and type[4 * (1 + (-15 / 4))].str == "Integer" \
+		    and type[1.0f / 1 + 1].str == "Float"
 # print type[-10/20]
 # print type[4 * (1 + (-15 / 4))]
 # print type[1.0f / 1 + 1]
@@ -212,11 +235,16 @@ print 'test 40 ' + ('passed' if test[40] else 'FAILED')
 test[41] = my_list.push[55].len == 5 and my_list[1] == 'one' and my_list[-5] == 'one'
 print 'test 41 ' + ('passed' if test[41] else 'FAILED')
 
-my_func = {}
-my_func = {[any arg]: str[arg], [num arg]: str[arg+1]}
-test[42] = my_func["ANY ARG"] == "ANY ARG" and my_func[42] == "43"
+empty_func = {}
+my_func = {'one': 1, 2: 'two', empty_func: 'yeah', (1,2): 'this is not a block'}
+my_func = {'one': 1
+            2: 'two'
+            empty_func: 'yeah'
+            (1,2): 'this is not a block'
+          }
+test[42] = my_func['one'] == 1 and my_func[2] == 'two' and my_func[empty_func] == 'yeah' \
+           and my_func[(1,2)] == "this is not a block"
 print 'test 42 ' + ('passed' if test[42] else 'FAILED')
-
 stringify = any arg => str[arg]
 add_one = [num arg] => str[arg + 1]
 add_two = num a, num b => a + b
@@ -249,7 +277,8 @@ while i < 130
 	i = i + 1
 print 'test 44 ' + ('passed' if (test[44] = i == 130) else 'FAILED')
 
-lt[num a, num b]: a < b
+lt[num a, num b]:
+    return a < b
 
 function item1
 	length = 230
@@ -269,7 +298,8 @@ print 'test 45 ' + ('passed' if test[45] else 'FAILED')
 table Bear
 	slot name str
 	slot length num
-	roar[]: "Roar!  My name is " + self.name
+	roar[]:
+	    return "Roar!  My name is " + self.name
 	. < [Bear other]:
 		return self.length < other.length
 	. > [Bear other]:
@@ -367,7 +397,7 @@ function joiner
 	    if len[ls] == 0
 	        return ''
 		result = ''
-		for s in ls[0,-2]
+		for s in ls[0>>-2]
 			result += s.str + sep
 		return result + ls[-1].str  # [0, result.len-sep.len]
 	[list|tuple ls]:
@@ -387,11 +417,11 @@ fsf[float f1*, str s*, float f2*]:
 
 # print fsf[-1.3f, 's', -0.122f]
 # print fsf['s', -0.122f]
-# print debug fsf[0.2345f]
+# print fsf[0.2345f]
 # print fsf['STRING']
 # print fsf['hi', 0.1f, 0.2f]
 # print fsf[] or 'fsf[] => ""'
-# print '*********************'
+# return '*********************'
 
 test[100] = fsf[-1.3f, 's', -0.122f] == "f1: -1.3, s: s, f2: -0.122" \
             and fsf['s', -0.122f]    == "s: s, f2: -0.122" \
@@ -400,7 +430,6 @@ test[100] = fsf[-1.3f, 's', -0.122f] == "f1: -1.3, s: s, f2: -0.122" \
             and fsf['h', 0.1f, 0.2f] == "s: h, f2: 0.1 0.2" \
             and fsf[]                == ""
 print_test[100]
-
 
 fsnfi[float f1?, str s*, num n*, float f2*, int op_i+]:
 	arguments = []
@@ -417,7 +446,7 @@ test[122] = fsnfi[0.11f, 'string', 1/2, -3.2f, 1] == 'f1=0.11 s=("string",) n=(1
 # print fsnfi[0.11f, 'string', 1/2, -3.2f, 1]
 # print test[100.3]
 # print fsnfi[1.434, 5]
-test[122] &= fsnfi[1.434, 5] == 's=() n=(515/300,) f2=() op_i=(5,)'
+test[122] &&= fsnfi[1.434, 5] == 's=() n=(515/300,) f2=() op_i=(5,)'
 print_test[122]
 
 
@@ -433,10 +462,11 @@ print_test[102]
 
 var_name ??= 5
 var_name ??= -10
-test[103] = var_name == 5
+test[103] ??= var_name == 5
 var_name = blank
 var_name ??= 'done'
-test[103] = test[103] and var_name == 'done'
+test[103] &&= var_name == 'done'
+test[103] ??= 'FAILED'
 print_test[103]
 
 
@@ -452,6 +482,19 @@ print_test[104]
 
 iter[@test]:
     return list[range[1, test.len]..(i => (test[i] if i in test else blank))]
+
+```
+iterator[seq~str collection, ~blank non_blank_value]:
+    for item in collection
+        do something
+    return
+
+iterator[seq!str collection, !blank non_blank_value]:
+    for item in collection
+        do something
+        "abc".."zed"
+    return
+```
 
 count = 0
 for i in test
@@ -498,7 +541,7 @@ settings.base = 'd'  # pili.settings.set['base', 'd']
 99  # no error
 test[43] = 19 == 19d and settings.base == 'd'  # pili.settings.get['base'] == 'd'
 settings.base = 'h'
-test[43] &= settings.base == 'h'  # pili.settings.get['base'] == 'h'
+test[43] &&= settings.base == 'h'  # pili.settings.get['base'] == 'h'
 print_test[111]
 
 
@@ -509,12 +552,12 @@ print_test[112]
 function some_options
 	name = "This is a name"
 	5 : "This is a numbered option"
-	[any x]: 'function option'
-print some_options.len
+	# [any x]: 'not function option'
+# print some_options.len
 # print some_options.options
-print some_options[5]
+# print some_options[5]
 # print some_options.names
-print some_options.keys
+# print some_options.keys
 # print [len, options, names, keys]..[some_options]..str.join['\n']
 # test[113] = [len, options, names, keys]..[some_options]..str.join['\n'] \
 # 	== '3\n[[Any x], [ValuePattern(5)], [ValuePattern(named_option) named_option]]\n[named_option, x]\n[5, named_option]' \
@@ -523,9 +566,8 @@ print some_options.keys
 
 
 ls = ['a','b','c','d','e']
-test[113] = ls[1,3] == ['a','b', 'c'] and ls[-3,0] == ['c', 'd', 'e']
+test[113] = ls[1 to 3] == ['a', 'b', 'c'] and ls[-3>>0] == ['c', 'd', 'e'] and ls[-2>>0 by -2] == ['d', 'b']
 print_test[113]
-
 
 test[114] = 'pass'
 print_test[114]
@@ -587,8 +629,14 @@ grape = Fruit['grape', Color.purple, 23]
 # print bind_weight[grape]
 
 test[121] = bind_weight[apple] == "Weight of red or orange fruit: {apple.weight_in_grams}"
-test[121] &= bind_weight[grape] == "Weight of purple fruit: {grape.weight_in_grams}"
+test[121] &&= bind_weight[grape] == "Weight of purple fruit: {grape.weight_in_grams}"
 print_test[121]
+
+ls = [1, 2, 3, 4, 5, 0]
+new_list = [*ls[to 3], '3', *ls[3 to]]
+test[124] = new_list == [1, 2, 3, '3', 3, 4, 5, 0]
+
+
 
 iter[@test]:
     return range[0, test.len-1]

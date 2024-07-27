@@ -39,6 +39,9 @@ BuiltIns['list'] = ListTrait = Trait(name='list')
 BuiltIns['dict'] = DictTrait = Trait(name='dict')
 BuiltIns['range'] = RangeTrait = Trait(name='range')
 
+""" 
+TABLES 
+"""
 # Numeric Tables
 BuiltIns['Bool'] = SetTable(BuiltIns['bool'], IntTrait, RatioTrait, NumTrait, IndexTrait, name='Bool')
 BuiltIns['false'] = PyValue(BuiltIns['Bool'], False)
@@ -164,6 +167,11 @@ BuiltIns['iter'].assign_option(Option(UnionMatcher(*(TraitMatcher(BuiltIns[t])
                                                      for t in ('tuple', 'list', 'set', 'frozenset', 'str', 'range'))),
                                       lambda x: x))
 
+def make_custom_iter(rec: Record):
+    while not dot_fn(rec, py_value('done')).value:
+        yield dot_fn(rec, py_value('next'))
+BuiltIns['iter'].assign_option(ParamSet(Parameter(FieldMatcher((), dict(done=AnyMatcher(), next=AnyMatcher())))), make_custom_iter)
+
 
 def setting_set(prop: str, val: PyValue):
     val = val.value
@@ -220,24 +228,6 @@ def key_to_param_set(key: PyValue) -> ParamSet:
               for pval in vals)
     return ParamSet(*params)
 
-# def set_value(fn: Record, key: ParamSet, val: Record):
-#     match key:
-#         case PyValue(value=str() as name):
-#             pass
-#         case List(records=records) | PyValue(value=tuple() as records):
-#             pass
-
-
-if 'set' in BuiltIns:
-    print("set already a defined builtin")
-else:
-    BuiltIns['set'] = Function({ParamSet(FunctionParam, AnyParam, AnyParam):
-                               lambda fn, key, val: fn.assign_option(key_to_param_set(key), val).resolution})
-# BuiltIns['string'].add_option(ParamSet(ListParam), lambda l: py_value(str(l.value[1:])))
-# BuiltIns['string'].add_option(ParamSet(NumberParam),
-#                               lambda n: py_value('-' * (n.value < 0) +
-#                                               base(abs(n.value), 10, 6, string=True, recurring=False)))
-# BuiltIns['string'].add_option(ParamSet(Parameter(TableMatcher(BuiltIns["Type"]))), lambda t: py_value(t.value.name))
 
 BuiltIns['type'] = Function({AnyParam: lambda v: v.table})
 
@@ -357,6 +347,7 @@ def list_get(args: Args):
             raise KeyErr(f"Line {Context.line}: Pili sequence indices start at 1, not 0.")
         raise KeyErr(f"Line {Context.line}: {e}")
 
+# moved to PyValue.assign_option
 def list_set(ls: PyValue[list], index: PyValue, val: Record):
     if index.value == len(ls.value) + 1:
         ls.value.append(val)
@@ -421,6 +412,8 @@ SeqTrait.assign_option(list_slice_option2)
 
 BuiltIns['push'] = Function({ParamSet(ListParam, AnyParam):
                              lambda ls, item: ls.value.append(item) or ls})
+BuiltIns['pop'] = Function({ParamSet(ListParam, Parameter(IntegralParam, None, '?', py_value(-1))):
+                            lambda ls, idx=-1: ls.value.pop(idx - (idx > 0))})
 BuiltIns['join'] = Function({ParamSet(SeqParam, StringParam):
                              lambda ls, sep: py_value(sep.value.join(BuiltIns['str'].call(item).value
                                                                      for item in iter(ls))),
@@ -433,13 +426,10 @@ BuiltIns['split'] = Function({ParamSet(StringParam, StringParam):
 
 BuiltIns['new'] = Function({ParamSet(TableParam, AnyPattern[0], kwargs='kwargs'):
                                 lambda t, *args, **kwargs: Record(t, *args, **kwargs)})
-#
-# SeqTrait.options.append(Option(IntegralParam, Native(list_get)))
-# SeqTrait.options.append(Option(AnyPlusPattern,
-#                                Native(lambda args: BuiltIns['slice'](Args(Context.env.caller) + args))))
-# BuiltIns['List'].integrate_traits()
-# BuiltIns['Tuple'].integrate_traits()
-#
+
+# class File(Record):
+
+
 # def convert(name: str) -> Function:
 #     o = object()
 #     # py_fn = getattr(__builtins__, name, o)
@@ -457,24 +447,21 @@ BuiltIns['new'] = Function({ParamSet(TableParam, AnyPattern[0], kwargs='kwargs')
 # # BuiltIns['python'] = Function({ParamSet(StringParam): lambda n: convert(n.value))
 # BuiltIns['python'] = Function({StringParam: lambda code: py_value(eval(code.value))})  # lambda x: py_value(eval(x.value)))
 BuiltIns['python'] = Function({StringParam: None})
-#
-#
-#
-#
-#
-#
-#
-#
-#
-#
-#
-#
-# for k, v in BuiltIns.items():
-#     match v:
-#         case Table() | Function():
-#             if v.name is None:
-#                 v.name = k
 
 for tbl in TableTable.records:
     tbl: Table
     tbl.integrate_traits()
+
+
+BuiltIns['file'] = Trait({}, Slot('path', TraitMatcher(StrTrait)), name='file')
+BuiltIns['File'] = ListTable(BuiltIns['file'], name='File')
+
+def read_file(arg: Record, lines=BuiltIns['blank']):
+    with open(arg.get('path').value, 'r') as f:
+        if lines == BuiltIns['true']:
+            return py_value(f.readlines())
+        else:
+            return py_value(f.read())
+BuiltIns['read'] = Function({ParamSet(Parameter(TraitMatcher(BuiltIns['file'])),
+                                      named_params={'lines': Parameter(BoolParam, 'lines', '?')}):
+                                 read_file}, name='read')

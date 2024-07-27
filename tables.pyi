@@ -116,6 +116,7 @@ class Table(Function):
     getters: dict[str, int | Function]
     setters: dict[str, int | Function]
     defaults: tuple[Function, ...]  # this is for instantiation of Records
+    types: tuple[str, Pattern]  # the type of each field, in the same order as defaults
     trait: Trait  # property that points to the first trait in traits
     # noinspection PyDefaultArgument
     def __init__(self, *traits: Trait,
@@ -266,7 +267,7 @@ class Parameter(Pattern):
     def bytecode(self) -> VM: ...
     def match_score(self, value: Record) -> int | float: ...
 
-class ParamSet(Matcher):
+class ParamSet(Pattern):
     """
     a sequence of zero or more parameters, together with their quantifiers
     as well as named parameters
@@ -376,6 +377,7 @@ class Frame:
                  bindings: dict[str, Record] = None,
                  fn: Function = None): ...
     def __getitem__(self, key: str) -> Record | None: ...
+    def update(self, bindings: dict[str, Record]): ...
     def assign(self, name: str, value: Record): ...
 
 class GlobalFrame(Frame):

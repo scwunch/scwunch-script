@@ -102,6 +102,8 @@ class OperatorWord(Enum):
     Is = 'is'
     Not = 'not'
     Of = 'of'
+    To = 'to'
+    By = 'by'
     # If = 'if'
     Has = 'has'
     # Else = 'else'
@@ -232,7 +234,8 @@ class Node:
         #     return Context.source_code[self.source_slice]
         return Context.source_code[self.pos.slice()]
 
-    def eval_pattern(self) -> Pattern:
+    def eval_pattern(self, name_as_any=False) -> Pattern:
+        return patternize(self.evaluate())
         match self.evaluate():
             case Pattern() as patt:
                 return patt
@@ -391,9 +394,9 @@ class Token(Node):
                 return Context.deref(s)
         raise NotImplementedError(f"Line {self.line}: Could not evaluate token", self)
 
-    def eval_pattern(self):
-        if self.type == TokenType.Name:
-            return Parameter(AnyMatcher(), self.source_text)
+    def eval_pattern(self, name_as_any=False) -> Pattern:
+        if name_as_any and self.type is TokenType.Name:
+            return Parameter(AnyMatcher(), self.text)
         return patternize(self.evaluate())
 
     def __str__(self):
@@ -592,14 +595,16 @@ class Block(ListNode):
 
     def execute(self):
         line = Context.line
+        val = BuiltIns['blank']
         for expr in self.statements:
             Context.line = expr.line
-            expr.evaluate()
+            val = expr.evaluate()
             if Context.env.return_value:
                 break
             if Context.break_loop or Context.continue_:
                 break
         Context.line = line
+        return val
 
     def __repr__(self):
         if not self.statements:
@@ -620,9 +625,9 @@ class Block(ListNode):
 
 class ListLiteral(ListNode):
     def evaluate(self):
-        return py_value(list(n.evaluate() for n in self.nodes))
+        return py_value(list(eval_list_nodes(self.nodes)))
 
-    def eval_pattern(self):
+    def eval_pattern(self, name_as_any=False) -> Pattern:
         return ParamSet(*(item.eval_pattern() for item in self.nodes))
 
     # def old_eval(self):
@@ -675,7 +680,7 @@ class ListLiteral(ListNode):
 
 class TupleLiteral(ListLiteral):
     def evaluate(self):
-        return py_value(tuple(n.evaluate() for n in self.nodes))
+        return py_value(tuple(eval_list_nodes(self.nodes)))
 
 
 class ArgsNode(ListNode):
@@ -688,14 +693,16 @@ class ArgsNode(ListNode):
                 match node:
                     case OpExpr('=', [Token(type=TokenType.Name, source_text=name), val_node]):
                         named_args[name] = val_node.evaluate()
-                    case OpExpr('!', [Token(type=TokenType.Name, source_text=name)]):
+                    case OpExpr('!', [EmptyExpr(), Token(type=TokenType.Name, source_text=name)]):
                         flags.add(name)
+                    case OpExpr('*', [EmptyExpr(), iter_node]):
+                        yield from BuiltIns['iter'].call(iter_node.evaluate())
                     case _:
                         yield node.evaluate()
 
         return Args(*generate_args(self.nodes), flags=flags, named_arguments=named_args)
 
-    def eval_pattern(self):
+    def eval_pattern(self, name_as_any=False) -> Pattern:
         raise NotImplementedError
 
     def __repr__(self):
@@ -739,7 +746,7 @@ class ParamsNode(ListNode):
         #                 yield param.binding, param
         def gen_params(nodes) -> tuple[str, Parameter]:
             for node in nodes:
-                param = node.eval_pattern()
+                param = node.eval_pattern(name_as_any=True)
                 yield param.binding, param
 
         return ParamSet(*(p[1] for p in gen_params(self.nodes)),
@@ -747,6 +754,9 @@ class ParamsNode(ListNode):
                         kwargs=self.any_kwargs)
 
     eval_pattern = evaluate
+
+    def __repr__(self):
+        return f'ParamsNode({', '.join(map(str, self.nodes))}; {', '.join(map(str, self.named_params))})'
 
 
 class FieldMatcherNode(ListNode):
@@ -757,13 +767,13 @@ class FieldMatcherNode(ListNode):
             for node in nodes:
                 match node:
                     case OpExpr(':', [Token(type=TokenType.Name, text=name), patt_node]):
-                        field_dict[name] = patt_node.eval_pattern()
+                        field_dict[name] = patt_node.eval_pattern(name_as_any=True)
                     case _:
                         yield node.eval_pattern()
 
         return FieldMatcher(tuple(generate_matchers(self.nodes)), field_dict)
 
-    def eval_pattern(self):
+    def eval_pattern(self, name_as_any=False) -> Pattern:
         return Parameter(self.evaluate())
 
 
@@ -773,7 +783,7 @@ class FunctionLiteral(ListNode):
         Closure(Block(self.nodes)).execute(fn=fn)
         return fn
 
-    def eval_pattern(self):
+    def eval_pattern(self, name_as_any=False) -> Pattern:
         raise NotImplementedError
 
 
@@ -783,11 +793,22 @@ class FunctionLiteral(ListNode):
 class OpExpr(Node):
     op: Operator
     terms: tuple[Node, ...]
-    def __init__(self, op: Operator, *terms: Node, pos: Position = None):
+    fixity: str  # prefix|postfix
+    def __init__(self, op: Operator, *terms: Node, pos: Position = None, fixity: str = None):
         assert terms
-        self.op = op
-        self.terms = terms
         self.pos = pos
+        self.op = op
+        if op.text == '=>':
+            pos = terms[1].pos
+            terms = terms[0], Block([CommandWithExpr('return', terms[1], pos)], pos=pos)
+        if op.text == ':' and isinstance(terms[1], Block):
+            match terms[0]:
+                case OpExpr('[') | OpExpr('.', [EmptyExpr(), _]) | ParamsNode():
+                    pass
+                case _:
+                    raise SyntaxErr(f'Line {self.line}: invalid syntax: "{terms[0].source_text}".  A colon followed by '
+                                    f'a block must be a `.dot[method]:`, `[param list]:`, or `option[def]`:')
+        self.terms = terms
 
     @property
     def sym(self):
@@ -799,7 +820,7 @@ class OpExpr(Node):
         args: Args = self.op.eval_args(*self.terms)
         return self.op.fn.call(args)
 
-    def eval_pattern(self) -> Pattern:
+    def eval_pattern(self, name_as_any=False) -> Pattern:
         match self.op.text:
             # case '.':
             #     rec_node, target_name = self.terms
@@ -837,11 +858,11 @@ class OpExpr(Node):
                                     f'left-hand-side of colon must be a name.')
                     # TODO: but at some point I will make this work for options too like Foo(["key"]: str value)
                 field_name = lhs.text
-                return Parameter(FieldMatcher((), {field_name: rhs.eval_pattern()}))
+                return Parameter(FieldMatcher((), {field_name: rhs.eval_pattern(name_as_any=True)}))
             case '=':
                 lhs, rhs = self.terms
                 default = rhs.evaluate()
-                left = lhs.eval_pattern()
+                left = lhs.eval_pattern(name_as_any=True)
                 if not isinstance(left, Parameter):
                     return Parameter(left, default=default)
                 if left.default is not None:
@@ -874,7 +895,7 @@ class BindExpr(Node):
         self.quantifier = quantifier
         self.pos = pos
 
-    def evaluate(self):
+    def evaluate(self, name_as_any=False):
         if self.node.type is TokenType.Name:
             return Parameter(patternize(self.node.evaluate()), self.name, self.quantifier)
         return Parameter(self.node.eval_pattern(), self.name, self.quantifier)
@@ -917,7 +938,7 @@ class IfElse(Node):
         else:
             return self.alt.evaluate()
 
-    def eval_pattern(self):
+    def eval_pattern(self, name_as_any=False) -> Pattern:
         condition = self.condition.evaluate()
         condition = BuiltIns['bool'].call(condition).value
         if condition:
@@ -1009,14 +1030,15 @@ class ForLoop(ExprWithBlock):
             case _:
                 raise NotImplementedError
 
-        var_patt = self.var.eval_pattern()
+        var_patt: Pattern = Op['='].eval_args(self.var)[0]  # noqa
 
         for val in iterator:
-            if (bindings := var_patt.match(val)) is None:
-                raise MatchErr(f"Line {self.line}: "
-                               f"pattern '{var_patt}' did not match value {val} in {self.iterable.source_text}")
-            for k, v in bindings.items():
-                Context.env.assign(k, v)
+            var_patt.match_and_bind(val)
+            # if (bindings := var_patt.match(val)) is None:
+            #     raise MatchErr(f"Line {self.line}: "
+            #                    f"pattern '{var_patt}' did not match value {val} in {self.iterable.source_text}")
+            # for k, v in bindings.items():
+            #     Context.env.assign(k, v)
             # Context.env.locals[var_name] = val
             self.block.execute()
             if Context.break_loop:
@@ -1200,7 +1222,10 @@ class TableExpr(FunctionExpr):
     traits: list[Node]
     body: Block = None
     def __init__(self, header: Node, blk_nodes: list[Node], pos: Position = None):
-        super().__init__(header, blk_nodes, pos)
+        if len(blk_nodes) > 1:
+            raise SyntaxErr(f"Line {blk_nodes[1].line}: function blocks cannot have else statements.")
+        ExprWithBlock.__init__(self, header, blk_nodes, pos)
+        self.body = self.block
         match header:
             case Token(type=TokenType.Name, text=name):
                 self.table_name = name
@@ -1340,9 +1365,9 @@ class FormulaExpr(NamedExpr):
     formula_name: str
     formula_type: Node
     block: Block
-    def __init__(self, cmd: str, field_name: str, nodes: list[Node], pos: Position = None):
+    def __init__(self, cmd: str, field_name: str, node: Node, pos: Position = None):
         super().__init__(cmd, field_name, pos)
-        match nodes:
+        match node:
             case [Token(type=TokenType.Name, text=name), *patt_nodes, Token(text=':'), Block() as blk]:
                 self.formula_name = name
                 self.formula_type = mathological(patt_nodes)
@@ -1380,13 +1405,17 @@ class SetterExpr(NamedExpr):
     field_name: str
     param_nodes: ParamsNode
     block: Block
-    def __init__(self, cmd: str, field_name: str, nodes: list[Node], pos: Position = None):
+    def __init__(self, cmd: str, field_name: str, node: Node, pos: Position = None):
         super().__init__(cmd, field_name, pos)
-        match nodes:
+        self.field_name = field_name
+        match node:
+            case OpExpr(':', [ParamsNode(nodes=param_nodes) as params, Block() as blk]):
+                param_nodes.insert(0, BindExpr(Token('any'), 'self'))
+                self.params = params
+                self.block = blk
             case [Token(type=TokenType.Name, text=name),  # Token(source_text='.'),
                   ParamsNode(nodes=[Node() as param_node]) as param_list,
                   Token(source_text=':'), Block() as blk]:
-                self.field_name = name
                 # self.param_nodes = stmt.nodes
                 self.params = param_list
                 self.block = blk
@@ -1398,7 +1427,7 @@ class SetterExpr(NamedExpr):
         # fn = Function({ParamSet(Parameter(AnyMatcher(), 'self'), make_param(self.param_nodes)):
         #                    CodeBlock(self.block)})
         params: ParamSet = self.params.evaluate()
-        params.parameters = (Parameter(AnyMatcher(), 'self'),) + params.parameters
+        # params.parameters = (Parameter(AnyMatcher(), 'self'),) + params.parameters
         assert len(params) == 2
         fn = Function({params: Closure(self.block)})
         setter = Setter(self.field_name, fn)
@@ -1506,7 +1535,7 @@ class LocalExpr(Declaration):
         Context.env.locals[self.var_name] = value
         return value
 
-    def eval_pattern(self):
+    def eval_pattern(self, name_as_any=False) -> Pattern:
         value = self.value_expr.evaluate() if self.value_expr else BuiltIns['blank']
         Context.env.locals[self.var_name] = value
         return Parameter(AnyMatcher(), self.var_name, default=value)
@@ -1517,20 +1546,33 @@ class VarExpr(Declaration):
         Context.env.vars[self.var_name] = value
         return value
 
-    def eval_pattern(self):
+    def eval_pattern(self, name_as_any=False) -> Pattern:
         value = self.value_expr.evaluate() if self.value_expr else BuiltIns['blank']
         Context.env.vars[self.var_name] = value
         return Parameter(AnyMatcher(), self.var_name, default=value)
 
 class EmptyExpr(Node):
-    def __init__(self, pos: Position = None):
-        self.pos = pos
+    def __init__(self, pos: tuple[int, int]):
+        self.pos = Position(pos)
 
     def evaluate(self):
         return BuiltIns['blank']
 
     def __repr__(self):
         return "EmptyExpr()"
+
+
+Operator.eval_args = lambda op, *terms: Args(*(t.evaluate() for t in terms if not isinstance(t, EmptyExpr)))
+
+def eval_list_nodes(nodes):
+    for n in nodes:
+        match n:
+            case OpExpr('*', [EmptyExpr(), iter_node]):
+                yield from BuiltIns['iter'].call(iter_node.evaluate())
+            case EmptyExpr():
+                continue
+            case _:
+                yield n.evaluate()
 
 
 EXPRMAP = {
@@ -1548,385 +1590,7 @@ EXPRMAP = {
     'var': VarExpr,
 }
 
-# def piliize(val):
-#     if isinstance(val, list | tuple):
-#         # gen = (py_value(v) for v in val)
-#         records = map(py_value, val)
-#         if isinstance(val, tuple):
-#             return py_value(tuple(records))
-#         if isinstance(val, list):
-#             return List(list(records))
-#     return py_value(val)
 
-# def py_eval(code):
-#     return piliize(eval(code.value))
-#
-# class SingleNode(Expression):
-#     def __init__(self, node: Node, line: int | None, source: str):
-#         super().__init__(line, source)
-#         self.node = node
-#     def evaluate(self):
-#         return eval_node(self.node)
-#
-#
-# def eval_node(node: Node) -> Record:
-#     match node:
-#         case Expression() as statement:
-#             return expressionize(statement).evaluate()
-#         case Token() as tok:
-#             return eval_token(tok)
-#         case Block() as block:
-#             return Closure(block).execute(fn=Function())
-#         case ListNode(list_type=list_type, items=items):
-#             match list_type:
-#                 case ListType.List:
-#                     return py_value(list(map(eval_node, items)))
-#                 case ListType.Args:
-#                     return eval_args_list(items)
-#                 # case ListType.Params:
-#                 #     return ParamSet(*map(make_param, items))
-#                 case ListType.Tuple:
-#                     return py_value(tuple(map(eval_node, items)))
-#                 case ListType.Function:
-#                     fn = Function()
-#                     Closure(Block(items)).execute(fn=fn)
-#                     return fn
-#                 case _:
-#                     raise NotImplementedError
-#         case StringNode(nodes=nodes):
-#             return py_value(''.join(map(eval_string_part, nodes)))
-#     raise ValueError(f'Could not evaluate node {node} at line: {node.pos}')
-#
-# def eval_string_part(node: Node) -> str:
-#     if node.type == TokenType.StringPart:
-#         return eval_string(node.source_text)
-#     return BuiltIns['str'].call(node.evaluate()).value
-#     # if isinstance(node, Expression):
-#     #     return BuiltIns['str'].call(node.evaluate()).value
-#     # raise ValueError('invalid string part')
-# def eval_string(text: str):
-#     value = ""
-#     for i in range(len(text)):
-#         if i and text[i-1] == '\\':
-#             continue
-#         if text[i] == '\\':
-#             match text[i+1]:
-#                 case 'n':
-#                     value += '\n'
-#                 case 'r':
-#                     value += '\r'
-#                 case 't':
-#                     value += '\t'
-#                 case 'b':
-#                     value += '\b'
-#                 case 'f':
-#                     value += '\f'
-#                 case c if c in "'\"{\\":
-#                     # assume char is one of: ', ", {, \
-#                     value += c
-#                 case c:
-#                     raise SyntaxErr(f"Unrecognized escape character: '{c}'")
-#         else:
-#             value += text[i]
-#     return value
-#
-# def precook_args(op: Operator, lhs: Node, rhs: Node) -> list[Record]:
-#     if op.binop and lhs and rhs:
-#         args = [lhs.evaluate(), rhs.evaluate()]
-#         # args = [expressionize(lhs).evaluate(), expressionize(rhs).evaluate()]
-#     elif op.prefix and rhs or op.postfix and lhs:
-#         args = [(rhs or lhs).evaluate()]
-#         # args = [expressionize(rhs or lhs).evaluate()]
-#     else:
-#         raise ArithmeticError("Mismatch between operator type and operand positions.")
-#     return args
-#
-#
-# # Operator.eval_args = precook_args
-# # I think this has been replaced by a simpler function: Operator.eval_args
-#
-#
-# def eval_token(tok: Token) -> Record:
-#     s = tok.source_text
-#     match tok.type:
-#         case TokenType.Singleton:
-#             return py_value(SINGLETONS[s])
-#         case TokenType.Number:
-#             return py_value(read_number(s, Context.settings['base']))
-#         case TokenType.StringLiteral:
-#             return py_value(s.strip("`"))
-#         case TokenType.Name:
-#             if s == 'self':
-#                 return Context.deref(s, Context.env.caller)
-#             return Context.deref(s)
-#         case _:
-#             raise Exception("Could not evaluate token", tok)
-#
-#
-# def eval_string(text: str):
-#     value = ""
-#     for i in range(len(text)):
-#         if i and text[i-1] == '\\':
-#             continue
-#         if text[i] == '\\':
-#             match text[i+1]:
-#                 case 'n':
-#                     value += '\n'
-#                 case 'r':
-#                     value += '\r'
-#                 case 't':
-#                     value += '\t'
-#                 case 'b':
-#                     value += '\b'
-#                 case 'f':
-#                     value += '\f'
-#                 case c if c in "'\"{\\":
-#                     # assume char is one of: ', ", {, \
-#                     value += c
-#                 case c:
-#                     raise SyntaxErr(f"Unrecognized escape character: '{c}'")
-#         else:
-#             value += text[i]
-#     return value
-#
-#
-# def eval_args_list(statements: list[Expression]) -> Args:
-#     pos_args = []
-#     named_args = {}
-#     flags = set()
-#     for stmt in statements:
-#         match stmt.nodes:
-#             case [Token(type=TokenType.Name, source_text=name), Token(source_text='='), *expr_nodes]:
-#                 named_args[name] = expressionize(expr_nodes).evaluate()
-#             case [Token(source_text='!'), Token(type=TokenType.Name, source_text=name)]:
-#                 flags.add(name)
-#             case nodes:
-#                 pos_args.append(expressionize(nodes).evaluate())
-#
-#     return Args(*pos_args, flags=flags, **named_args)
-
-
-# class Expressionizer:
-#     node: Node
-#     def __init__(self, cst: Concrete):
-#         self.cst = cst
-#         self.ops: list[list[Operator | str]] = []
-#         # second (str) element of each list in ops represents the fixity: prefix, binop, postfix
-#         self.terms: list[Node] = []
-#         self.unary_state = True
-#
-#         for node in self.prepare_nodes(cst.nodes):
-#             # In the unary state, we're expecting either a unary operator or an operand or grouping parenthesis (or others).
-#             # otherwise, we are in binary state expecting binary operators, or close parenthesis (or open paren).
-#             if self.unary_state:
-#                 self.next_operand(node)
-#             else:
-#                 self.next_operator(node)
-#         self.reduce()
-#         assert len(self.terms) == 1 and len(self.ops) == 0
-#         expr = self.terms[0]
-#         if not expr.pos:
-#             expr.pos = cst.pos
-#         self.node = expr
-#
-#     def prepare_nodes(self, nodes: list[Concrete | Token]):
-#
-#         i = 0
-#         while i < len(nodes):
-#             node = nodes[i]
-#             match node.type:
-#                 case ExprType.Group:
-#                     inner = node.nodes[1]
-#                     if inner:
-#                         yield inner.abstract()
-#                     else:
-#                         yield TupleLiteral((), node.pos)
-#                 case ExprType.Command:
-#                     command = node.nodes[0].source_text
-#                     Cmd = EXPRMAP.get(command, CommandWithExpr)
-#                     yield Cmd(command, node.nodes[1].abstract(), node.pos)
-#                 case ExprType.Assignment:
-#                     left, op, right = node.nodes
-#                     left: Concrete
-#                     right: Concrete
-#                     op_sym = op.text
-#                     if op_sym == ':':
-#                         match left.nodes:
-#                             case [*left_nodes, Concrete(type=ExprType.Brackets, nodes=items, pos=pos)]:
-#                                 lhs = TargetExpr(Concrete(left_nodes).abstract(),
-#                                                  ParamsNode(tuple(n.abstract() for n in items), pos),
-#                                                  left.pos)
-#                             case _:
-#                                 lhs = left.abstract()
-#                     else:
-#                         lhs = left.abstract()
-#                     yield OpExpr(Op[op.text], lhs, right.abstract(), pos=node.pos)
-#                 # case ExprType.Parens:
-#                 #     items = tuple(n.abstract() for n in node.nodes[1:-1])
-#                 #     if i and nodes[i-1].type not in (TokenType.Operator, TokenType.Command, TokenType.Keyword):
-#                 #         assert not self.unary_state
-#                 #         yield Token('&', TokenType.Operator)
-#                 #         yield FieldMatcherNode(items, node.pos)
-#                 #     else:
-#                 #         yield TupleLiteral(items, node.pos)
-#                 case ExprType.Parens:
-#                     assert not self.unary_state  # if this was in unary state, it should have become ExprType.Group
-#                     if len(node) == 2:  # only nodes are brackets
-#                         pass  # don't even bother yielding any nodes because an empty field matcher has no effect
-#                     if len(node) > 3:
-#                         raise SyntaxErr(node, "Semicolons not allowed in Field Matchers")
-#                     items = (n.abstract() for n in node.nodes[1].nodes)
-#                     yield Token('&', TokenType.Operator)
-#                     yield FieldMatcherNode(tuple(items), node.pos)
-#                 case ExprType.Brackets:
-#                     next_node = nodes[i+1] if i + 1 < len(nodes) else None
-#                     if next_node and next_node.type == TokenType.Operator and next_node.text in (':', '=>'):
-#                         yield Token('[params]', TokenType.Operator, node.pos.pos)
-#                         match node.nodes:
-#                             case [_, _]:
-#                                 ordered_params, named_params = [], []
-#                             case [_, Concrete(nodes=ordered_params), _]:
-#                                 named_params = []
-#                             case [_, Concrete(nodes=ordered_params), Token(text=';'), Concrete(nodes=named_params), _]:
-#                                 pass
-#                             case _:
-#                                 raise SyntaxErr(node.pos, "Too many semicolons in parameter list.")
-#                         yield ParamsNode(tuple(p.abstract() for p in ordered_params),
-#                                          list(p.abstract() for p in named_params), node.pos)
-#                     else:
-#                         items = tuple(n.abstract() for n in node.nodes[1:-1])
-#                         if self.unary_state:
-#                             yield ListLiteral(items, node.pos)
-#                         else:
-#                             yield Token('[call]', TokenType.Operator, node.pos.pos)
-#                             yield ArgsNode(items, node.pos)
-#                 case ExprType.Braces:
-#                     match node.nodes:
-#                         case [_, _]:
-#                             items = []
-#                         case [_, Concrete(nodes=items), _]:
-#                             pass
-#                         case _:
-#                             raise AssertionError(node.pos, "umm... brace nodes are only supposed to have up to 3 nodes")
-#                     items = tuple(n.abstract() for n in items)
-#                     yield FunctionLiteral(items, pos)
-#                 case _:
-#                     yield node.abstract()
-#             i += 1
-#         yield None
-#
-#     def mathological(self, nodes: list[Node]):
-#         self.ops: list[list[Operator | str]] = []
-#         # second (str) element of each list in ops represents the fixity: prefix, binop, postfix
-#         self.terms: list[Node] = []
-#         self.unary_state = True
-#
-#         def loop_nodes():
-#             for node_or_list in cst:
-#                 if isinstance(node_or_list, Node):
-#                     yield node_or_list
-#                 else:
-#                     yield AST(node_or_list)
-#             yield None
-#
-#         for node in loop_nodes():
-#             # In the unary state, we're expecting either a unary operator or an operand or grouping parenthesis (or others).
-#             # otherwise, we are in binary state expecting binary operators, or close parenthesis (or open paren).
-#             if self.unary_state:
-#                 self.next_operand(node)
-#             else:
-#                 self.next_operator(node)
-#         self.reduce()
-#         assert len(self.terms) == 1 and len(self.ops) == 0
-#         expr = self.terms[0]
-#         expr.line, expr.source_text = line, src
-#         return expr
-#
-#     def reduce(self, prec: int = -1):
-#         terms, ops = self.terms, self.ops
-#         while ops:
-#             op, fixity, op_pos = ops[-1]
-#             op_prec = getattr(op, fixity)
-#             assert op_prec is not None
-#             if op_prec and (op_prec > prec or op.associativity == 'left' and op_prec == prec):
-#                 ops.pop()
-#                 t1 = terms.pop()
-#                 t_last = terms[-1] if terms else None
-#                 if isinstance(t_last, OpExpr) and t_last.op == op and op.chainable:
-#                     t_last.terms += t1,
-#                 elif fixity == 'binop':
-#                     t2 = terms.pop()
-#                     pos = Concrete([t2, t1]).pos
-#                     terms.append(OpExpr(op, t2, t1, pos=pos))
-#                 elif fixity == 'postfix' and isinstance(t1, BindExpr):
-#                     t1.quantifier = op.text
-#                     terms.append(t1)
-#                 else:
-#                     pos = Position(op_pos.pos, op_pos.start_index, t1.pos.stop_index)
-#                     terms.append(OpExpr(op, t1, pos=pos))
-#             else:
-#                 return
-#
-#     def next_operand(self, node: Node):
-#         terms, ops = self.terms, self.ops
-#         match node:
-#             case Token(type=TokenType.Operator, text=op_text, pos=op_pos):
-#                 try:
-#                     op = Op[op_text]
-#                 except KeyError:
-#                     raise OperatorErr(f"Line {node.line}: unrecognized operator: {op_text}")
-#                 if op.prefix:
-#                     ops.append([op, 'prefix', op_pos])
-#                 elif op.binop and ops and ops[-1][0].postfix:
-#                     ops[-1][1] = 'postfix'
-#                     ops.append([op, 'binop', op_pos])
-#                 elif ops:
-#                     raise OperatorErr(f"Line {node.line}: expected term or prefix operator after {ops[-1][0]}.  "
-#                                       f"Instead got {op}.")
-#                 else:
-#                     raise OperatorErr(node.pos, f"{op} is not prefix operator.")
-#             case Node():
-#                 terms.append(node)
-#                 self.unary_state = False
-#             case _:
-#                 if ops:
-#                     op, fixity, op_pos = ops.pop()
-#                     if op.postfix:
-#                         self.reduce(op.postfix)
-#                         ops.append([op, 'postfix', op_pos])
-#                     else:
-#                         raise OperatorErr(f"Line {node.line}: expected operand after {ops[-1]}")
-#                 else:
-#                     raise OperatorErr(node, "expected operand.")
-#                 # if ops and ops[-1][0].postfix:
-#                 #     ops[-1][1] = 'postfix'
-#                 # elif ops:
-#                 #     raise OperatorErr(f"Line {line}: expected operand after {ops[-1]}")
-#                 # else:
-#                 #     raise OperatorErr(f"Line")
-#
-#     def next_operator(self, node: Node):
-#         match node:
-#             case Token(type=TokenType.Operator, text=op_text, pos=op_pos):
-#                 op = Op[op_text]
-#                 if op.binop:
-#                     self.reduce(op.binop)
-#                     self.ops.append([op, 'binop', op_pos])
-#                     self.unary_state = True
-#                 elif op.postfix:
-#                     self.reduce(op.postfix)
-#                     self.ops.append([op, 'postfix', op_pos])
-#                 else:
-#                     raise OperatorErr(f"Line {node.line}: Prefix {op} used as binary/postfix operator.")
-#             case Token(type=TokenType.Name, source_text=name):
-#                 self.reduce(3)
-#                 t = self.terms.pop()
-#                 pos = t.pos
-#                 self.terms.append(BindExpr(t, name, pos=pos))
-#             case None:
-#                 pass
-#             case _:
-#                 raise OperatorErr(f"Line {node.line}: Expected operator.  Got {node}")
 
 
 if __name__ == "__main__":
