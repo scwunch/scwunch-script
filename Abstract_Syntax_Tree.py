@@ -1,3 +1,4 @@
+print(f'Import {__name__}.py')
 import Env
 from operators import Op
 from Syntax import *

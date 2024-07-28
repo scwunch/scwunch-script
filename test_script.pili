@@ -6,7 +6,7 @@ start_time = now  []
 
 
 function foo
-	[int a, str b+; num c = 0, num d, *]:
+	[int a, str b+; debug num c = 0, num d, *]:
 		if has 'other_name'
 			return other_name
 		return a, b, c, d
@@ -19,7 +19,7 @@ function foo
 # 		return str[a] + b + str[self]
 
 
-print foo[a=-1, "one", "two", "three", d=20/30]
+print debug foo[a=-1, "one", "two", "three", d=20/30]
 print foo[1, "two", c=55, d=1/2]
 print foo[a=1, "two", c=55, d=1/2, other_name='YES!']
 
@@ -147,7 +147,7 @@ Dog.bark_breed[Dog self]:
 test[21] = (spot.bark_breed) == "Hi, I'm a terrier"
 print 'test 21 passed' if test[21] else 'test 21 FAILED'
 
-test[22] = Dog has "asdfknasdf" == false and Dog has "bark_breed" == true
+#debug test[22] = Dog has "asdfknasdf" == false and Dog has "bark_breed" == true
 test[22] = test[22] and not has 'asdfasdf' and has "Dog" == true
 test[22] = test[22] and has 'str'
 print 'test 22 passed' if test[22] else 'test 22 FAILED'

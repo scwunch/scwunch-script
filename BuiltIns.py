@@ -1,3 +1,4 @@
+print(f'Import {__name__}.py')
 import re
 from fractions import Fraction
 # from Syntax import Node, Token, ListNode, TokenType
@@ -117,8 +118,9 @@ StringParam = Parameter(TraitMatcher(BuiltIns["str"]))
 NormalParam = Parameter(UnionMatcher(TraitMatcher(BuiltIns['num']), TraitMatcher(BuiltIns['str'])))
 SeqParam = Parameter(TraitMatcher(SeqTrait))
 ListParam = Parameter(TraitMatcher(ListTrait))
-NonStr = TraitMatcher(StrTrait)
-NonStr.invert = 1
+# NonStr = TraitMatcher(StrTrait)
+# NonStr.invert = 1
+NonStr = NotMatcher(TraitMatcher(StrTrait))
 NonStrSeqParam = Parameter(IntersectionMatcher(TraitMatcher(SeqTrait), NonStr))
 IterParam = Parameter(TraitMatcher(IterTrait))
 # TypeParam = Parameter(TableMatcher(BuiltIns["Type"]))
@@ -444,24 +446,69 @@ BuiltIns['new'] = Function({ParamSet(TableParam, AnyPattern[0], kwargs='kwargs')
 #     return Function({AnyPattern: lambda *args: py_value(py_fn(*(arg.value for arg in args)))})
 #
 #
-# # BuiltIns['python'] = Function({ParamSet(StringParam): lambda n: convert(n.value))
-# BuiltIns['python'] = Function({StringParam: lambda code: py_value(eval(code.value))})  # lambda x: py_value(eval(x.value)))
-BuiltIns['python'] = Function({StringParam: None})
+
 
 for tbl in TableTable.records:
     tbl: Table
     tbl.integrate_traits()
 
 
-BuiltIns['file'] = Trait({}, Slot('path', TraitMatcher(StrTrait)), name='file')
-BuiltIns['File'] = ListTable(BuiltIns['file'], name='File')
+def make_flags(*names: str) -> dict[str, Parameter]:
+    return {n: Parameter(BoolParam, n, '?', BuiltIns['blank']) for n in names}
 
-def read_file(arg: Record, lines=BuiltIns['blank']):
-    with open(arg.get('path').value, 'r') as f:
-        if lines == BuiltIns['true']:
-            return py_value(f.readlines())
-        else:
-            return py_value(f.read())
-BuiltIns['read'] = Function({ParamSet(Parameter(TraitMatcher(BuiltIns['file'])),
-                                      named_params={'lines': Parameter(BoolParam, 'lines', '?')}):
-                                 read_file}, name='read')
+
+BuiltIns['python'] = Function({ParamSet(StringParam, named_params=make_flags('direct', 'execute')):
+                                   None}, name='python')  # function filled in in syntax.py
+
+"""
+Files
+"""
+# BuiltIns['file'] = Trait({}, Slot('path', TraitMatcher(StrTrait)), name='file')
+# BuiltIns['File'] = ListTable(BuiltIns['file'], name='File')
+#
+# def read_file(arg: Record, lines=BuiltIns['blank']):
+#     with open(arg.get('path').value, 'r') as f:
+#         if lines == BuiltIns['true']:
+#             return py_value(f.readlines())
+#         else:
+#             return py_value(f.read())
+# BuiltIns['read'] = Function({ParamSet(Parameter(TraitMatcher(BuiltIns['file'])),
+#                                       named_params={'lines': Parameter(BoolParam, 'lines', '?')}):
+#                                  read_file}, name='read')
+
+""" 
+Regular Expressions
+"""
+def regex_extract(regex: RegEx | PyValue[str], text: PyValue[str], *,
+                  a=BuiltIns['blank'], i=BuiltIns['blank'], m=BuiltIns['blank'],
+                  s=BuiltIns['blank'], x=BuiltIns['blank'], l=BuiltIns['blank']):
+    flags = 0
+    if a.truthy:
+        flags |= re.RegexFlag.ASCII
+    if i.truthy:
+        flags |= re.RegexFlag.IGNORECASE
+    if m.truthy:
+        flags |= re.RegexFlag.MULTILINE
+    if s.truthy:
+        flags |= re.RegexFlag.DOTALL
+    if x.truthy:
+        flags |= re.RegexFlag.VERBOSE
+    if l.truthy:
+        flags |= re.RegexFlag.LOCALE
+    if not flags and isinstance(regex, RegEx):
+        for f in regex.flags:
+            flags |= getattr(re.RegexFlag, f.upper())
+    return py_value(re.findall(regex.value, text.value, flags))
+
+regex_constructor = {ParamSet(StringParam, Parameter(StringParam, 'flags', '?')):
+                         lambda s, f=py_value(''): RegEx(s.value, f.value)}
+BuiltIns['regex'] = Trait(regex_constructor, Slot('flags', TraitMatcher(StrTrait),
+                                                  default=Function({ParamSet(Parameter(AnyMatcher(), 'self')):
+                                                                        py_value('')})),
+                          name='regex')
+BuiltIns['RegEx'] = ListTable(BuiltIns['regex'], fn_options=regex_constructor, name='RegEx',)
+regex_extract_function = Function({ParamSet(Parameter(TableMatcher(BuiltIns['RegEx'])),
+                                                        StringParam,
+                                                        named_params=make_flags(*'aimsxl')):
+                                                   regex_extract}, name='extract')
+BuiltIns['regex'].frame = Frame(None, bindings={'extract': regex_extract_function})

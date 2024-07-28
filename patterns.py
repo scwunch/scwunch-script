@@ -1,3 +1,4 @@
+print(f'Import {__name__}.py')
 import math
 import re
 
@@ -533,12 +534,11 @@ class IntersectionMatcher(Matcher):
     def __lt__(self, other):
         match other:
             case IntersectionMatcher(matchers=other_matchers):
-                return (len(self.matchers) > len(other_matchers)
-                        or len(self.matchers) == len(other_matchers) and self.matchers < other_matchers)
+                return any(self <= p for p in other_matchers)
             case UnionMatcher(matchers=patterns):
                 return any(self <= p for p in patterns)
             case _:
-                raise NotImplementedError
+                return any(p <= other for p in self.matchers)
 
     def __le__(self, other):
         match other:
@@ -547,7 +547,7 @@ class IntersectionMatcher(Matcher):
             case UnionMatcher(matchers=patterns):
                 return any(self <= p for p in patterns)
             case _:
-                return any(p <= self for p in self.matchers)
+                return any(p <= other for p in self.matchers)
 
     # def __hash__(self):
     #     return hash(frozenset(self.matchers))
@@ -646,7 +646,11 @@ class Parameter(Pattern):
         match pattern:
             case Matcher() as matcher:
                 self.pattern = matcher
-            case Parameter(pattern=pattern, quantifier=q, default=d):
+            case Parameter(pattern=pattern, binding=b, quantifier=q, default=d):
+                if b and binding and b != binding:
+                    raise PatternErr(f'Line {Context.line}: '
+                                     f'Cannot apply two bindings {b, binding} to a single parameter.')
+                binding = b or binding
                 if q and quantifier and q != quantifier:
                     raise PatternErr(f'Line {Context.line}: '
                                      f'Cannot apply two quantifiers {q, quantifier} to a single parameter.')

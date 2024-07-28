@@ -144,25 +144,25 @@ prog = Tokenizer[Context.test_script]
 print prog
 
 
-do_something[int x, int y]:
-    a = x + y
-    loop coroutine[a]
-        print 'starting main loop'
-        [int n]:
-            print "coroutine returned an int"
-            a = n
-            resume n + x
-            continue
-        [@blank]:
-            print "coroutine blanked"
-            break
-    return 'a got up to {a}'
-
-coroutine[int a]:
-    if a < 0
-        a = -a
-    if a == 0
-        yield blank
-    while a < 100
-        a = yield a
-    yield blank
+# do_something[int x, int y]:
+#     a = x + y
+#     loop coroutine[a]
+#         print 'starting main loop'
+#         [int n]:
+#             print "coroutine returned an int"
+#             a = n
+#             resume n + x
+#             continue
+#         [@blank]:
+#             print "coroutine blanked"
+#             break
+#     return 'a got up to {a}'
+#
+# coroutine[int a]:
+#     if a < 0
+#         a = -a
+#     if a == 0
+#         yield blank
+#     while a < 100
+#         a = yield a
+#     yield blank

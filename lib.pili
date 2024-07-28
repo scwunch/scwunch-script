@@ -1,0 +1,64 @@
+trait file
+    slot path str
+
+table File(file)
+    blank
+
+read[file f]:
+    blank
+
+python[!execute, ``
+def read_file(arg: Record, lines=BuiltIns['blank']):
+    with open(arg.get('path').value, 'r') as f:
+        if lines == BuiltIns['true']:
+            return py_value(f.readlines())
+        else:
+            return py_value(f.read())
+Context.deref('read').op_list[0].resolution = read_file
+``]
+
+# f = File['../Advent of Code/2023/input_1']
+# input = f.read[]
+# print input[1 to 100]
+
+
+trait regex
+    slot flags str = ''
+    [str source, str flags = '']:
+        blank
+    extract[str regex, str text, !a, !i, !m, !s, !x, !l]:
+        blank
+    python[!execute, ``
+Context.deref('regex').op_list[0].resolution = lambda s, f=py_value(''): RegEx(s.value, f.value)
+
+def regex_extract(regex, text: PyValue[str], *,
+              a=BuiltIns['blank'], i=BuiltIns['blank'], m=BuiltIns['blank'],
+              s=BuiltIns['blank'], x=BuiltIns['blank'], l=BuiltIns['blank']):
+    """ regex: RegEx | PyValue[str] """
+    flags = 0
+    if a.truthy:
+        flags |= re.RegexFlag.ASCII
+    if i.truthy:
+        flags |= re.RegexFlag.IGNORECASE
+    if m.truthy:
+        flags |= re.RegexFlag.MULTILINE
+    if s.truthy:
+        flags |= re.RegexFlag.DOTALL
+    if x.truthy:
+        flags |= re.RegexFlag.VERBOSE
+    if l.truthy:
+        flags |= re.RegexFlag.LOCALE
+    if not flags and isinstance(regex, RegEx):
+        for f in regex.flags:
+            flags |= getattr(re.RegexFlag, f.upper())
+    return py_value(re.findall(regex.value, text.value, flags))
+
+Context.deref('extract').op_list[0].resolution = regex_extract
+    ``]
+
+table RegEx(regex)
+    python[``Context.deref('RegEx').op_list.extend(Context.deref('regex').op_list)``]
+
+print python[`Context.deref('regex').op_list`]
+print regex[`\da`].extract['asdf3asd3Af4']
+print RegEx[`\da`].extract['asdf3asd3Af4']

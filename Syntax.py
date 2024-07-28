@@ -1,3 +1,4 @@
+print(f'Import {__name__}.py')
 import tables
 from stub import *
 import math
@@ -515,6 +516,7 @@ class ListNode(Node):
 
 class StringNode(ListNode):
     def __repr__(self):
+        return self.source_text
         res = ''.join(str(n) if n.type == TokenType.StringPart else f"{{{repr(n)}}}" for n in self.nodes)
         return f'"{res}"'
 
@@ -596,6 +598,12 @@ class Block(ListNode):
     def execute(self):
         line = Context.line
         val = BuiltIns['blank']
+        for tbl in self.table_names:
+            Context.env.locals[tbl] = ListTable(name=tbl, uninitialized=True)
+        for trait in self.trait_names:
+            Context.env.locals[trait] = Trait(name=trait, uninitialized=True)
+        for fn in self.function_names:
+            Context.env.locals[fn] = Function(name=fn, uninitialized=True)
         for expr in self.statements:
             Context.line = expr.line
             val = expr.evaluate()
@@ -746,7 +754,11 @@ class ParamsNode(ListNode):
         #                 yield param.binding, param
         def gen_params(nodes) -> tuple[str, Parameter]:
             for node in nodes:
-                param = node.eval_pattern(name_as_any=True)
+                match node:
+                    case OpExpr('!', [EmptyExpr(), Token(TokenType.Name, text=name)]):
+                        param = Parameter(TraitMatcher(BuiltIns['bool']), name, '?', BuiltIns['blank'])
+                    case _:
+                        param = node.eval_pattern(name_as_any=True)
                 yield param.binding, param
 
         return ParamSet(*(p[1] for p in gen_params(self.nodes)),
@@ -863,13 +875,7 @@ class OpExpr(Node):
                 lhs, rhs = self.terms
                 default = rhs.evaluate()
                 left = lhs.eval_pattern(name_as_any=True)
-                if not isinstance(left, Parameter):
-                    return Parameter(left, default=default)
-                if left.default is not None:
-                    raise PatternErr(f'Line {self.line}: parameter "{lhs.source_text}" already has a default value '
-                                     f'{left.default}; Cannot reassign default value to "{rhs.source_text}"')
-                left.default = default
-                return left
+                return Parameter(left, default=default)
             case '+' if len(self.terms) == 1:
                 param = self.terms[0].eval_pattern()
                 if not isinstance(param, Parameter):
@@ -1140,13 +1146,35 @@ class CommandWithExpr(Command):
             case _:
                 raise SyntaxErr(f"Line {Context.line}: Unhandled command {self.command}")
 
+    def eval_pattern(self, name_as_any=False) -> Pattern:
+        match self.command:
+            case 'debug':
+                Context.debug = True
+                print('Start debugging...')
+                result = self.expr.eval_pattern(name_as_any)
+                return result
+
+
     def __repr__(self):
         return f"Cmd:{self.command}({self.expr})"
 
 
 # this lambda needs to be defined in this module so that it has access to the imports processed by importlib
 opt: Option = BuiltIns['python'].op_list[0]
-opt.fn = lambda code: py_value(eval(code.value))
+def run_python_code(code: PyValue[str], direct=BuiltIns['blank'], execute=BuiltIns['blank']):
+    """  direct:  return the value without wrapping it in PyValue or PyObj
+        execute:  handle statements like def, class, assignment, etc.  Returns blank
+                  without this flag, will only evaluate an expression and return the value
+    """
+    if direct.truthy and execute.truthy:
+        raise RuntimeErr(f'Line {Context.line}: "direct" and "execute" flags are incompatible.')
+    if execute.truthy:
+        exec(code.value)
+        return BuiltIns['blank']
+    value = eval(code.value)
+    return value if direct.truthy else py_value(value)
+
+opt.fn = run_python_code
 
 
 class NamedExpr(Command):
@@ -1300,12 +1328,12 @@ class SlotExpr(NamedExpr):
     default: None | Node | Block | str = None
     def __init__(self, cmd: str, field_name: str, node: Node, pos: Position = None):
         super().__init__(cmd, field_name, pos)
-        self.field_type = BindExpr(node, '')
-        # match node:
-        #     case OpExpr('='|':', terms):
-        #         self.field_type, self.default = terms
-        #     case _:
-        #         self.field_type = node
+        # self.field_type = BindExpr(node, '')
+        match node:
+            case OpExpr('='|':', terms):
+                self.field_type, self.default = terms
+            case _:
+                self.field_type = node
         # other_nodes = nodes
         # for i, node in enumerate(other_nodes):
         #     if node.source_text == '=':

@@ -1,3 +1,4 @@
+print(f'Import {__name__}.py')
 import Env
 from Env import *
 from tables import *
@@ -172,93 +173,93 @@ def eval_null_assign_args(lhs: Node, rhs: Node) -> Args:
 Op['??='].eval_args = eval_null_assign_args
 
 
-def eval_colon_args(lhs: Node, rhs: Node) -> Args:
-    if isinstance(rhs, Block):
-        resolution = Closure(rhs)
-    else:
-        resolution = rhs.evaluate()
-
-    match lhs:
-        case ParamsNode():
-            """ [params]: ... """
-            return Args(lhs.evaluate(), resolution)
-        case OpExpr('.', terms):
-            match terms:
-                case [OpExpr('.', [Token(type=TokenType.Name, source_text=name)]),
-                      ParamsNode() as params] \
-                      | [Token(params, type=TokenType.Name, source_text=name)]:
-                    """ .foo[params] """
-                    # TODO: this block is ridiculous.  Both the pattern and the logic are too complicated
-                    # How do I make it better?
-                    # - stop using the dot as the function call operator (requires overhaul of lots of pattern-matching)
-                    # - separate back into two blocks: .foo[params]: ... and .foo: ...
-                    # - capture leading dot in AST and transform into dedicated expr type
-                    # - change the way foo.bar[arg] is called — eg:
-                    #   - `foo.bar[arg]` => `bar[foo, arg]` (just like with records of tables)
-                    #   - `foo.bar[arg]` => `bar[arg, self=foo]`
-                    location = Context.env.fn
-                    if location is None:
-                        raise EnvironmentError(f"Line {Context.line}: illegal .dot option found")
-                    key: ParamSet = params.evaluate() if params else ParamSet()
-                    key.prepend(Parameter(location, 'self'))
-                    fn = Context.deref(name)
-                    # if fn is None:
-                    #     fn = Function(name=name)
-                    #     Context.env.locals[name] = fn
-                    #     if not isinstance(location, Table | Trait):
-                    #         print(f"WARNING: {name} not yet defined in current scope.  Newly created function is "
-                    #               f" currently only accessible as `{location}.{name}`.")
-                    return Args(fn, key, resolution)
-                case [fn_node, ParamsNode() as params]:
-                    """ foo[key]: ... """
-                    match fn_node:
-                        case Token(type=TokenType.Name, source_text=name):
-                            location = Context.deref(name, None)
-                            if location is None:
-                                location = Function(name=name)
-                                Context.env.locals[name] = location
-                        case _:
-                            location = fn_node.evaluate()
-                    key = params.evaluate()
-                    return Args(location, key, resolution)  # fn, args, any
-                case [Token(type=TokenType.Name, source_text=name)]:
-                    """ .foo: ... """
-                    match Context.env.fn:
-                        case Table() | Trait() as location:
-                            key = ParamSet(Parameter(location, 'self'))
-                        case Function():
-                            key = ParamSet()
-                        case _:
-                            raise EnvironmentError(f"Line {Context.line}: illegal .dot option found")
-                    fn = Context.deref(name)
-                    # if fn is None:
-                    #     fn = Function(name=name)
-                    #     Context.env.locals[name] = fn
-                    # maybe this should have no self parameter if in Function context?
-                    return Args(fn, key, resolution)
-                case [table_or_trait, Token(type=TokenType.Name, source_text=name)]:
-                    ''' Foo.bar: ... '''
-                    t = table_or_trait.evaluate()
-                    fn = t.get(name)
-                    match t:
-                        case Table() | Trait():
-                            pattern = ParamSet(Parameter(t, 'self'))
-                        case Function():
-                            pattern = ParamSet()
-                        case None:
-                            raise RuntimeErr(f"Line {lhs.line}: leftmost container term must be a table, trait, or function."
-                                             f"\nIe, for `foo.bar: ...` then foo must be a table, trait, or function.")
-                    return Args(fn, pattern, resolution)
-                case _:
-                    raise SyntaxErr(f"Line {Context.line}: Unrecognized syntax for LHS of assignment.")
-        case OpExpr(',', keys):
-            """ key1, key2: ... """
-            key = Args(*(n.evaluate() for n in keys))
-            return Args(key, resolution)
-        case _:
-            """ key: ... """
-            key = Args(lhs.evaluate())
-            return Args(key, resolution)
+# def eval_colon_args(lhs: Node, rhs: Node) -> Args:
+#     if isinstance(rhs, Block):
+#         resolution = Closure(rhs)
+#     else:
+#         resolution = rhs.evaluate()
+#
+#     match lhs:
+#         case ParamsNode():
+#             """ [params]: ... """
+#             return Args(lhs.evaluate(), resolution)
+#         case OpExpr('.', terms):
+#             match terms:
+#                 case [OpExpr('.', [Token(type=TokenType.Name, source_text=name)]),
+#                       ParamsNode() as params] \
+#                       | [Token(params, type=TokenType.Name, source_text=name)]:
+#                     """ .foo[params] """
+#                     # TODO: this block is ridiculous.  Both the pattern and the logic are too complicated
+#                     # How do I make it better?
+#                     # - stop using the dot as the function call operator (requires overhaul of lots of pattern-matching)
+#                     # - separate back into two blocks: .foo[params]: ... and .foo: ...
+#                     # - capture leading dot in AST and transform into dedicated expr type
+#                     # - change the way foo.bar[arg] is called — eg:
+#                     #   - `foo.bar[arg]` => `bar[foo, arg]` (just like with records of tables)
+#                     #   - `foo.bar[arg]` => `bar[arg, self=foo]`
+#                     location = Context.env.fn
+#                     if location is None:
+#                         raise EnvironmentError(f"Line {Context.line}: illegal .dot option found")
+#                     key: ParamSet = params.evaluate() if params else ParamSet()
+#                     key.prepend(Parameter(location, 'self'))
+#                     fn = Context.deref(name)
+#                     # if fn is None:
+#                     #     fn = Function(name=name)
+#                     #     Context.env.locals[name] = fn
+#                     #     if not isinstance(location, Table | Trait):
+#                     #         print(f"WARNING: {name} not yet defined in current scope.  Newly created function is "
+#                     #               f" currently only accessible as `{location}.{name}`.")
+#                     return Args(fn, key, resolution)
+#                 case [fn_node, ParamsNode() as params]:
+#                     """ foo[key]: ... """
+#                     match fn_node:
+#                         case Token(type=TokenType.Name, source_text=name):
+#                             location = Context.deref(name, None)
+#                             if location is None:
+#                                 location = Function(name=name)
+#                                 Context.env.locals[name] = location
+#                         case _:
+#                             location = fn_node.evaluate()
+#                     key = params.evaluate()
+#                     return Args(location, key, resolution)  # fn, args, any
+#                 case [Token(type=TokenType.Name, source_text=name)]:
+#                     """ .foo: ... """
+#                     match Context.env.fn:
+#                         case Table() | Trait() as location:
+#                             key = ParamSet(Parameter(location, 'self'))
+#                         case Function():
+#                             key = ParamSet()
+#                         case _:
+#                             raise EnvironmentError(f"Line {Context.line}: illegal .dot option found")
+#                     fn = Context.deref(name)
+#                     # if fn is None:
+#                     #     fn = Function(name=name)
+#                     #     Context.env.locals[name] = fn
+#                     # maybe this should have no self parameter if in Function context?
+#                     return Args(fn, key, resolution)
+#                 case [table_or_trait, Token(type=TokenType.Name, source_text=name)]:
+#                     ''' Foo.bar: ... '''
+#                     t = table_or_trait.evaluate()
+#                     fn = t.get(name)
+#                     match t:
+#                         case Table() | Trait():
+#                             pattern = ParamSet(Parameter(t, 'self'))
+#                         case Function():
+#                             pattern = ParamSet()
+#                         case None:
+#                             raise RuntimeErr(f"Line {lhs.line}: leftmost container term must be a table, trait, or function."
+#                                              f"\nIe, for `foo.bar: ...` then foo must be a table, trait, or function.")
+#                     return Args(fn, pattern, resolution)
+#                 case _:
+#                     raise SyntaxErr(f"Line {Context.line}: Unrecognized syntax for LHS of assignment.")
+#         case OpExpr(',', keys):
+#             """ key1, key2: ... """
+#             key = Args(*(n.evaluate() for n in keys))
+#             return Args(key, resolution)
+#         case _:
+#             """ key: ... """
+#             key = Args(lhs.evaluate())
+#             return Args(key, resolution)
 
 def eval_colon_args(lhs: Node, rhs: Node) -> Args:
     if isinstance(rhs, Block):
@@ -295,64 +296,6 @@ def eval_colon_args(lhs: Node, rhs: Node) -> Args:
                       f"to define a function option, you should indent the function body underneath this.")
             key = Args(lhs.evaluate())
             return Args(key, resolution)
-        # case OpExpr('.', terms):
-        #     match terms:
-        #         case [OpExpr('.', [Token(type=TokenType.Name, source_text=name)]),
-        #               ParamsNode() as params] \
-        #               | [Token(params, type=TokenType.Name, source_text=name)]:
-        #             """ .foo[params] """
-        #             # TODO: this block is ridiculous.  Both the pattern and the logic are too complicated
-        #             # How do I make it better?
-        #             # - stop using the dot as the function call operator (requires overhaul of lots of pattern-matching)
-        #             # - separate back into two blocks: .foo[params]: ... and .foo: ...
-        #             # - capture leading dot in AST and transform into dedicated expr type
-        #             # - change the way foo.bar[arg] is called — eg:
-        #             #   - `foo.bar[arg]` => `bar[foo, arg]` (just like with records of tables)
-        #             #   - `foo.bar[arg]` => `bar[arg, self=foo]`
-        #             location = Context.env.fn
-        #             if location is None:
-        #                 raise EnvironmentError(f"Line {Context.line}: illegal .dot option found")
-        #             key: ParamSet = params.evaluate() if params else ParamSet()
-        #             key.prepend(Parameter(location, 'self'))
-        #             fn = Context.deref(name)
-        #             # if fn is None:
-        #             #     fn = Function(name=name)
-        #             #     Context.env.locals[name] = fn
-        #             #     if not isinstance(location, Table | Trait):
-        #             #         print(f"WARNING: {name} not yet defined in current scope.  Newly created function is "
-        #             #               f" currently only accessible as `{location}.{name}`.")
-        #             return Args(fn, key, resolution)
-        #         case [Token(type=TokenType.Name, source_text=name)]:
-        #             """ .foo: ... """
-        #             match Context.env.fn:
-        #                 case Table() | Trait() as location:
-        #                     key = ParamSet(Parameter(location, 'self'))
-        #                 case Function():
-        #                     key = ParamSet()
-        #                 case _:
-        #                     raise EnvironmentError(f"Line {Context.line}: illegal .dot option found")
-        #             fn = Context.deref(name)
-        #             # if fn is None:
-        #             #     fn = Function(name=name)
-        #             #     Context.env.locals[name] = fn
-        #             # maybe this should have no self parameter if in Function context?
-        #             return Args(fn, key, resolution)
-        #         case [table_or_trait, Token(type=TokenType.Name, source_text=name)]:
-        #             ''' Foo.bar: ... '''
-        #             t = table_or_trait.evaluate()
-        #             fn = t.get(name)
-        #             match t:
-        #                 case Table() | Trait():
-        #                     pattern = ParamSet(Parameter(t, 'self'))
-        #                 case Function():
-        #                     pattern = ParamSet()
-        #                 case None:
-        #                     raise RuntimeErr(f"Line {lhs.line}: leftmost container term must be a table, trait, or function."
-        #                                      f"\nIe, for `foo.bar: ...` then foo must be a table, trait, or function.")
-        #             return Args(fn, pattern, resolution)
-        #         case _:
-        #             raise SyntaxErr(f"Line {Context.line}: Unrecognized syntax for LHS of assignment.")
-
 
 def assign_option(*args):
     match args:
@@ -540,11 +483,12 @@ def eval_call_args(lhs: Node, rhs: Node) -> Args:
             prop = location.get(name, None)  # , search_table_frame_too=True)
             if prop is not None:
                 return Args(prop, args)
-            # 2. Try to find function in table
-            method = location.table.get(name, None)
-            if method is not None:
-                return Args(method, Args(location) + args)
-            # 3. Finally, try  to resolve name in scope
+            # 2. Try to find function in table and traits
+            for scope in (location.table, *location.table.traits):
+                method = scope.get(name, None)
+                if method is not None:
+                    return Args(method, Args(location) + args)
+            # 3. Finally, try  to resolve name normally
             fn = Context.deref(name, None)
             if fn is None:
                 raise KeyErr(f"Line {Context.line}: {location} has no slot '{name}' and no record with that "

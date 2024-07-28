@@ -25,7 +25,7 @@ else:
     # script_path = 'fibonacci.pili'
     # script_path = 'test.pili'
     # script_path = 'Tables.pili'
-    script_path = 'pili_interpreter.pili'
+    # script_path = 'pili_interpreter.pili'
     script_path = 'advent.pili'
     print('(test mode) running script', script_path, '...')
 
@@ -146,7 +146,12 @@ def execute_script(path):
 # exit()
 
 if __name__ == "__main__":
+    with open('lib.pili') as pili_lib:
+        Context.source_code = pili_lib.read()
+        lib_block = AST(Tokenizer(Context.source_code)).block
+        lib_block.execute()
     if mode in ('test', 'script'):
+
         repeats = 1
         t = timeit.timeit(lambda: execute_script(script_path), number=repeats) / repeats
         print('\n\n***************************************\n')

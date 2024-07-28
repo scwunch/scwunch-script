@@ -1,5 +1,7 @@
+print(f'Import {__name__}.py')
 import math
 from fractions import Fraction
+import stub
 
 print(f"loading module: {__name__} ...")
 

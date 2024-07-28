@@ -1,3 +1,4 @@
+print(f'Import {__name__}.py')
 import math
 from fractions import Fraction
 from Env import *
@@ -281,7 +282,7 @@ class Record:
         option, bindings = self.select(args)
         if option:
             return option.resolve(args, caller, bindings, self)
-        raise NoMatchingOptionError(f"Line {Context.line}: {args} not found in {self.name or self}")
+        raise NoMatchingOptionError(f'Line {Context.line}: {args} not found in "{self.name or self}"')
 
         # if not isinstance(args, Args):
         #     args = Args(args)
@@ -516,7 +517,7 @@ class Range(Record):
         if start is None:
             return
         i = start
-        while i <= end:
+        while i <= end if step > 0 else i >= end:
             yield py_value(i)
             i += step
 
@@ -779,6 +780,11 @@ class Table(Function):
         types: dict[str, Pattern] = {}
 
         for trait in self.traits:
+            # if trait.frame:
+            #     for name, value in trait.frame.locals.items():
+            #         if name not in self.frame:
+            #             self.frame[name] = value
+            # ^^ I thought about transferring all names from all traits into the current table, but that's a bit heavy
             for trait_field in trait.fields:
                 name = trait_field.name
                 pattern: Pattern = getattr(trait_field, 'type', None)
@@ -1912,19 +1918,10 @@ class Closure:
     #     return finish()
 
     def execute(self, args=None, caller=None, bindings=None, *, fn=None):
-        if args is None and fn is None:
-            assert args is not None or fn is not None
         env = Frame(self.scope, args, caller, bindings, fn)
         if fn:
             fn.frame = env
         Context.push(Context.line, env)
-
-        for tbl in self.block.table_names:
-            env.locals[tbl] = ListTable(name=tbl, uninitialized=True)
-        for trait in self.block.trait_names:
-            env.locals[trait] = Trait(name=trait, uninitialized=True)
-        for fn in self.block.function_names:
-            env.locals[fn] = Function(name=fn, uninitialized=True)
         self.block.execute()
         Context.pop()
         return env.return_value or caller or fn
