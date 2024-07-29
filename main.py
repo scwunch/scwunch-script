@@ -62,15 +62,9 @@ def pili_shell():
         else:
             code = next_line
         try:
-            output = pili(code)
+            output = pili(code.strip())
             if output != BuiltIns['blank']:
                 print(output)
-                # if output.instanceof(BuiltIns['str']):
-                #     print(output.value)
-                # else:
-                #     output_string = BuiltIns['string'].call(output).value
-                #     if output_string != 'root.main':
-                #         print(output_string)
         except Exception as e:
             print("Exception: ", e, '\n***')
             raise e
