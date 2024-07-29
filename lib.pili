@@ -14,7 +14,7 @@ def read_file(arg: Record, lines=BuiltIns['blank']):
             return py_value(f.readlines())
         else:
             return py_value(f.read())
-Context.deref('read').op_list[0].resolution = read_file
+state.deref('read').op_list[0].resolution = read_file
 ``]
 
 # f = File['../Advent of Code/2023/input_1']
@@ -29,7 +29,7 @@ trait regex
     extract[str regex, str text, !a, !i, !m, !s, !x, !l]:
         blank
     python[!execute, ``
-Context.deref('regex').op_list[0].resolution = lambda s, f=py_value(''): RegEx(s.value, f.value)
+state.deref('regex').op_list[0].resolution = lambda s, f=py_value(''): RegEx(s.value, f.value)
 
 def regex_extract(regex, text: PyValue[str], *,
               a=BuiltIns['blank'], i=BuiltIns['blank'], m=BuiltIns['blank'],
@@ -53,12 +53,13 @@ def regex_extract(regex, text: PyValue[str], *,
             flags |= getattr(re.RegexFlag, f.upper())
     return py_value(re.findall(regex.value, text.value, flags))
 
-Context.deref('extract').op_list[0].resolution = regex_extract
+state.deref('extract').op_list[0].resolution = regex_extract
     ``]
 
 table RegEx(regex)
-    python[``Context.deref('RegEx').op_list.extend(Context.deref('regex').op_list)``]
+    python[``state.deref('RegEx').op_list.extend(state.deref('regex').op_list)``]
 
-print python[`Context.deref('regex').op_list`]
+print python[`state.deref('regex').op_list`]
+return
 print regex[`\da`].extract['asdf3asd3Af4']
 print RegEx[`\da`].extract['asdf3asd3Af4']

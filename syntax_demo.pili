@@ -112,6 +112,8 @@ my_func[MyList ls]:  # note: you can define an option with a pattern matching a 
 
 table MyList
 	var items = {}
+	formula items fn
+
 
 	[seq ls]:
 		rec = MyList.new

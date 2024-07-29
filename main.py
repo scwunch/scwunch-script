@@ -1,66 +1,57 @@
 #!/usr/bin/env python3
-import importlib
-print(f"importing modules...")
 import sys
 import timeit
-from Env import *
-from BuiltIns import *
-from Abstract_Syntax_Tree import Tokenizer, AST, mathological, Block
-import operator_syntax
 
-print(f"starting module {__name__} ...")
+import state
+from utils import PiliException
+from lexer import Tokenizer
+from abstract_syntax_tree import AST
+from pili_builtins import *
 
+print('Start main.py')
 
-if len(sys.argv) == 1 and sys.executable == '/usr/bin/python3':  # test if running in console; pycharm executable is python3.10
-    mode = 'shell'
-elif len(sys.argv) == 2:
-    mode = 'script'
-    script_path = sys.argv[1]
-else:
-    mode = 'test'
-    script_path = "test_script.pili"
-    # script_path = "syntax_test.pili"
-    # script_path = 'syntax_demo.pili'
-    # script_path = "Dates.pili"
-    # script_path = 'fibonacci.pili'
-    # script_path = 'test.pili'
-    # script_path = 'Tables.pili'
-    # script_path = 'pili_interpreter.pili'
-    script_path = 'advent.pili'
-    print('(test mode) running script', script_path, '...')
+def init_state():
+    for sym, op in Op.items():
+        if sym in BuiltIns:
+            pass
+        BuiltIns[sym] = op.fn
+    for k, v in BuiltIns.items():
+        if hasattr(v, 'name') and v.name is None:
+            v.name = k
+    builtin_namespace = GlobalFrame(BuiltIns)  # Closure(Syntax.Block([]), bindings=BuiltIns)
+    state.root = builtin_namespace
+    state.push(-1, builtin_namespace)
 
-# pili = Function({ParamSet(): lambda: NotImplemented}, name='pili')
-# BuiltIns['pili'] = pili
-# for key, builtin in BuiltIns.items():
-#     if not getattr(builtin, 'name', False):
-#         builtin.name = key
-#     pili.names[key] = builtin
-#     # pili.add_option(ParamSet(Parameter(Matcher(key))), builtin)
-# Context.root = pili
-# Context.push(0, pili, Option(Any))
+def pili(code: str):
+    """ parse and execute an expression (or several)
+        :returns evaluation of (last) expression
+    """
+    return run(script=code, closure=False)
 
-for sym, op in Op.items():
-    if sym in BuiltIns:
-        pass
-    BuiltIns[sym] = op.fn
+def run(*, path: str = None, script: str = None, closure=True):
+    if path and script or path is script is None:
+        raise ValueError("Specify either file path or script, but not both.")
+    if path:
+        with open(path) as f:
+            script = f.read()
+    orig = state.source_path, state.source_code
+    state.source_path = path
+    state.source_code = script
+    block = AST(Tokenizer(script)).block
+    if closure:
+        block = Closure(block)
+    try:
+        return block.execute()
+    except PiliException as e:
+        return e
+    except Exception as e:
+        e.add_note(state.get_trace() + f"\n> Line {state.line}: python exception")
+        return e
+    finally:
+        state.source_path, state.source_code = orig
 
-for k, v in BuiltIns.items():
-    if hasattr(v, 'name') and v.name is None:
-        v.name = k
-builtin_namespace = GlobalFrame(BuiltIns)  # Closure(Syntax.Block([]), bindings=BuiltIns)
-Context.root = builtin_namespace
-Context.push(-1, builtin_namespace)
-
-def execute_code(code: str) -> Function:
-    block = Closure(AST(Tokenizer(code + "\n")).block)
-    block.scope |= builtin_namespace
-    return block.execute(Args())
-
-
-Context.exec = execute_code
-
-if mode == 'shell':
-    Context.push(0, pili)
+def pili_shell():
+    state.push(0, Frame(state.env))
     while True:
         code = ''
         next_line = input('> ')
@@ -71,84 +62,63 @@ if mode == 'shell':
         else:
             code = next_line
         try:
-            output = execute_code(code)
-            if output != py_value(None):
-                if output.instanceof(BuiltIns['str']):
-                    print(output.value)
-                else:
-                    output_string = BuiltIns['string'].call(output).value
-                    if output_string != 'root.main':
-                        print(output_string)
+            output = pili(code)
+            if output != BuiltIns['blank']:
+                print(output)
+                # if output.instanceof(BuiltIns['str']):
+                #     print(output.value)
+                # else:
+                #     output_string = BuiltIns['string'].call(output).value
+                #     if output_string != 'root.main':
+                #         print(output_string)
         except Exception as e:
             print("Exception: ", e, '\n***')
+            raise e
 
-def pili(code: str):
-    return AST(Tokenizer(code)).block.execute()
 
-Context.pili = pili
-
-def execute_script(path):
-    with open(path) as f:
-        script_string = f.read()
-
-    Context.source_code = script_string
-    tokenizer = Tokenizer(script_string)
-    ast = AST(tokenizer)
-    block = ast.block
-    print(ast)
-    # print('**********************************')
-    # pili.assign_option(ParamSet(), CodeBlock(ast.block))
-    # main_block = CodeBlock(ast.block)
-    # BuiltIns['pili'] = root
-    # for key, builtin in BuiltIns.items():
-    #     if not builtin.name:
-    #         builtin.name = key
-    #     root.add_option(ListPatt(Parameter(key)), builtin)
-    # Context.root = root
-    try:
-        output = Closure(block).execute(Args())
-    except PiliException as e:
+if __name__ == '__main__':
+    print("initialize global namespace...")
+    init_state()
+    print('Loading stdlib.pili')
+    e = run(path='lib.pili', closure=False)
+    if isinstance(e, Exception):
         raise e
-    except Exception as e:
-        e.add_note(Context.get_trace() + f"\n> Line {Context.line}: python exception")
-        raise e
-    # output = pili.deref('main')
-    print('Script finished with output: ', output)
+
+    if len(sys.argv) == 1 and sys.executable == '/usr/bin/python3':  # test if running in console; pycharm executable is python3.10
+        mode = 'shell'
+        pili_shell()
+    else:
+        if len(sys.argv) == 2:
+            mode = 'script'
+            script_path = sys.argv[1]
+        else:
+            mode = 'test'
+            script_path = "test_script.pili"
+            # script_path = "syntax_test.pili"
+            # script_path = 'syntax_demo.pili'
+            # script_path = "Dates.pili"
+            # script_path = 'fibonacci.pili'
+            # script_path = 'test.pili'
+            # script_path = 'Tables.pili'
+            # script_path = 'pili_interpreter.pili'
+            # script_path = 'advent.pili'
+            print('(test mode) running script', script_path, '...')
+
+        output = run(path=script_path)
+        print(f'{script_path} finished with output: ', output)
+        if isinstance(output, Exception):
+            raise output
 
 
-# def test(*args):
-#     return args
-#
-# # print(test(args=(1,2,3)))
-#
-# prog = [
-#     Inst().match(TraitMatcher(IntTrait), 'a'),
-#     Inst().save('b'),
-#     Inst().match(TraitMatcher(StrTrait)),
-#     Inst().split(-1, 1),
-#     Inst().save('b')
-# ]
-#
-# pattern = ParamSet(Parameter(TraitMatcher(IntTrait), 'a'),
-#                       Parameter(TraitMatcher(StrTrait), 'b', '+'),
-#                       named_params={'c': Parameter(TraitMatcher(NumTrait), 'c', default=py_value(0)),
-#                                     'd': Parameter(TraitMatcher(NumTrait), 'd')})
-# # pattern.parameters = (Parameter(TraitMatcher(IntTrait), 'a'),
-# #                       Parameter(TraitMatcher(StrTrait), 'b', '+'))
-# # pattern.vm = prog
-#
-# args = Args(py_value(1), py_value('two'),
-#             named_arguments={'d': py_value(Fraction(1, 2)), 'c': py_value(55)})
-# args = Args(py_value("one"), py_value("two"), py_value("three"),
-#             named_arguments={'a': py_value(-1), 'd': py_value(Fraction(2, 3)), 'b': py_value('string')})
-#
-# print(pattern.match_zip(args))
-# exit()
+
+exit()
+
+
 
 if __name__ == "__main__":
     with open('lib.pili') as pili_lib:
-        Context.source_code = pili_lib.read()
-        lib_block = AST(Tokenizer(Context.source_code)).block
+        state.source_code = pili_lib.read()
+        lib_block = AST(Tokenizer(state.source_code)).block
         lib_block.execute()
     if mode in ('test', 'script'):
 
