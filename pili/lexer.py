@@ -1,9 +1,9 @@
 # from stub import *
 import re
 from itertools import islice
-from syntax import Token, TokenType
-from utils import SyntaxErr
-from state import Op
+from .syntax import Token, TokenType
+from .utils import SyntaxErr
+from .state import Op
 
 print(f'loading {__name__}.py')
 
@@ -100,8 +100,8 @@ class Tokenizer:
             elif self.char in '[](),;':
                 text = self.char
             elif self.char == '#' and self.peek(1, 5) == 'debug':
-                text = '#debug'
                 self.next_char(6)
+                continue
             elif self.char in "#\n":
                 last_indent = self.indent
                 self.next_line()
@@ -123,8 +123,6 @@ class Tokenizer:
             else:
                 raise SyntaxErr(f'{pos} What kind of character is this? "{self.char}"')
 
-            if text == '#debug':
-                pass
             if self.idx == start:
                 self.next_char()
             end = self.idx
@@ -136,7 +134,7 @@ class Tokenizer:
                 text = self.read_string(self.in_string[-1])
                 tokens.append(Token(text, TokenType.StringPart, pos, start, self.idx))
 
-        # tokens.append(Token('', TokenType.BlockEnd, (self.ln, self.col)))
+        tokens.append(Token('', TokenType.BlockEnd, (self.ln, self.col)))
         tokens.append(Token('', TokenType.EOF, (self.ln, self.col)))
         return tokens
 

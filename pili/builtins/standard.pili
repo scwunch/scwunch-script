@@ -1,0 +1,43 @@
+##############################################
+# files
+##############################################
+trait file
+    slot path str
+
+table File(file)
+    blank
+
+read[file f, !lines]:
+    blank
+
+
+##############################################
+# regular expressions
+##############################################
+trait regex
+    slot flags str = ''
+    [str source, str flags = '']:
+        return RegEx[source, flags]
+    extract[str regex, str text; !a, !i, !m, !s, !x, !l]:
+        blank
+
+table RegEx(regex, str)
+    blank
+
+
+##############################################
+# list functions
+##############################################
+function join
+    [iter it, str sep = '']:
+        blank
+    [str sep = '', any args+]:
+        blank
+
+function extend
+    [list ls, iter it]:
+        blank
+    [list ls, iter its+]:
+        for it in its
+            ls.extend[it]
+        return ls

@@ -18,30 +18,26 @@ BASES = {'b': 2, 't': 3, 'q': 4, 'p': 5, 'h': 6, 's': 7, 'o': 8, 'n': 9, 'd': 10
 
 
 class Call:
-    def __init__(self, line, fn, option=None):
+    def __init__(self, file, line, frame, fn=None, option=None):
+        self.file = file
         self.line = line
+        self.frame = frame
         self.fn = fn
         self.option = option
 
     def __str__(self):
         if self.option:
             return f"> Line {self.line}:  {self.fn} -> {self.option.pattern}"
-        return f"> Line {self.line}:  {self.fn}"
-
-def first_push(line, env, option=None):
-    global push
-    BuiltIns['root'] = env
-    push = _push
-    push(line, env, option)
+        if self.fn:
+            return f"> Line {self.line}:  {self.fn}"
+        return f"> Line {self.line}: {self.frame}"
 
 
-push = first_push
-
-def _push(line, env_, option=None):
+def push(frame, fn=None, option=None):
     global env
-    stack.append(env_)
-    env = env_
-    trace.append(Call(line, env, option))
+    stack.append(frame)
+    env = frame
+    trace.append(Call(source_path, line, frame, fn, option))
 
 def pop():
     global env, line
@@ -54,7 +50,16 @@ def pop():
     line = trace.pop().line
 
 def get_trace():
-    return "\n".join(str(ct) for ct in trace)
+    if not trace:
+        print("<no trace available>")
+    file = None
+    trace_lines = []
+    for call in trace:
+        if call.file != file:
+            file = call.file
+            trace_lines.append(f'In file "{file}"')
+        trace_lines.append(str(call))
+    return "\n".join(trace_lines)
 
 def deref(name: str, *default):
     raise NotImplementedError('Implemented in utils.py')

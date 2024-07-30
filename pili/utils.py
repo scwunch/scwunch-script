@@ -1,7 +1,7 @@
 import math
 from fractions import Fraction
-import state
-from state import BASES, BuiltIns
+from . import state
+from .state import BASES, BuiltIns
 
 print(f'loading {__name__}.py')
 
@@ -9,7 +9,7 @@ class PiliException(Exception):
     pass
 class RuntimeErr(PiliException):
     def __str__(self):
-        return f"\n\nContext.Trace:\n{state.get_trace()}\n> {super().__str__()}"
+        return f"\n\nTraceback:\n{state.get_trace()}\n> {super().__str__()}"
 class SyntaxErr(PiliException):
     pass
 class ContextErr(SyntaxErr):
@@ -213,3 +213,9 @@ def call(fn, args):
     """ call a python function on an Args object"""
     kwargs = {**args.named_arguments, **dict(zip(args.flags, [BuiltIns['true']] * len(args.flags)))}
     return fn(*args.positional_arguments, **kwargs)
+
+def pili(*args):
+    global pili
+    from pili import pili as pili_function
+    pili = pili_function
+    return pili(*args)

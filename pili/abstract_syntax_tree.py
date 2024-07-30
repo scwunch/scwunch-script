@@ -1,8 +1,8 @@
-from state import Op
-from utils import SyntaxErr, OperatorErr
-from syntax import Node, TokenType, Token, Position, Operator
-from lexer import Tokenizer
-from interpreter import Block, TableExpr, TraitExpr, FunctionExpr, OpExpr, EmptyExpr, ParamsNode, BindExpr, IfElse, \
+from .state import Op
+from .utils import SyntaxErr, OperatorErr
+from .syntax import Node, TokenType, Token, Position, Operator
+from .lexer import Tokenizer
+from .interpreter import Block, TableExpr, TraitExpr, FunctionExpr, OpExpr, EmptyExpr, ParamsNode, BindExpr, IfElse, \
     EXPRMAP, CommandWithExpr, NamedExpr, ListLiteral, FunctionLiteral, FieldMatcherNode, ArgsNode, StringNode
 
 print(f'loading {__name__}.py')

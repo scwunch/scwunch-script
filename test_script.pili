@@ -6,7 +6,7 @@ start_time = now  []
 
 
 function foo
-	[int a, str b+; debug num c = 0, num d, *]:
+	[int a, str b+; num c = 0, num d, *]:
 		if has 'other_name'
 			return other_name
 		return a, b, c, d
@@ -19,7 +19,7 @@ function foo
 # 		return str[a] + b + str[self]
 
 
-print debug foo[a=-1, "one", "two", "three", d=20/30]
+print foo[a=-1, "one", "two", "three", d=20/30]
 print foo[1, "two", c=55, d=1/2]
 print foo[a=1, "two", c=55, d=1/2, other_name='YES!']
 
@@ -147,7 +147,7 @@ Dog.bark_breed[Dog self]:
 test[21] = (spot.bark_breed) == "Hi, I'm a terrier"
 print 'test 21 passed' if test[21] else 'test 21 FAILED'
 
-#debug test[22] = Dog has "asdfknasdf" == false and Dog has "bark_breed" == true
+test[22] = Dog has "asdfknasdf" == false and Dog has "bark_breed" == true
 test[22] = test[22] and not has 'asdfasdf' and has "Dog" == true
 test[22] = test[22] and has 'str'
 print 'test 22 passed' if test[22] else 'test 22 FAILED'
@@ -637,6 +637,31 @@ new_list = [*ls[to 3], '3', *ls[3 to]]
 test[124] = new_list == [1, 2, 3, '3', 3, 4, 5, 0]
 
 
+f = File['../Advent of Code/2023/input_1']
+input = f.read[!lines]
+test[125] = input.len
+print_test[125]
+
+text = 'one2three4five6'
+# print regex.extract[`\d`, text]
+# print regex[`\d`].extract[text]
+# print RegEx[`\d`].extract[text]
+test[130] = regex.extract[`\d`, text] == regex[`\d`].extract[text] == RegEx[`\d`].extract[text] == ["2", "4", "6"]
+print_test[130]
+
+
+ls.extend["letters"]
+ls.extend[(1,2,3), (4,5,0)]
+# print ls.join + ', '.join['', -1, -2, -3]
+test[131] = ls.join + ', '.join['', -1, -2, -3] == '123450letters123450, -1, -2, -3'
+print_test[131]
+
+
+
+
+
+return
+
 
 iter[@test]:
     return range[0, test.len-1]
@@ -659,13 +684,14 @@ function long_loop
         for i in range[n]
             (print i) if i % 1000 == 0 else blank
 
-long_loop[10_0000]
-print str[10_0000, 10d]
+reps = 100_0000
+# long_loop[reps]
+print str[reps, 10d]
 
 end_time = now[]
 loop_time = end_time - start_time
 print 'MAIN Execution time (hms): {float[round[10000 * execution_time, 4]]}'
 print "MAIN Execution time (decimal ms): {str[1000d * execution_time, 10d]}"
-print 'LOOP Execution time (hms): {float[round[10000 * loop_time, 4]]}'
-print "LOOP Execution time (decimal ms): " + str[1000d * loop_time, 10d]
+print 'LOOP ({reps} iterations) Execution time (hms): {float[round[10000 * loop_time, 4]]}'
+print "LOOP ({str[reps, 10d]} iterations) Execution time (decimal ms): " + str[1000d * loop_time, 10d]
 return 'TOTAL time: ' + str[1000d * loop_time, 10d] + "ms"

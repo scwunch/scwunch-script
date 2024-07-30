@@ -60,13 +60,16 @@ print 'start'
 is_armstrong[int n]:
     digits = list[n.str]
     digits = digits..{str n: int[n]**3}
+    digits *.= str n => int[n] ^ 3
+    digits = list[n.str]..(str n => int[n] ^ 3)
+    digits = n.str.list..(n => n.int ^ 3)
     return sum[digits] == n
 
     return n == sum[list[n.str]..{str n: int[n] ** 3}]
     return n == sum[map[{str n: int[n] ** 3}, list[str[n]]]]
     return n == n.str.list..{str n: n.int ** 3}.sum
 
-
+int num => n.str..(dig => dig.int ^ num.str.len).sum == num
 
 ```
 Just had a bit of a wacko idea:

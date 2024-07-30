@@ -2,9 +2,9 @@ import re
 from collections import deque
 from fractions import Fraction
 from typing import TypeVar, Generic
-import state
-from state import BuiltIns
-from utils import NoMatchingOptionError, RuntimeErr, SlotErr, TypeErr, write_number, MatchErr, frozendict, \
+from . import state
+from .state import BuiltIns
+from .utils import NoMatchingOptionError, RuntimeErr, SlotErr, TypeErr, write_number, MatchErr, frozendict, \
     InitializationErr, MissingNameErr, PatternErr, SyntaxErr, call
 
 print(f'loading {__name__}.py')
@@ -73,8 +73,6 @@ class OptionCatalog:
         opt.nullify()
 
     def select_and_bind(self, key):
-        if isinstance(key, tuple):
-            key = Args(*key)  # I don't think this should happen anymore
         try:
             if key in self.op_map:
                 return self.op_map[key], {}
@@ -227,7 +225,7 @@ class PyValue(Record, Generic[T]):
     def assign_option(self, key, val: Record):
         key: Args
         assert self.table == BuiltIns['List']
-        index: PyValue[int] = key[0]
+        index: PyValue[int] = key[0]  # noqa
         if index.value == len(self.value) + 1:
             self.value.append(val)
         else:
@@ -301,7 +299,6 @@ def py_value(value: T | object):
     return PyValue(table, value)
 
 
-
 class PyObj(Record, Generic[A]):
     def __init__(self, obj):
         self.obj = obj
@@ -312,6 +309,7 @@ class PyObj(Record, Generic[A]):
 
 
 class Range(Record):
+    data: list[PyValue[int]]
     def __init__(self, *args: PyValue):
         step = py_value(1)
         match args:
@@ -521,7 +519,7 @@ class Table(Function):
                           for name in defaults))
 
         def make_option(table: Table):
-            return Native(lambda args: BuiltIns['new'].call(Args(table) + args))
+            return Closure(lambda args: BuiltIns['new'].call(Args(table) + args))
 
         self.assign_option(patt,
                            make_option(self),
@@ -979,10 +977,8 @@ class ArgsMatcher(Matcher):
 
 
 class FunctionMatcher(Matcher):
-    # signature: ParamSet
-    # return_type: Matcher
-    def __init__(self, signature, return_type):
-        self.signature = signature
+    def __init__(self, pattern, return_type):
+        self.pattern = pattern
         self.return_type = return_type
 
     def basic_score(self, arg):
@@ -994,26 +990,26 @@ class FunctionMatcher(Matcher):
             yield from arg.op_list
             yield from arg.op_map.values()
 
-        if all(option.pattern.issubset(self.signature)
+        if all(option.pattern.issubset(self.pattern)
                and option.return_type.issubset(self.return_type)
                for option in options()):
             return True
 
     def issubset(self, other):
         match other:
-            case FunctionMatcher(signature=patt, return_type=ret):
-                return self.signature.issubset(patt) and self.return_type.issubset(ret)
+            case FunctionMatcher(pattern=patt, return_type=ret):
+                return self.pattern.issubset(patt) and self.return_type.issubset(ret)
             case TraitMatcher(trait=BuiltIns.get('fn')) | TableMatcher(table=BuiltIns.get('Function')):
                 return True
         return False
 
     def equivalent(self, other):
         return (isinstance(other, FunctionMatcher)
-                and other.signature == self.signature
+                and other.pattern == self.pattern
                 and other.return_type == self.return_type)
 
     def __repr__(self):
-        return f"FunctionMatcher({self.signature} => {self.return_type})"
+        return f"FunctionMatcher({self.pattern} => {self.return_type})"
 
 class AnyMatcher(Matcher):
     rank = 100, 0
@@ -1071,8 +1067,8 @@ class IterMatcher(Matcher):
 
 # I think this needs to be defined here (rather than with the rest of the operator functions)
 # in order to be used by FieldMatcher (below)
-def dot_fn(a: Record, b: Record, *, caller=None, suppress_error=False):
-    assert caller is None and isinstance(b, PyValue) and isinstance(b.value, str)
+def dot_fn(a: Record, b: Record, *, suppress_error=False) -> Record | None:
+    assert isinstance(b, PyValue) and isinstance(b.value, str)
     if hasattr(a, "uninitialized"):
         raise InitializationErr(f"Line {state.line}: "
                                 f"Cannot call or get property of {a.table} {a.name or str(a)} before initialization.")
@@ -1091,24 +1087,7 @@ def dot_fn(a: Record, b: Record, *, caller=None, suppress_error=False):
         raise MissingNameErr(f'Line {state.line}: {a.table} {a} has no field "{name}", '
                              f"and also not found as function name in scope.")
     return fn.call(a)
-    # match b:
-    #     case Args() as args:
-    #         return a.call(args, caller=caller)
-    #     case PyValue(value=str() as name):
-    #         prop = a.get(name, None)
-    #         if prop is not None:
-    #             return prop
-    #         fn = a.table.get(name, state.deref(name, None))
-    #         if fn is None:
-    #             if suppress_error:
-    #                 return  # this is for pattern matching
-    #             raise MissingNameErr(f"Line {state.line}: {a.table} {a} has no field \"{name}\", "
-    #                                  f"and also not found as function name in scope.")
-    #         return fn.call(a, caller=caller)
-    #     case _:
-    #         print(f"WARNING: Line {state.line}: "
-    #               f"right-hand operand of dot operator should be string or list of arguments.  Found {b}.")
-    #         return a.call(b)
+
 
 class FieldMatcher(Matcher):
     ordered_fields: tuple
@@ -1976,15 +1955,21 @@ class Closure:
     scope = None
 
     def __init__(self, block):
-        self.block = block
+        if isinstance(block, PyFunction):
+            self.fn = block
+        else:
+            self.block = block
         self.scope = state.env
 
-    def execute(self, args=None, caller=None, bindings=None, *, fn=None):
-        env = Frame(self.scope, args, caller, bindings, fn)
+    def execute(self, args=None, caller=None, bindings=None, *, fn=None, option=None):
+        env = Frame(self.scope, args, caller, bindings, fn, option)
         if fn:
             fn.frame = env
-        state.push(state.line, env)
-        self.block.execute()
+        state.push(env, fn, option)
+        if hasattr(self, 'block'):
+            self.block.execute()
+        else:
+            env.return_value = self.fn(args)
         state.pop()
         return env.return_value or caller or fn
 
@@ -1992,36 +1977,36 @@ class Closure:
         return f"Closure({len(self.block.statements)})"
 
 
-class Native(Closure):
-    # I don't think the motivation for this subclass is sound.
-    # I think I've already eliminated the need for it in the two list_get options,
-    # now I need to eliminate it from the Table.integrate_traits method
-    def __init__(self, fn: PyFunction):
-        print('DEPRECATION WARNING: Native(Closure).__init__')
-        self.fn = fn
-        self.scope = state.env
-
-    def execute(self, args=None, caller=None, bindings=None, *, fn=None):
-        print('DEPRECATION WARNING: Native(Closure).execute')
-        assert args is not None or fn is not None
-        env = Frame(self.scope, args, caller, bindings, fn)
-        state.push(state.line, env)
-        line = state.line
-        if isinstance(args, tuple):
-            env.return_value = self.fn(*args)
-        else:
-            env.return_value = self.fn(args)
-        state.line = line
-        state.pop()
-        return env.return_value or caller or fn
-
-    def __repr__(self):
-        return f"Native({self.fn})"
+# class Native(Closure):
+#     # I don't think the motivation for this subclass is sound.
+#     # I think I've already eliminated the need for it in the two list_get options,
+#     # now I need to eliminate it from the Table.integrate_traits method
+#     def __init__(self, fn: PyFunction):
+#         print('DEPRECATION WARNING: Native(Closure).__init__', fn)
+#         self.fn = fn
+#         self.scope = state.env
+#
+#     def execute(self, args=None, caller=None, bindings=None, *, fn=None):
+#         print('DEPRECATION WARNING: Native(Closure).execute: ', self.fn)
+#         assert args is not None or fn is not None
+#         env = Frame(self.scope, args, caller, bindings, fn)
+#         state.push(state.line, env)
+#         line = state.line
+#         if isinstance(args, tuple):
+#             env.return_value = self.fn(*args)
+#         else:
+#             env.return_value = self.fn(args)
+#         state.line = line
+#         state.pop()
+#         return env.return_value or caller or fn
+#
+#     def __repr__(self):
+#         return f"Native({self.fn})"
 
 class Frame:
     return_value = None
 
-    def __init__(self, scope, args=None, caller=None, bindings=None, fn=None):
+    def __init__(self, scope, args=None, caller=None, bindings=None, fn=None, option=None):
         # self.names = bindings or {}
         self.vars = {}
         self.locals = bindings or {}
@@ -2031,6 +2016,7 @@ class Frame:
         self.args = args
         self.caller = caller
         self.fn = fn
+        self.option = option
 
     def assign(self, name: str, value: Record):
         scope = self
@@ -2143,7 +2129,7 @@ class Option(Record):
         # if self.dot_option:
         #     caller = args[0]
         if self.block:
-            return self.block.execute(args, caller, bindings)
+            return self.block.execute(args, caller, bindings, fn=caller, option=self)
             # closure = Closure(self.block, args, caller, bindings)
             # state.push(state.line, closure, self)
             # res = self.block.evaluate()

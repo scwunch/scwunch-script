@@ -1,8 +1,10 @@
 import importlib
-from state import Op
-from utils import read_number, ContextErr
-from runtime import *
-from syntax import Node, TokenType, Token, Position, Operator, SINGLETONS
+from . import state
+# from runtime import FieldMatcher
+from .state import Op, BuiltIns
+from .utils import read_number, ContextErr, SyntaxErr, RuntimeErr, TypeErr
+from .runtime import *
+from .syntax import Node, TokenType, Token, Position, Operator, SINGLETONS, ListNode, Block
 
 print(f'loading {__name__}.py')
 
@@ -30,13 +32,27 @@ def eval_token_pattern(self: Token, name_as_any=False):
     return patternize(self.evaluate())
 Token.eval_pattern = eval_token_pattern
 
-
-class ListNode(Node):
-    nodes: list[Node]
-    def __init__(self, nodes: list[Node], pos: Position = None):
-        self.nodes = nodes
-        self.pos = pos  # or Concrete(nodes).pos
-
+def execute_block(self: Block) -> Record:
+    line = state.line
+    val = BuiltIns['blank']
+    for tbl in self.table_names:
+        # noinspection PyTypeChecker
+        state.env.locals[tbl] = ListTable(name=tbl, uninitialized=True)
+    for trait in self.trait_names:
+        # noinspection PyTypeChecker
+        state.env.locals[trait] = Trait(name=trait, uninitialized=True)
+    for fn in self.function_names:
+        # noinspection PyTypeChecker
+        state.env.locals[fn] = Function(name=fn, uninitialized=True)
+    for expr in self.statements:
+        state.line = expr.line
+        val = expr.evaluate()
+        if state.env.return_value:
+            break
+        if state.break_loop or state.continue_:
+            break
+    state.line = line
+    return val
 
 class StringNode(ListNode):
     def __repr__(self):
@@ -78,19 +94,6 @@ class StringNode(ListNode):
 
         return py_value(''.join(eval_string_parts(self.nodes)))
 
-# class Expression(Node):
-#     def __init__(self, line, source):
-#         self.pos = (line, -1)
-#         self.line = line
-#         self.source_text = source
-#
-#     def evaluate(self):
-#         raise NotImplementedError()
-#
-#     # def __repr__(self):
-#     #     if self.line:
-#     #         return f"Line {self.line}: {self.source_text}"
-#     #     return self.source_text
 
 class Block(ListNode):
     """

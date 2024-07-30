@@ -1,4 +1,4 @@
-from runtime import Frame, Record, Function, Option
+from runtime import Frame, Record, Function, Option, Table, Trait, PyValue
 from syntax import Operator
 
 print(f'loading {__name__}.py')
@@ -16,7 +16,7 @@ continue_: int
 settings: dict[str]
 
 Op: dict[str, Operator] = {}
-BuiltIns: dict[str, Record] = {}
+BuiltIns: dict[str, Record | Function | Table | Trait | PyValue] = {}
 BASES: dict[str, int] = {'b': 2, 't': 3, 'q': 4, 'p': 5, 'h': 6, 's': 7, 'o': 8, 'n': 9, 'd': 10}
 
 
@@ -25,9 +25,14 @@ class Call:
     line: int
     fn: Function
     option: Option
-    def __init__(self, line: int, fn: Function, option: Option | None = None): ...
+    def __init__(self,
+                 file: str,
+                 line: int,
+                 env: Frame,
+                 fn: Function = None,
+                 option: Option = None): ...
 
-def push(line: int, env: Frame, option: Option | None = None): ...
+def push(frame: Frame, fn: Function = None, option: Option = None): ...
 
 def pop(): ...
 
