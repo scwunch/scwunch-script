@@ -31,7 +31,7 @@ def pili(code: str):
     """
     return run(script=code, closure=False)
 
-def run(*, path: str = None, script: str = None, closure=True):
+def run(*, path: str = None, script: str = None, closure=True, catch_error=True):
     if path and script or path is script is None:
         raise ValueError("Specify either file path or script, but not both.")
     if path:
@@ -46,10 +46,16 @@ def run(*, path: str = None, script: str = None, closure=True):
     try:
         return block.execute()
     except PiliException as e:
-        return e
+        if catch_error:
+            return e
+        else:
+            raise e
     except Exception as e:
         e.add_note(state.get_trace() + f"\n> Line {state.line}: python exception")
-        return e
+        if catch_error:
+            return e
+        else:
+            raise e
     finally:
         state.source_path, state.source_code = orig
 
@@ -73,7 +79,7 @@ def pili_shell():
             raise e
 
 
-run(path='pili/builtins/standard.pili', closure=False)
+run(path='pili/builtins/standard.pili', closure=False, catch_error=False)
 from .builtins import standard
 
 if __name__ == '__main__':

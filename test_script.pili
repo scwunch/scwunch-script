@@ -152,7 +152,7 @@ test[22] = test[22] and not has 'asdfasdf' and has "Dog" == true
 test[22] = test[22] and has 'str'
 print 'test 22 passed' if test[22] else 'test 22 FAILED'
 
-test[23] = (Dog.?[23] ?? "fall back") == "fall back" and (spot.?name ?? "no name") == 'Rover'
+test[23] = (Dog?[23] ?? "fall back") == "fall back" and (spot.?name ?? "no name") == 'Rover'
 print 'test 23 passed' if test[23] else 'test 23 FAILED'
 
 foo[str|int]:
@@ -657,10 +657,27 @@ test[131] = ls.join + ', '.join['', -1, -2, -3] == '123450letters123450, -1, -2,
 print_test[131]
 
 
+table Foo
+    slot a int
+    slot b str?
+    .echo:
+        return self.?c ?? self.?b ?? self.a
+    .add[Foo other]:
+        return Foo[self.a + other.a,
+                   (self.b ?? '') + (other.b ?? '')]
+
+foo1 = Foo[11]
+foo2 = Foo[22, 'twenny-one']
+fools = [foo1, foo2, foo1.add[foo2]]
+test[132] = fools..a == [11, 22, 33] and fools..b == [blank, 'twenny-one', 'twenny-one']
+test[132] &&= (fools..?c
+               == fools..?subtract[foo2]
+               == fools..add?['no match']
+               == [blank] * 3 )
+test[132] &&= and[*fools..?add?[foo2]]
+print_test[132]
 
 
-
-return
 
 
 iter[@test]:
@@ -686,7 +703,7 @@ function long_loop
 
 reps = 100_0000
 # long_loop[reps]
-print str[reps, 10d]
+# print str[reps, 10d]
 
 end_time = now[]
 loop_time = end_time - start_time

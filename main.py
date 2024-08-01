@@ -95,7 +95,7 @@ if __name__ == '__main__':
             # script_path = 'test.pili'
             # script_path = 'Tables.pili'
             # script_path = 'pili_interpreter.pili'
-            # script_path = 'advent.pili'
+            # script_path = 'advent_2.pili'
             print('(test mode) running script', script_path, '...')
 
         output = None

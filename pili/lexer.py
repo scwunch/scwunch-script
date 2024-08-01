@@ -99,6 +99,8 @@ class Tokenizer:
                         self.fn_lv -= 1
             elif self.char in '[](),;':
                 text = self.char
+                if text == '[' and tokens and tokens[-1].text == '?':
+                    tokens[-1].text = 'call?'
             elif self.char == '#' and self.peek(1, 5) == 'debug':
                 self.next_char(6)
                 continue

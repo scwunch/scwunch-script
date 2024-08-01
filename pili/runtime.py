@@ -5,7 +5,7 @@ from typing import TypeVar, Generic
 from . import state
 from .state import BuiltIns
 from .utils import NoMatchingOptionError, RuntimeErr, SlotErr, TypeErr, write_number, MatchErr, frozendict, \
-    InitializationErr, MissingNameErr, PatternErr, SyntaxErr, call
+    InitializationErr, MissingNameErr, PatternErr, SyntaxErr, call, KeyErr, limit_str
 
 print(f'loading {__name__}.py')
 
@@ -87,13 +87,13 @@ class OptionCatalog:
             bindings = opt.pattern.match(key)
             score, saves = bindings is not None, bindings
             if score == 1:
-                if state.debug is 0:
+                if not state.debug and state.debug is not False:
                     state.debug = True  # unpause debug
                 return opt, saves
             if score > high_score:
                 high_score = score
                 option, bindings = opt, saves
-        if state.debug is 0:
+        if not state.debug and state.debug is not False:
             state.debug = True  # unpause debug
         return option, bindings
 
@@ -151,21 +151,20 @@ class Record:
             case None:
                 raise SlotErr(f"Line {state.line}: no field found with name '{name}'.")
 
-    def call(self, *args, flags=None, caller=None, **kwargs):
-        """ A Record can be called on multiple values (like calling a regular function) with flags and kwargs,
+    def call(self, *args, safe_call=False):
+        """ A Record can be called on multiple values (like calling a regular function),
             in which case it will build an Args object.  Or, it can be called on an already built Args object. """
         match args:
-            case [Args()] if flags is None and not kwargs:
-                args = args[0]
             case [Args() as args]:
-                print("WARNING: this might be dangerous, I'm not sure yet.")
-                args += Args(flags=flags, **kwargs)
+                pass
             case _:
-                args = Args(*args, flags=flags, **kwargs)
+                args = Args(*args)
 
         option, bindings = self.select(args)
         if option:
-            return option.resolve(args, caller, bindings, self)
+            return option.resolve(args, bindings, self)
+        if safe_call:
+            return BuiltIns['blank']
         raise NoMatchingOptionError(f'Line {state.line}: {args} not found in "{self.name or self}"')
 
     def select(self, args):
@@ -221,6 +220,35 @@ class PyValue(Record, Generic[T]):
         if not self.value:
             raise ValueError(f"Line {state.line}: Pili indices start at ±1.  0 is not a valid index.")
         return self.value - (self.value > 0)
+
+    def call(self, *args, safe_call=False):
+        if BuiltIns['seq'] not in self.table.traits:
+            return super().call(*args, safe_call=safe_call)
+        match args:
+            case [Args() as args]:
+                pass
+            case _:
+                args = Args(*args)
+        seq = self.value
+        match args:
+            case Args(positional_arguments=(PyValue() as index, )):
+                pass
+            case Args(named_arguments={'index': PyValue() as index}):
+                pass
+            case Args(positional_arguments=[Range() as rng]):
+                return py_value(seq[rng.slice])
+            case _:
+                raise AssertionError
+        try:
+            if isinstance(seq, str):
+                return py_value(seq[index])
+            return seq[index]
+        except IndexError as e:
+            raise KeyErr(f"Line {state.line}: {e}")
+        except TypeError as e:
+            if index.value is None:
+                raise KeyErr(f"Line {state.line}: Pili sequence indices start at 1, not 0.")
+            raise KeyErr(f"Line {state.line}: {e}")
 
     def assign_option(self, key, val: Record):
         key: Args
@@ -306,6 +334,41 @@ class PyObj(Record, Generic[A]):
 
     def to_string(self):
         return py_value(repr(self.obj))
+
+    def get(self, name, *default, search_table_frame_too=False):
+        return py_value(getattr(self.obj, name, *default))
+
+    def call(self, *args, safe_call=False):
+        match args:
+            case [Args(positional_arguments=args, flags=flags, named_arguments=kwargs)]:
+                pass
+            case _:
+                flags = ()
+                kwargs = {}
+        kwargs = {k: v.value for k, v in kwargs.items()}
+        kwargs.update(dict(zip(flags, [True] * len(flags))))
+        return py_value(self.obj(*(arg.value for arg in args), **kwargs))
+
+        def extract_pyvalue(rec: Record):
+            match rec:
+                case PyValue(value=value) | PyObj(obj=value):
+                    return value
+                case _:
+                    raise TypeErr(f"Line {state.line}: incompatible type for python function: {rec.table}")
+
+        def py_dot(a: PyObj, b: Args | PyValue[str]):
+            obj = a.obj
+            match b:
+                case PyValue(value=str() as name):
+                    return py_value(getattr(obj, name))
+                case Args(positional_arguments=args, named_arguments=kwargs, flags=flags):
+                    kwargs.update(dict(zip(flags, [BuiltIns['true']] * len(flags))))
+                    return py_value(
+                        obj(*map(extract_pyvalue, args), **{k: extract_pyvalue(v) for k, v in kwargs.items()}))
+                case _:
+                    raise Exception
+            kwargs = {**args.named_arguments, **dict(zip(args.flags, [BuiltIns['true']] * len(args.flags)))}
+            return fn(*args.positional_arguments, **kwargs)
 
 
 class Range(Record):
@@ -1065,28 +1128,43 @@ class IterMatcher(Matcher):
             return
         return self.params.match(Args(*it))
 
-# I think this needs to be defined here (rather than with the rest of the operator functions)
-# in order to be used by FieldMatcher (below)
-def dot_fn(a: Record, b: Record, *, suppress_error=False) -> Record | None:
-    assert isinstance(b, PyValue) and isinstance(b.value, str)
-    if hasattr(a, "uninitialized"):
+
+def dot_call_fn(rec: Record, *name_and_or_args, safe_get=False, swizzle=False, safe_call=False):
+    match name_and_or_args:
+        case [PyValue(value=str(name)) | str(name), *args]:
+            args, = args or (None,)
+        case [Args() as args]:
+            return rec.call(args, safe_call=safe_call)
+        case _:
+            raise ValueError('either name or args should be non-None')
+
+    if swizzle and swizzle.truthy:
+        return py_value([dot_call_fn(item, name, args, safe_get=safe_get, safe_call=safe_call) for item in rec])
+
+    if hasattr(rec, "uninitialized"):
         raise InitializationErr(f"Line {state.line}: "
-                                f"Cannot call or get property of {a.table} {a.name or str(a)} before initialization.")
-    name = b.value
-    prop = a.get(name, None)
+                                f"Cannot call or get property of {limit_str(rec)} before initialization.")
+    # 1. Try to resolve slot/formula in left
+    prop = rec.get(name, None)  # , search_table_frame_too=True)
     if prop is not None:
-        return prop
-    for scope in (a.table, *a.table.traits):
+        if args is None:
+            return prop
+        return prop.call(args, safe_call=safe_call)
+    if args is None:
+        args: Args = Args()
+    # 2. Try to find function in table and traits
+    for scope in (rec.table, *rec.table.traits):
         method = scope.get(name, None)
         if method is not None:
-            return method.call(a)
+            return method.call(Args(rec) + args, safe_call=safe_call)
+    # 3. Finally, try  to resolve name normally
     fn = state.deref(name, None)
     if fn is None:
-        if suppress_error:
-            return  # this is for pattern matching
-        raise MissingNameErr(f'Line {state.line}: {a.table} {a} has no field "{name}", '
-                             f"and also not found as function name in scope.")
-    return fn.call(a)
+        if safe_get:
+            return BuiltIns['blank']
+        raise KeyErr(f"Line {state.line}: {limit_str(rec)} has no slot '{name}' and no record with that "
+                     f"name found in current scope either.")
+    return fn.call(Args(rec) + args, safe_call=safe_call)
 
 
 class FieldMatcher(Matcher):
@@ -1117,8 +1195,8 @@ class FieldMatcher(Matcher):
                                          f"Try using fewer fields, or named fields instead.")
                     continue
             else:
-                prop = dot_fn(arg, py_value(key), suppress_error=True)
-            if prop is None:
+                prop = dot_call_fn(arg, key, safe_get=True)
+            if prop is BuiltIns['blank']:
                 if param.required:
                     return None
                 continue
@@ -1777,7 +1855,11 @@ class ParamSet(Pattern):
         yield from enumerate(self.parameters)
         yield from self.named_params.items()
 
-    def match(self, args) -> None | dict[str, Record]:
+    def match(self, args: Args | Record) -> None | dict[str, Record]:
+        if not isinstance(args, Args):
+            if BuiltIns['iter'] not in args.table.traits:
+                return
+            args = Args(*args)  # noqa
         kwargs: dict[str, Record] = dict(args.named_arguments)
         for f in args.flags:
             kwargs[f] = BuiltIns['true']
@@ -1961,17 +2043,18 @@ class Closure:
             self.block = block
         self.scope = state.env
 
-    def execute(self, args=None, caller=None, bindings=None, *, fn=None, option=None):
-        env = Frame(self.scope, args, caller, bindings, fn, option)
-        if fn:
-            fn.frame = env
+    def execute(self, args=None, bindings=None, *, fn=None, option=None, link_frame=None):
+        fn = fn or link_frame
+        env = Frame(self.scope, args, bindings, fn, option)
+        if link_frame:
+            link_frame.frame = env
         state.push(env, fn, option)
         if hasattr(self, 'block'):
             self.block.execute()
         else:
             env.return_value = self.fn(args)
         state.pop()
-        return env.return_value or caller or fn
+        return env.return_value or fn
 
     def __repr__(self):
         return f"Closure({len(self.block.statements)})"
@@ -2006,7 +2089,7 @@ class Closure:
 class Frame:
     return_value = None
 
-    def __init__(self, scope, args=None, caller=None, bindings=None, fn=None, option=None):
+    def __init__(self, scope, args=None, bindings=None, fn=None, option=None):
         # self.names = bindings or {}
         self.vars = {}
         self.locals = bindings or {}
@@ -2014,7 +2097,6 @@ class Frame:
         # self.scope = code_block.scope
         self.scope = scope
         self.args = args
-        self.caller = caller
         self.fn = fn
         self.option = option
 
@@ -2115,11 +2197,11 @@ class Option(Record):
 
     resolution = property(get_resolution, set_resolution, nullify)
 
-    def resolve(self, args, caller, bindings=None, _self=None):
+    def resolve(self, args, bindings=None, caller=None):
         if isinstance(args, tuple):
             print("WARNING: encountered tuple of args rather than Args object.")
         if self.alias:
-            return self.alias.resolve(args, caller, bindings, _self)
+            return self.alias.resolve(args, bindings, caller)
         if self.value is not None:
             return self.value
         if self.fn:
@@ -2129,7 +2211,7 @@ class Option(Record):
         # if self.dot_option:
         #     caller = args[0]
         if self.block:
-            return self.block.execute(args, caller, bindings, fn=caller, option=self)
+            return self.block.execute(args, bindings, fn=caller, option=self)
             # closure = Closure(self.block, args, caller, bindings)
             # state.push(state.line, closure, self)
             # res = self.block.evaluate()

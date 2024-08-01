@@ -100,7 +100,7 @@ BuiltIns['range'].fields = [Slot('start', UnionMatcher(TraitMatcher(NumTrait), V
 
 BuiltIns['PythonObject'] = ListTable(name='PythonObject')
 
-print("DONE ADDING BUILTIN TABLES.")
+""" DONE ADDING BUILTIN TABLES."""
 
 
 BuiltIns['any'] = Parameter(AnyMatcher())
@@ -114,8 +114,6 @@ StringParam = Parameter(TraitMatcher(BuiltIns["str"]))
 NormalParam = Parameter(UnionMatcher(TraitMatcher(BuiltIns['num']), TraitMatcher(BuiltIns['str'])))
 SeqParam = Parameter(TraitMatcher(SeqTrait))
 ListParam = Parameter(TraitMatcher(ListTrait))
-# NonStr = TraitMatcher(StrTrait)
-# NonStr.invert = 1
 NonStr = NotMatcher(TraitMatcher(StrTrait))
 NonStrSeqParam = Parameter(IntersectionMatcher(TraitMatcher(SeqTrait), NonStr))
 IterParam = Parameter(TraitMatcher(IterTrait))
@@ -138,9 +136,9 @@ AnyPattern = ParamSet(Parameter(AnyMatcher(), quantifier="*"))
 #                                                                NonZeroIntParam.match_score(x.value[0]))))
 
 
-BuiltIns['bool'].assign_option(ParamSet(AnyParam), lambda x: py_value(bool(x.value)))
-BuiltIns['num'].assign_option(ParamSet(BoolParam), lambda x: py_value(int(x.value)))
-BuiltIns['num'].assign_option(ParamSet(NumericParam), lambda x: py_value(x.value))
+BuiltIns['bool'].assign_option(ParamSet(AnyParam), lambda x: py_value(x.truthy))
+BuiltIns['num'].assign_option(ParamSet(BoolParam), lambda x: py_value(int(x.truthy)))
+BuiltIns['num'].assign_option(ParamSet(NumericParam), lambda x: x)
 BuiltIns['num'].assign_option(ParamSet(StringParam), lambda x: py_value(read_number(x.value, state.settings['base'])))
 BuiltIns['num'].assign_option(ParamSet(StringParam, IntegralParam),
                               lambda x, b: py_value(read_number(x.value, b.value)))
@@ -151,17 +149,18 @@ BuiltIns['str'].assign_option(ParamSet(AnyParam), lambda x: x.to_string())
 BuiltIns['str'].assign_option(Option(StringParam, lambda x: x))
 BuiltIns['str'].assign_option(ParamSet(NumericParam, IntegralParam),
                               lambda n, b: py_value(write_number(n.value, b.value)))
-BuiltIns['list'].assign_option(ParamSet(SeqParam), lambda x: py_value(list(x.value)))
+# BuiltIns['list'].assign_option(ParamSet(SeqParam), lambda x: py_value(list(x.value)))
 BuiltIns['list'].assign_option(ParamSet(IterParam), lambda x: py_value(list(x)))
-BuiltIns['tuple'].assign_option(ParamSet(SeqParam), lambda x: py_value(tuple(x.value)))
-BuiltIns['set'].assign_option(ParamSet(SeqParam), lambda x: py_value(set(x.value)))
-BuiltIns['iter'].assign_option(Option(UnionMatcher(*(TraitMatcher(BuiltIns[t])
-                                                     for t in ('tuple', 'list', 'set', 'frozenset', 'str', 'range'))),
-                                      lambda x: x))
+BuiltIns['tuple'].assign_option(ParamSet(IterParam), lambda x: py_value(tuple(x)))
+BuiltIns['set'].assign_option(ParamSet(IterParam), lambda x: py_value(set(x)))
+# BuiltIns['iter'].assign_option(Option(UnionMatcher(*(TraitMatcher(BuiltIns[t])
+#                                                      for t in ('tuple', 'list', 'set', 'frozenset', 'str', 'range'))),
+#                                       lambda x: x))
+BuiltIns['iter'].assign_option(ParamSet(IterParam), lambda x: x)
 
 def make_custom_iter(rec: Record):
-    while not dot_fn(rec, py_value('done')).value:
-        yield dot_fn(rec, py_value('next'))
+    while not dot_call_fn(rec, 'done').value:
+        yield dot_call_fn(rec, 'next')
 BuiltIns['iter'].assign_option(ParamSet(Parameter(FieldMatcher((), dict(done=AnyMatcher(), next=AnyMatcher())))),
                                make_custom_iter)
 
@@ -207,8 +206,16 @@ BuiltIns['len'] = Function({SeqParam: lambda s: py_value(len(s.value)),
 # #                                 lambda a, b: py_value(b in (opt.value for opt in a.options)))
 # # BuiltIns['options'] = Function({AnyParam: lambda x: piliize([py_value(lp.pattern) for lp in x.options])})
 # # BuiltIns['names'] = Function({AnyParam: lambda x: piliize([py_value(k) for k in x.named_options.keys()])})
-BuiltIns['keys'] = Function({FunctionParam: lambda fn: py_value({k.positional_arguments for k in fn.op_map.keys()})})
-#
+def get_keys(fn: Function):
+    return py_value({k[0] if len(k) == 1 else py_value(k.positional_arguments)
+                     for k in fn.op_map.keys()})
+def get_items(fn: Function):
+    return py_value([((k[0] if len(k) == 1 else py_value(k.positional_arguments)), v.value)
+                     for k, v in fn.op_map.items()])
+BuiltIns['keys'] = Function({FunctionParam: get_keys})
+BuiltIns['values'] = Function({FunctionParam: lambda fn: py_value([opt.value for opt in fn.op_map.values()])})
+BuiltIns['items'] = Function({FunctionParam: get_items})
+#'keys
 # BuiltIns['max'] = Function({Parameter(BuiltIns["num"], quantifier='+'):
 #                                 lambda *args: py_value(max(*[arg.value for arg in args])),
 #                             Parameter(TraitMatcher(BuiltIns["str"]), quantifier='+'):

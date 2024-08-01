@@ -21,7 +21,7 @@ def eval_token(self: Token):
             return py_value(s.strip("`"))
         case TokenType.Name:
             if s == 'self':
-                return state.deref(s, state.env.caller)
+                return state.deref(s, state.env.fn)
             return state.deref(s)
     raise NotImplementedError(f"Line {self.line}: Could not evaluate token", self)
 Token.evaluate = eval_token
@@ -245,7 +245,7 @@ class FieldMatcherNode(ListNode):
 class FunctionLiteral(ListNode):
     def evaluate(self):
         fn = Function()
-        Closure(Block(self.nodes)).execute(fn=fn)
+        Closure(Block(self.nodes)).execute(link_frame=fn)
         return fn
 
     def eval_pattern(self, name_as_any=False) -> Pattern:
@@ -285,7 +285,7 @@ class OpExpr(Node):
     def eval_pattern(self, name_as_any=False) -> Pattern:
         match self.op.text:
             case ',':
-                return ParamSet(*(t.eval_pattern() for t in self.terms))
+                return ParamSet(*(t.eval_pattern(name_as_any=True) for t in self.terms))
             case ':':
                 lhs, rhs = self.terms
                 if not (isinstance(lhs, Token) and lhs.type == TokenType.Name):
@@ -611,7 +611,7 @@ class FunctionExpr(ExprWithBlock):
             fn = Function(name=self.fn_name)
             state.env.assign(self.fn_name, fn)
         if self.body is not None:
-            Closure(self.body).execute(fn=fn)
+            Closure(self.body).execute(link_frame=fn)
         return fn
 
     def __repr__(self):
@@ -637,7 +637,7 @@ class TraitExpr(FunctionExpr):
             trait = Trait(name=self.fn_name)
             state.env.assign(self.fn_name, trait)
         if self.body is not None:
-            Closure(self.body).execute(fn=trait)
+            Closure(self.body).execute(link_frame=trait)
         return trait
 
     def __repr__(self):
@@ -680,7 +680,7 @@ class TableExpr(FunctionExpr):
 
         table.traits = (*table.traits, *gen_traits())
         if self.body is not None:
-            Closure(self.body).execute(fn=table)
+            Closure(self.body).execute(link_frame=table)
         table.integrate_traits()
         return table
 

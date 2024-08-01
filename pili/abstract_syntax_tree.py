@@ -366,7 +366,11 @@ class AST:
         match self.tok.type:
             case TokenType.Operator | TokenType.Comma | TokenType.Semicolon | TokenType.Else | TokenType.Name:
                 yield self.tok
+                sym = self.tok.text
                 self.seek()
+                if sym == 'call?':
+                    _, args_node = self.read_operator()
+                    yield args_node
             case TokenType.LeftParen:
                 pos = self.tok.pos
                 yield Token('&', TokenType.Operator, pos.pos)

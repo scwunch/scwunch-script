@@ -1,5 +1,6 @@
 from pili.syntax import default_op_fn
 from .base import *
+from ..utils import limit_str
 
 print(f'loading {__name__}.py')
 
@@ -235,148 +236,74 @@ def eval_dot_args(lhs: Node, rhs: Node) -> Args:
         right_arg = rhs.evaluate()
     return Args(lhs.evaluate(), right_arg)
 
-# I had to import the dot_fn from patterns.py because it needs to be used there for the field matcher
-"""
-# def dot_fn(a: Record, b: Record, *, caller=None, suppress_error=False):
-#     match b:
-#         case Args() as args:
-#             return a.call(args, caller=caller)
-#         case PyValue(value=str() as name):
-#             prop = a.get(name, None)
-#             if prop is not None:
-#                 return prop
-#             fn = a.table.get(name, state.deref(name, None))
-#             if fn is None:
-#                 if suppress_error:
-#                     return  # this is for pattern matching
-#                 raise MissingNameErr(f"Line {state.line}: {a.table} {a} has no field \"{name}\", "
-#                                      f"and also not found as function name in scope.")
-#             return fn.call(a, caller=caller)
-#         # case PyValue(value=tuple() | list() as args):
-#         #     return a.call(*args)
-#         case _:
-#             print(f"WARNING: Line {state.line}: "
-#                   f"right-hand operand of dot operator should be string or list of arguments.  Found {b}.")
-#             return a.call(b)
-#     # raise OperatorError(f"Line {state.line}: "
-#     #                     f"right-hand operand of dot operator should be string or list of arguments.  Found {b}.")
-"""
 
-def list_get(seq: PyValue, args: Args):
-    try:
-        seq = seq.value  # noqa
-    except AttributeError:
-        raise TypeErr(f"Line {state.line}: Could not find sequence value of non PyValue {seq}")
-    match args:
-        case Args(positional_arguments=(PyValue() as index,)):
-            pass
-        case Args(named_arguments={'index': PyValue() as index}):
-            pass
-        case Args(positional_arguments=[Range() as rng]):
-            return py_value(seq[rng.slice])
-        case _:
-            raise AssertionError
-    try:
-        if isinstance(seq, str):
-            return py_value(seq[index])
-        return seq[index]
-    except IndexError as e:
-        raise KeyErr(f"Line {state.line}: {e}")
-    except TypeError as e:
-        if index.value is None:
-            raise KeyErr(f"Line {state.line}: Pili sequence indices start at 1, not 0.")
-        raise KeyErr(f"Line {state.line}: {e}")
-
-def extract_pyvalue(rec: Record):
-    match rec:
-        case PyValue(value=value) | PyObj(obj=value):
-            return value
-        case _:
-            raise TypeErr(f"Line {state.line}: incompatible type for python function: {rec.table}")
-def py_dot(a: PyObj, b: Args | PyValue[str]):
-    obj = a.obj
-    match b:
-        case PyValue(value=str() as name):
-            return py_value(getattr(obj, name))
-        case Args(positional_arguments=args, named_arguments=kwargs, flags=flags):
-            kwargs.update(dict(zip(flags, [BuiltIns['true']] * len(flags))))
-            return py_value(obj(*map(extract_pyvalue, args), **{k: extract_pyvalue(v) for k, v in kwargs.items()}))
-        case _:
-            raise Exception
-    kwargs = {**args.named_arguments, **dict(zip(args.flags, [BuiltIns['true']] * len(args.flags)))}
-    return fn(*args.positional_arguments, **kwargs)
-
-
-caller_patt = ParamSet(AnyParam, AnyParam, named_params={'caller': Parameter(AnyMatcher(), 'caller', '?')})
+# caller_patt = ParamSet(AnyParam, AnyParam, named_params={'caller': Parameter(AnyMatcher(), 'caller', '?')})
 # note: caller_patt should be (FunctionParam, ArgsParam), but I just made it any, any for a slight speed boost
 
-Op['.'].fn = Function({caller_patt: dot_fn,
-                       StringParam: lambda a: state.deref(a.value),
-                       ParamSet(AnyParam, StringParam): dot_fn,
-                       ParamSet(SeqParam, ArgsParam): list_get,
-                       ParamSet(Parameter(TableMatcher(BuiltIns['PythonObject'])),
-                                Parameter(UnionMatcher(TraitMatcher(FuncTrait), TableMatcher(BuiltIns['Table'])))):
-                           py_dot,  # I don't remember why the second parameter for the pydot is func|table ???
-                       ParamSet(Parameter(TableMatcher(BuiltIns['PythonObject'])), AnyParam): py_dot
-                       })
-
-Op['.?'].fn = Function({caller_patt:
-                            lambda a, b: BuiltIns['.'].call(a,b)
-                                         if BuiltIns['has'].call(a, b).value else py_value(None),
-                        ParamSet(StringParam):
-                            lambda a: BuiltIns['.'].call(a)
-                                      if BuiltIns['has'].call(a).value else py_value(None),
-                        })
-# def eval_swizzle_args(lhs: Node, rhs: Node) -> Args:
-#     if rhs.type is TokenType.Name:
-#         rvalue = py_value(rhs.text)
-#     else:
-#         rvalue = rhs.evaluate()
-#     return Args(lhs.evaluate(), rvalue)
-Op['..'].fn = Function({ParamSet(SeqParam, StringParam):
-                            lambda ls, name: py_value([dot_fn(el, name) for el in ls.value]),
-                        ParamSet(SeqParam, FunctionParam):
-                            lambda ls, fn: py_value([fn.call(el) for el in ls.value]),
-                        ParamSet(Parameter(TraitMatcher(IterTrait)), FunctionParam):
+# Op['.'].fn = Function({caller_patt: dot_call_fn,
+#                        StringParam: lambda a: state.deref(a.value),
+#                        ParamSet(AnyParam, StringParam): dot_call_fn,
+#                        ParamSet(SeqParam, ArgsParam): list_get,
+#                        ParamSet(Parameter(TableMatcher(BuiltIns['PythonObject'])),
+#                                 Parameter(UnionMatcher(TraitMatcher(FuncTrait), TableMatcher(BuiltIns['Table'])))):
+#                            py_dot,  # I don't remember why the second parameter for the pydot is func|table ???
+#                        ParamSet(Parameter(TableMatcher(BuiltIns['PythonObject'])), AnyParam): py_dot
+#                        })
+Op['.'].fn = Function({ParamSet(AnyParam, StringParam): dot_call_fn}, name='.')
+# Op['.?'].fn = Function({caller_patt:
+#                             lambda a, b: BuiltIns['.'].call(a,b)
+#                                          if BuiltIns['has'].call(a, b).value else py_value(None),
+#                         ParamSet(StringParam):
+#                             lambda a: BuiltIns['.'].call(a)
+#                                       if BuiltIns['has'].call(a).value else py_value(None),
+#                         })
+Op['.?'].fn = Function({ParamSet(AnyParam, StringParam):
+                            lambda a, b: dot_call_fn(a, b, safe_get=True)},
+                                         # if BuiltIns['has'].call(a, b).value else BuiltIns['blank']},
+                       name='.?')
+Op['..'].fn = Function({ParamSet(IterParam, FunctionParam):
                             lambda it, fn: py_value([fn.call(el) for el in it]),
+                        ParamSet(IterParam, StringParam):
+                            lambda it, name: py_value([dot_call_fn(el, name) for el in it.value]),
                         }, name='..')
-Op['.'].eval_args = Op['.?'].eval_args = Op['..'].eval_args = eval_dot_args
+Op['..?'].fn = Function({ParamSet(IterParam, FunctionParam):
+                            lambda it, fn: py_value([fn.call(el, safe_call=True) for el in it]),
+                        ParamSet(IterParam, StringParam):
+                            lambda it, name: py_value([dot_call_fn(el, name, safe_get=True) for el in it.value]),
+                        }, name='..')
+Op['.'].eval_args = Op['.?'].eval_args = Op['..'].eval_args = Op['..?'].eval_args = eval_dot_args
 
 def eval_call_args(lhs: Node, rhs: Node) -> Args:
     args = rhs.evaluate()
     match lhs:
-        case OpExpr('.', [loc_node, Token(TokenType.Name, text=name)]):
-            # case location.name[args_node]
-            location = loc_node.evaluate()
-            # 1. Try to resolve slot/formula in left
-            prop = location.get(name, None)  # , search_table_frame_too=True)
-            if prop is not None:
-                return Args(prop, args)
-            # 2. Try to find function in table and traits
-            for scope in (location.table, *location.table.traits):
-                method = scope.get(name, None)
-                if method is not None:
-                    return Args(method, Args(location) + args)
-            # 3. Finally, try  to resolve name normally
-            fn = state.deref(name, None)
-            if fn is None:
-                raise KeyErr(f"Line {state.line}: {location} has no slot '{name}' and no record with that "
-                             f"name found in current scope either.")
-            return Args(fn, Args(location) + args)
+        case OpExpr('.'|'.?'|'..'|'..?' as op, [loc_node, Token(TokenType.Name, text=name)]):
+            rec = loc_node.evaluate()
+            args = Args(rec, py_value(name), args)
+            if op.startswith('..'):
+                args.named_arguments['swizzle'] = BuiltIns['true']
+            if op.endswith('?'):
+                args.named_arguments['safe_get'] = BuiltIns['true']
+            return args
         case _:
             return Args(lhs.evaluate(), args)
 
-def call_py_obj(obj: PyObj, args: Args):
-    """ call a python function on an Args object; args must only contain bool, int, float, Fraction, and str"""
-    kwargs = {**{k.value: v.value for k, v in args.named_arguments.items()},
-              **dict(zip(args.flags, [True] * len(args.flags)))}
-    return py_value(obj.obj(*(arg.value for arg in args.positional_arguments), **kwargs))
 
-Op['['].eval_args = eval_call_args
-Op['['].fn = Function({ParamSet(AnyParam, ArgsParam): Record.call,  # lambda rec, args: rec.call(args),
-                       ParamSet(SeqParam, ArgsParam): list_get,
-                       ParamSet(Parameter(TableMatcher(BuiltIns['PythonObject'])), ArgsParam): call_py_obj,
+Op['['].eval_args = Op['call?'].eval_args = eval_call_args
+Op['['].fn = Function({ParamSet(AnyParam, Parameter(AnyMatcher(), None, '?'), ArgsParam,
+                                named_params=make_flags('swizzle', 'safe_get')): dot_call_fn,
                        }, name='call')
+
+# def safe_call_fn
+Op['call?'].fn = Function({ParamSet(AnyParam, Parameter(AnyMatcher(), None, '?'), ArgsParam,
+                                named_params=make_flags('swizzle', 'safe_get')):
+                               lambda *args, **kwargs: dot_call_fn(*args, **kwargs, safe_call=True),
+                       }, name='call?')
+# Op['['].fn = Function({ParamSet(AnyParam, ArgsParam): Record.call,  # lambda rec, args: rec.call(args),
+#                        ParamSet(SeqParam, ArgsParam): list_get,
+#                        ParamSet(Parameter(TableMatcher(BuiltIns['PythonObject'])), ArgsParam): call_py_obj,
+#                        ParamSet(Parameter(TraitMatcher(IterTrait)), StringParam, ArgsParam):
+#                             lambda it, s, args: None
+#                        }, name='call')
 BuiltIns['call'] = Op['['].fn
 
 def eval_right_arrow_args(lhs: Node, rhs: Node):
@@ -493,13 +420,6 @@ Op['in'].fn = Function({ParamSet(AnyParam, FunctionParam):
 
 Op['=='].fn = Function({AnyPlusPattern: lambda a, *args: py_value(all(a == b for b in args))},
                        name='==')
-def neq(*args: Record):
-    args = list(args)
-    while args:
-        a = args.pop(0)
-        if not Op['=='].fn.call(Args(a, *args)).truthy:
-            return BuiltIns['true']
-    return BuiltIns['false']
 
 def neq(*args: Record):
     if len(args) <= 1:
@@ -584,7 +504,17 @@ Op['**'].fn = Function({ParamSet(NumericParam, NumericParam): lambda a, b: py_va
                        name='**')
 Op['^'].fn = Function({ParamSet(NumericParam, NumericParam): lambda a, b: py_value(a.value ** b.value)},
                       name='^')
-Op['?'].fn = Function({AnyParam: lambda p: UnionMatcher(patternize(p), ValueMatcher(BuiltIns['blank']))},
+def optionalize(arg: Record) -> Parameter:
+    param: Parameter = patternize(arg)
+    patt, binding, default, quantifier = param.pattern, param.binding, param.default, param.quantifier
+    if not isinstance(patt, Matcher):
+        raise NotImplementedError
+    if quantifier in ('+', '*'):
+        quantifier = '*'
+    else:
+        quantifier = '?'
+    return Parameter(UnionMatcher(patt, ValueMatcher(BuiltIns['blank'])), binding, quantifier, default)
+Op['?'].fn = Function({AnyParam: optionalize},
                       name='?')
 
 

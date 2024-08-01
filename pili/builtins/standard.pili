@@ -7,7 +7,7 @@ trait file
 table File(file)
     blank
 
-read[file f, !lines]:
+read[file f; !lines]:
     blank
 
 

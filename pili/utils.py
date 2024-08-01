@@ -208,6 +208,13 @@ def get_mantissa(num: float, base, precision=12) -> list[int]:
                 digits[i-1] += 1
     return digits
 
+def limit_str(text, max_len: int = 59):
+    text = str(text)
+    if len(text) <= max_len:
+        return text
+    sub_len = (max_len - 3) // 2
+    return text[:sub_len] + '...' + text[-sub_len:]
+
 
 def call(fn, args):
     """ call a python function on an Args object"""
