@@ -557,7 +557,7 @@ class Table(Function):
                                       f"doesn't match type of {trait_field.__class__.__name__} \"{name}\" "
                                       f"of trait {trait.name}.")
                     elif isinstance(trait_field, Setter):
-                        types[name] = AnyMatcher()
+                        pass  # types[name] = AnyMatcher()
                     else:
                         types[name] = pattern
 
@@ -581,7 +581,7 @@ class Table(Function):
                     case Setter(fn=fn):
                         if name not in self.setters:
                             self.setters[name] = fn
-                        types[name] = AnyMatcher()
+                        # types[name] = AnyMatcher()
 
         self.defaults = tuple(defaults[n] for n in defaults)
         self.types = types

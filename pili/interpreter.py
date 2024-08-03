@@ -663,7 +663,7 @@ class TableExpr(FunctionExpr):
                 self.traits = list(trait_nodes)
             case _:
                 raise SyntaxErr(f"Line {self.line}: Table syntax should be `table <table_name> (<trait>)* <block>`.\n"
-                                f"Eg, `table MyList(list, seq, iter)`")
+                                f"Eg, `table MyList (list, seq, iter)`")
 
     def evaluate(self):
         table = state.deref(self.table_name)
@@ -742,25 +742,25 @@ class SlotExpr(NamedExpr):
         return f"Slot({self.name}, {self.field_type}{default})"
 
 class FormulaExpr(NamedExpr):
-    formula_name: str
-    formula_type: Node
+    # formula_name: str
+    # formula_type: Node
     block: Block
     def __init__(self, cmd: str, field_name: str, node: Node, pos: Position = None):
-        raise DeprecationWarning('FormulaExpr (invoked by `formula field_name return_type: ...` is being deprecated'
-                                 'in favour of dot methods.')
-        # super().__init__(cmd, field_name, pos)
-        # match node:
-        #     case OpExpr(':', terms):
-        #         self.field_type, self.block = terms
-        #     case _:
-        #         self.field_type = node
+        # raise DeprecationWarning('FormulaExpr (invoked by `formula field_name return_type: ...` is being deprecated'
+        #                          'in favour of dot methods.')
+        super().__init__(cmd, field_name, pos)
+        match node:
+            case OpExpr('=', blk):
+                self.field_type, self.block = blk
+            case _:
+                self.field_type = node
 
     def evaluate(self):
-        formula_type = self.formula_type.eval_pattern()
+        formula_type = self.field_type.eval_pattern()
 
         patt = ParamSet(Parameter(state.env.fn, binding='self'))
         formula_fn = Function({patt: Closure(self.block)})
-        formula = Formula(self.formula_name, formula_type, formula_fn)
+        formula = Formula(self.name, formula_type, formula_fn)
         match state.env.fn:
             case Trait() as trait:
                 trait.fields.append(formula)
@@ -773,7 +773,7 @@ class FormulaExpr(NamedExpr):
         return BuiltIns['blank']
 
     def __repr__(self):
-        return f"Formula({self.formula_name}, {self.formula_type}, {self.block})"
+        return f"Formula({self.name}, {self.field_type}, {self.block})"
 
 class SetterExpr(NamedExpr):
     field_name: str

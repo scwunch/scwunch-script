@@ -1,0 +1,109 @@
+table Month
+    slot name str
+    slot days int
+    slot order int
+    var January
+    var February
+    var March
+    var April
+    var May
+    var June
+    var July
+    var August
+    var September
+    var October
+    var November
+    var December
+
+month_list = [
+    Month.January = Month['January', 31, 1],
+    Month.February = Month['February', 28, 2],
+    Month.March = Month['March', 31, 3],
+    Month.April = Month['April', 30, 4],
+    Month.May = Month['May', 31, 5],
+    Month.June = Month['June', 30, 6],
+    Month.July = Month['July', 31, 7],
+    Month.August = Month['August', 31, 8],
+    Month.September = Month['September', 30, 9],
+    Month.October = Month['October', 31, 10],
+    Month.November = Month['November', 30, 11],
+    Month.December = Month['December', 31, 12]
+    ]
+
+month_dict = {}
+for i in 1 to 12
+    month_dict[i] = month_list[i]
+    month_dict[month_list[i].name] = month_list[i]
+
+table Date
+    slot year int
+    slot _month Month = Month.January
+    slot _day int = 1
+    formula day int =
+        return self._day
+    setter day[int d]:
+        last_day = self._month.days
+        if 1 <= d <= last_day
+            self._day = d
+        else
+            self.month += d // last_day
+            self._day = d % last_day or last_day
+    formula month int =
+        return self._month.order
+    setter month[int m]:
+        self.year += m // 12
+        self._month = month_list[m % 12 or 12]
+
+    [str date_text]:
+        date_parts = date_text.split["-"]..int
+        return Date[*date_parts]
+    [int year, int month, int day]:
+        d = Date.new[year]
+        d.month = month
+        d.day = day
+        return d
+
+    .str:
+        return "{self.year}-{self.month}-{self.day}"
+
+    .+[int days]:
+        return Date[year, month, day+days]
+    .-[int days]:
+        return Date[year, month, day-days]
+
+    .+[Date date]:
+        return Date[self.year + date.year,
+                    self.month + date.month,
+                    self.day + date.day]
+
+    .-[Date date]:
+        days = 365 * (self.year - date.year)
+        month_dif = self.month - date.month
+        if month_dif > 0
+            for i in self.month to date.month + 1 by -1
+                days += month_list[i].days
+        elif month_dif < 0
+            for i in self.month to date.month - 1
+                days -= month_list[i].days
+        return days + self.day - date.day
+
+    .advance[int days = 0; int weeks = 0, int months = 0, int years = 0]:
+        self.day += days + 7 * weeks
+        self.month += months
+        self.year += years
+        return self
+    .month_name:
+        return months[self.month]
+    .copy[; int year?, int month?, int day?]:
+        return Date[year ?? self.year,
+                    month ?? self.month,
+                    day ?? self.day]
+
+
+d = Date["2022-12-12"]
+d + 1
+print d + 1
+print d - 1
+
+print d.advance[5]
+print d

@@ -1,147 +1,55 @@
-```
-    [int n]: ...
-    [str | int x]: ...
-    [Tab t, C c]: ...
-    [Char(c)]: ...
-    [(str s, int n)+ | (int n, str s)]: ...
-```
-
-
-```
-    Matchers are the basic elements that will match a single value or not.
-    They can be combined in the following ways to make patterns:
-    - concatenation (a, b, c)
-    - alternation (a | b | c)
-    - intersection (Cat(name is "Whiskers"), a & b & c)
-    - quantification (a+, b*, c?)
-    - binding (int n, str text+)
-    - default (int n = 0) (requires binding)
-
-    intersection of parameters?
-    - foo[(int*, float*, int*)&(num+)]
-
-    Okay, but concatenation and quantification are special operations that only take place in certain contexts — most notably ArgsMatcher.
-
-    So a Parameter could be...
-    - alternation | intersection
-    - with binding & quantifier & default
-
-    And then ArgsMatcher will take Parameters and have its own VM do the concatenation.
-
-    In fact... ArgsMatcher is the only one (and SequenceMatcher) that needs a VM!
-
-    So, Pattern could be an abstract class parenting Matcher and Parameter.
-    And Parameter could parent Union and Intersection
-    ... not necessary; the Parameter should just store the original pattern along with other properties.
-    ... then an ArgsMather should be built from properties, storing a tuple of Parameters as well as constructing the VM
-
-    class Pattern:
-        vm: VM
-
-    class Matcher(Pattern):
-        vm = property(make_vm)
-        ...
-
-    class Parameter(Pattern):
-        pattern: Pattern
-        binding: str
-        quantifier: str
-        default: Record
-        vm = property(make_vm)
-
-
-    No no no... I think I need to go back to the same layout as before, but then just let the ArgsMather build a virtual machine.
-```
-
-
-
 print 'start'
 
-is_armstrong[int n]:
-    digits = list[n.str]
-    digits = digits..{str n: int[n]**3}
-    digits *.= str n => int[n] ^ 3
-    digits = list[n.str]..(str n => int[n] ^ 3)
-    digits = n.str.list..(n => n.int ^ 3)
-    return sum[digits] == n
-
-    return n == sum[list[n.str]..{str n: int[n] ** 3}]
-    return n == sum[map[{str n: int[n] ** 3}, list[str[n]]]]
-    return n == n.str.list..{str n: n.int ** 3}.sum
-
-int num => n.str..(dig => dig.int ^ num.str.len).sum == num
-
-```
-Just had a bit of a wacko idea:
-    what if we call functions not just on values of type Args, but any arbitrary value?
-    And we make patterns be not just ArgsMatchers, but also arbitrary patterns?
-    in that case, we could maybe revive slightly the idea of string-based options:
-        the pattern is just a string (not a list of one string, nor an Args of one string)
-    syntax:
-        foo[1,2,3]
-        > calls foo on the list [1,2,3]
-        likewise, foo(1,2,3) calls foo on the tuple (1,2,3)
-        and foo.bar calls foo on the string "bar" — syntactic sugar
-        foo bar
-        > calls foo on the value bar (which could be anything)
-    one silly advantage: no need to ...args or *args any list into arguments — just call it directly
-```
-
-
-print 'start... again'
-# func = {[]: print "it worked!"; [any arg]: print arg}
-# I don't think I want to support this syntax anymore.  It's terse to a fault.
-
-my_func[]:  # why did func become a Trait rather than a Function? ... because 'func' is already a trait
+my_func[]:
     print "it worked!"
 
 my_func[any arg]:
     print arg
-```
-fn func
+
+function my_func
     []:
         print "it worked"
     [any arg]:
         print arg
-```
 
-my_func[]  # how did we get the semicolon (;) function out of this????
+my_func[]
 my_func['so did this one!']
 
 my_func[MyList ls]:  # note: you can define an option with a pattern matching a table that has yet to be defined
     return ls.str
 
 
-
+# example of a custom list class with a "hidden" function `items` to store data for some privacy
 table MyList
 	var items = {}
-	formula items fn
-
+	formula items fn =
+	    return tuple[items[self]]
 
 	[seq ls]:
 		rec = MyList.new
 		items[rec] = list[ls]
 		return rec
 
-	[]: MyList[[]]
+	[]:
+	    return MyList[[]]
 
 	opt [int index]:
-		return self.items[index]
+		return items[self][index]
 
-  #   debug .push[any element]:
-		# self.items.push[element]
+    .push[any element]:
+		items[self].push[element]
 
     push[MyList self, any element]:
-        self.items.push[element]
+        items[self].push[element]
 
-  #   .str:
-  #       return str[self.items]
+    .str:
+        return self.items.join[', ']
 
     str[MyList self]:
-        return str[self.items]
+        return self.items.join[', ']
 
-# push[MyList self, any element]:
-#     self.items.push[element]
+push[MyList self, any element]:
+    MyList.items[self].push[element]
 
 myls = MyList[]
 myls.push[3]
@@ -169,7 +77,7 @@ print '1 + 2 = {1 + 2}'
 CAN = 'can'
 print 'Can you nest string interpolation? {'Yes, you {CAN}' if 1 == 1 else 'nope'}'
 print ''
-print 'next is "settings.base = \'h\'"'
+print 'next is "settings.base = \'h\'"   now we\'re working in base 6 (heximal)'
 settings.base = 'h'
 # pili fluidly and automatically converts between booleans, integers, and rational numbers,
 # depending on what operators are applied to them
@@ -179,10 +87,11 @@ my_int = my_bool * 10
 my_ratio = my_int / 4
 print '10/4 = {my_ratio} (type: {type[my_ratio]})'
 print "10/4 * 2 = {my_ratio*2} (type: {type[my_ratio*2]})"
-my_float = 0.55400
+my_float = 0.55400f
 print my_float
 
-# by the way, all numbers in pili used to be heximal (base-six).  To input decimal numbers, use a 'd' suffix.  To output decimal numbers, convert using the string function
+# by the way, all numbers in pili used to be heximal (base-six).  To input decimal numbers, use a 'd' suffix.
+# To output decimal numbers, convert using the string function
 print '9d = {9d}'
 print 'str[20, 10d] = {str[20, 10d]}'
 print ''
@@ -213,7 +122,8 @@ greeting[str name]:
 # each parameter has a pattern and (optionally) a name to bind to when matched.
 # in this case, the pattern is the prototype 'str' and the name is 'name'
 # this function happens to only need one line — it could be written like this:
-greeting[str name]: 'Hello ' + name
+greeting[str name]:
+    return 'Hello ' + name
 
 print greeting["Ryan"]
 
@@ -267,16 +177,16 @@ print 'greeting[1] => ' + greeting[1]
 print 'greeting["one"] => {greeting["one"]}'
 # notice how that second pattern *overrides* the very first pattern [str name] that we put on greeting.  Value patterns generally take precedence over prototype patterns
 print "value patterns are mostly just used as keys in dictionary-like options; they either match a value or they don't — not that exciting so let's move on to prototype patterns."
-
-print "\nPrototype Patterns"
-# prototype patterns are interpreted from values when used as parameters, like [str name] above
-# prototype matching is also used by the MATCH ~ operator
+print ''
+print "Type Patterns"
+# patterns are interpreted from values when used as parameters, like [str name] above
+# matching is also used by the MATCH is operator
 print '-33 is int => {-33 is int}'
-print '0.43f ~ float and 0.43 ~ num and -33 ~ num => {0.43f ~ float and 0.43 ~ num and -33 ~ num}'
-print '0.43 ~ str => {0.43 ~ str}'
-print '0.43 !~ str => {0.43 !~ str}'
+print '0.43f is float and 0.43 is num and -33 is num => {0.43f is float and 0.43 is num and -33 is num}'
+print '0.43 is str => {0.43 is str}'
+print '0.43 is not str => {0.43 is not str}'
 # union patterns match if any of the sub-patterns match
-print "'hello' ~ num|str => {'hello' ~ num|str}"
+print "'hello' is num|str => {'hello' is num|str}"
 neg_float_or_pos_int = float < 0 | int > 0
 
 print "Indexing and slicing..."
@@ -287,35 +197,36 @@ print ls[3]
 print ls[4]
 print ls[-1]
 print 'two-index slices'
-print ls[0,1]
-print ls[1,0]
-print ls[2,-2]
-print ls[5,0]
-print ls[-2,0]
+print '0 is not a valid index, but in slices it represents the beginning or end of a sequence'
+print ls[0 to 1]
+print ls[1 to 0]
+print ls[2 to -2]
+print ls[5 to ]
+print ls[-2 to]
 print "three-index slices"
-print ls[1,0,1]
-print ls[0,0,2]
-print ls[1,0,2]
-print ls[4,1,-1]
-print ls[0,0,-1]
+print ls[1 to 0 by 1]
+print ls[0 to 0 by 2]
+print ls[1 to 0 by 2]
+print ls[4 to 1 by -1]
+print ls[0 to 0 by -1]
 
 print "for n in [-1, 0 , 1, -0.3, 0.0, 0.3]"
 for n in [-1, 0 , 1, -0.3, 0.0, 0.3]
-    print "{' ' * (10-len[n.str])}{n} ~ float < 0 | int > 0 => {n ~ neg_float_or_pos_int}"
+    print "{' ' * (10-len[n.str])}{n} is float < 0 | int > 0 => {n is neg_float_or_pos_int}"
 print "THIS NEEDS DEBUGGING!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-print "5 ~ float | int > 4 => {5 ~ float | int > 4}"
-print "-0.3 ~ float | int > 4 => {-0.3 ~ float | int > 4}"
+print "5 is float | int > 4 => {5 is float | int > 4}"
+print "-0.3 is float | int > 4 => {-0.3 is float | int > 4}"
 # these are just some built-in types.  We can create our own too
-print 5 ~ float | int > 4
-print 5 ~ int > 4 | float
+print 5 is float | int > 4
+print 5 is int > 4 | float
 
 
 # Some funky operators
-print "The `has` and `~` operators are just some of the funky operators in Pili."
+print "The `has` and `is` operators are just some of the funky operators in Pili."
 print "There is also `??`, `.?`, and `..`."
 print "some_null_value = blank; some_null_value ?? 0 ?? 1 => {some_null_value = blank; some_null_value ?? 0 ?? 1}"
 print greeting['one']
-print greeting.?name ?? greeting.?nlljlasd ?? greeting.?[2451] ?? 'none of those optinos were found\n'
+print greeting.?name ?? greeting.?nlljlasd ?? greeting?[2451] ?? 'none of those optinos were found\n'
 
 # the swizzle operator `..` is fun.  It acts like a dot operator distributed over every element of an iterable
 print "my_list = {my_list = [-1, -2, 0 ,1 ,2, ]}"
@@ -404,7 +315,7 @@ print "\n\n**************************"
 
 
 
-print "Some funky operators include:  .., ??, ~, "
+print "Some funky operators include:  .., ??, is, "
 print "next: demo classes/prototyping and dot-options"
 print "aliases... := ..."
 print "Pili also does closures similarly to python"
@@ -439,20 +350,20 @@ trait Animal
     slot species str?
     slot alive bool = true
     slot sound str = ""
-    formula make_sound blank :
+    formula make_sound blank =
         print self.sound
 
 
-table Dog @Animal
+table Dog (Animal)
     slot name str = ""
     slot length num
-    slot array list:
+    slot array list =
         return []
 
-    formula bark str:
+    formula bark str =
         return "Helo, my name is {self.name}!"
 
-    formula print_bark:
+    formula print_bark blank =
         print self.bark
 
     opt [int n]:
@@ -530,20 +441,18 @@ other.make_sound
 
 
 trait Details
-    formula description str:
+    formula description str =
         return "{self.title}, released in {self.release_year}, is a {self.genre} movie directed by {self.director}."
-    formula years_since_release int:
+    formula years_since_release int =
         return 2020 - self.release_year
 
-table Movie @Details
+table Movie (Details)
     local_var = []
 
     slot title str = ""
     slot director str = ""
     slot release_year int>0
     slot genre str
-    formula description 'str':
-        return self.description
     setter description[any val]:
         self.genre = str[val]
 
@@ -556,7 +465,8 @@ table Movie @Details
     # .str:
     #     return self.description
 
-    str[Movie self]: self.description
+    str[Movie self]:
+        return self.description
 
 
 
@@ -607,3 +517,49 @@ TokenType = TokenTypeEnum[]
 
 
 
+```
+    Matchers are the basic elements that will match a single value or not.
+    They can be combined in the following ways to make patterns:
+    - concatenation [a, b, c]
+    - alternation [a | b | c]
+    - intersection [Cat(name: "Whiskers"), a & b & c]
+    - quantification [a+, b*, c?]
+    - binding [int n, str text+]
+    - default [int n = 0] (requires binding?)
+
+    intersection of parameters?
+    - foo[(int*, float*, int*)&(num+)]
+    - not implemented yet
+
+    Okay, but concatenation and quantification are special operations that only take place in certain contexts — most notably ArgsMatcher.
+
+    So a Parameter could be...
+    - alternation | intersection
+    - with binding & quantifier & default
+
+    And then ArgsMatcher will take Parameters and have its own VM do the concatenation.
+
+    In fact... ArgsMatcher is the only one (and SequenceMatcher) that needs a VM!
+
+    So, Pattern could be an abstract class parenting Matcher and Parameter.
+    And Parameter could parent Union and Intersection
+    ... not necessary; the Parameter should just store the original pattern along with other properties.
+    ... then an ArgsMather should be built from properties, storing a tuple of Parameters as well as constructing the VM
+
+    class Pattern:
+        vm: VM
+
+    class Matcher(Pattern):
+        vm = property(make_vm)
+        ...
+
+    class Parameter(Pattern):
+        pattern: Pattern
+        binding: str
+        quantifier: str
+        default: Record
+        vm = property(make_vm)
+
+
+    No no no... I think I need to go back to the same layout as before, but then just let the ArgsMather build a virtual machine.
+```

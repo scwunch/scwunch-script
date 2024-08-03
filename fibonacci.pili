@@ -1,4 +1,3 @@
-settings.set['base', "d"]
 import timeit
 import math
 

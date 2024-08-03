@@ -1,0 +1,219 @@
+f = File['../Advent of Code/2023/input_4']
+input = f.read[].split['\n']
+if not input[-1].trim
+    input.pop
+
+# input = ``
+# 19, 13, 30 @ -2,  1, -2
+# 18, 19, 22 @ -1, -1, -2
+# 20, 25, 34 @ -2, -2, -4
+# 12, 31, 28 @ -1, -2, -1
+# 20, 19, 15 @  1, -5, -3
+# ``.trim.split['\n']
+
+test_area = 200000000000000, 400000000000000
+# test_area = 7, 27
+```
+Hailstone A: 19, 13, 30 @ -2, 1, -2
+Hailstone B: 18, 19, 22 @ -1, -1, -2
+Hailstones' paths will cross inside the test area (at x=14.333, y=15.333).
+
+A.x = A.px + A.vx * t
+B.x = B.px + B.vx * t
+A.x == B.x
+    => A.px + A.vx * t1 == B.px + B.vx * t2
+(1) => t1 == (B.px + B.vx * t2 - A.px) / A.vx
+--------
+A.y = A.py + A.vy * t
+B.y = B.py + B.vy * t
+A.y == B.y
+    => A.py + A.vy * t1 == B.py + B.vy * t2
+(2) => t1 == (B.py + B.vy * t2 - A.py) / A.vy
+(1) == (2)
+    => (B.px + B.vx * t2 - A.px) / A.vx == (B.py + B.vy * t2 - A.py) / A.vy
+    => avy*(bpx + bvx * t2) - avy*apx = avx*(bpy + bvy*t2) - avx*apy
+    => avy*(bpx + bvx * t2) - avx*(bpy + bvy*t2) = avy*apx - avx*apy
+    => avy*bpx + avy*bvx*t2 - avx*bpy - avx*bvy*t2 = avy*apx - avx*apy
+    => avy*bvx*t2 - avx*bvy*t2 = avy*apx - avx*apy + avx*bpy - avy*bpx
+(3) => t2 = (avy*apx - avx*apy + avx*bpy - avy*bpx)/(avy*bvx - avx*bvy)
+
+(3) & first hailstone pair
+
+****
+Rock: R.px, R.py, R.pz @ R.vx, R.vy, R.vz
+for each hailstone H, at some time t:
+(1) R.px + t*R.vx == H.px + t*H.vx
+    &&
+(2) R.py + t*R.vy == H.py + t*H.vy
+    &&
+(3) R.pz + t*R.vz == H.pz + t*H.vz
+solve for R
+    (1) + (2) + (3)
+ => t*(rvx + rvy + rvz) - t*(hvx + hvy + hvz) == hpx + hpy + hpz - rpz - rpy - rpz
+ => t == (hpx + hpy + hpz - rpz - rpy - rpz) / (rvx + rvy + rvz - hvx - hvy - hvz)
+ => H.t = (H.px + ...
+"I need a minimum of three paths to fix the degrees of freedom of the rock to a single path, then I can just calculate"
+"it's trajectory from there"
+(A) tA == (apx + apy + apz - rpz - rpy - rpz) / (rvx + rvy + rvz) - avx - avy - avz)
+(B) tB == (apx + apy + apz - rpz - rpy - rpz) / (rvx + rvy + rvz) - avx - avy - avz)
+(C) tC
+
+solve for x first:
+(1) R.px + t*R.vx == H.px + t*H.vx
+(1xa)    rpx + ta rvx == apx + ta avx
+(1xb)    rpx + tb rvx == bpx + tb bvx
+(1xc)    rpx + tc rvx == cpx + tc cvx
+(1xa) + (1xb) + (1xc)
+    3 rpx + rvx (ta + tb + tc) = apx + ta avx + bpx + tb bvx + cpx + tc cvx
+
+rpy + ta rvy == apy + ta avy
+ta rvy - ta avy = apy - rpy
+ta = (apy - rpy) / (rvy - avy)
+insert this equation into (1xa):
+(4)  rpx + ((apy - rpy) / (rvy - avy)) rvx == apx + ((apy - rpy) / (rvy - avy)) avx
+get rpy:
+rpy + t
+
+
+
+```
+
+table Hailstone
+    slot px int
+    slot py int
+    slot pz int
+    slot vx int
+    slot vy int
+    slot vz int
+    [str hailstone]:
+        position, velocity = hailstone.split['@']
+        px, py, pz = position.split[',']..trim..int
+        vx, vy, vz = velocity.split[',']..trim..int
+        return Hailstone.new[px, py, pz, vx, vy, vz]
+
+    .t_intersect[Hailstone other]:
+        if self.vy*other.vx == self.vx*other.vy
+            return blank  # division by zero implies parallel paths
+        return (self.vy*self.px - self.vx*self.py + self.vx*other.py - self.vy*other.px) \
+                / (self.vy*other.vx - self.vx*other.vy)
+
+    .at_t[num t]:
+        return (self.px + self.vx * t,
+                self.py + self.vy * t,
+                self.pz + self.vz * t)
+
+hailstones = input..Hailstone
+# print A, B = hailstones[1 to 2]
+# print t = A.t_intersect[B]
+# print A.at_t[t.float], B.at_t[t.float]
+
+for_each_pair[seq items, fn fn]:
+    for i in 1 to len[items]
+        log[items[i]]
+        for j in i+1 to len[items]
+            fn[items[i], items[j]]
+
+log = arg => print arg
+
+var count_intersections = 0
+get_txy[Hailstone a, Hailstone b]:
+    log["Hailstone A: {a}"]
+    log["Hailstone B: {b}"]
+    t1, t2 = a.t_intersect[b], b.t_intersect[a]
+    if t1 is str
+        log['PARALLEL']
+    else
+        if t1 < 0 or t2 < 0
+            if t1 >= 0
+                result = 'PAST (hailstone B)'
+            elif t2 >= 0
+                result = 'PAST (hailstone A)'
+            else
+                result = 'PAST (both)'
+        x, y, z = b.at_t[t1 if t1 is int else t1.round[3].float]
+        # xa, ya = a.at_t[t2.round[3].float][1 to 2]
+        if test_area[1] <= x <= test_area[2] and test_area[1] <= y <= test_area[2]
+            count_intersections += not has 'result'
+            result ??= "IN"
+        else
+            result ??= "OUT"
+        log["t={t1, t2}: {x,y} => {result}"]
+    log['']
+
+check_in_out[a, b]:
+    blank
+
+print "Get t's and x-y's for all pairs"
+print "-------------------------------"
+count_intersections = 16020  # 9969
+# hailstones.for_each_pair[get_txy]
+count = len[hailstones]
+for i in 201 to count
+    print 'Hailstone {i}/{count}...'
+    for j in i+1 to count
+        a, b = hailstones[i], hailstones[j]
+        ta, tb = b.t_intersect[a], a.t_intersect[b]
+        if ta is blank
+            continue  # parallel
+        if ta > 0 and tb > 0
+            x, y, z = b.at_t[tb]
+            if test_area[1] <= x <= test_area[2] and test_area[1] <= y <= test_area[2]
+                # log['intersection found at t={ta, tb}: {x, y}']
+                count_intersections += 1
+    print '{count_intersections} intersections so far'
+
+
+return count_intersections
+
+
+
+# 9969
+
+
+
+
+
+
+
+
+```
+Hailstone A: Hailstone[19, 13, 30, -2, 1, -2]
+Hailstone B: Hailstone[18, 19, 22, -1, -1, -2]
+t=(11/3, 7/3): (14.333, 15.333) => IN
+
+Hailstone A: Hailstone[19, 13, 30, -2, 1, -2]
+Hailstone B: Hailstone[20, 25, 34, -2, -2, -4]
+t=(25/6, 11/3): (11.666, 16.666) => IN
+
+Hailstone A: Hailstone[19, 13, 30, -2, 1, -2]
+Hailstone B: Hailstone[12, 31, 28, -1, -2, -1]
+t=(29/5, 32/5): (6.2, 19.4) => OUT
+
+Hailstone A: Hailstone[19, 13, 30, -2, 1, -2]
+Hailstone B: Hailstone[20, 19, 15, 1, -5, -3]
+t=(13/9, -11/9): (21.444, 11.78) => PAST (hailstone B)
+
+Hailstone A: Hailstone[18, 19, 22, -1, -1, -2]
+Hailstone B: Hailstone[20, 25, 34, -2, -2, -4]
+PARALLEL
+
+Hailstone A: Hailstone[18, 19, 22, -1, -1, -2]
+Hailstone B: Hailstone[12, 31, 28, -1, -2, -1]
+t=(18, 24): (-6, -5) => OUT
+
+Hailstone A: Hailstone[18, 19, 22, -1, -1, -2]
+Hailstone B: Hailstone[20, 19, 15, 1, -5, -3]
+t=(-1/3, -5/3): (19.667, 20.665) => PAST (both)
+
+Hailstone A: Hailstone[20, 25, 34, -2, -2, -4]
+Hailstone B: Hailstone[12, 31, 28, -1, -2, -1]
+t=(14, 11): (-2, 3) => OUT
+
+Hailstone A: Hailstone[20, 25, 34, -2, -2, -4]
+Hailstone B: Hailstone[20, 19, 15, 1, -5, -3]
+t=(-1, 1/2): (19, 24) => PAST (hailstone A)
+
+Hailstone A: Hailstone[12, 31, 28, -1, -2, -1]
+Hailstone B: Hailstone[20, 19, 15, 1, -5, -3]
+t=(-4, -4): (16, 39) => PAST (both)
+```
