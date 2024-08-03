@@ -3,35 +3,28 @@ import math
 
 print math.pi + 1
 
-fib [0 | 1]: 1
-fib =
+
+function fib
     0: 1
     1: 1
-mfib =  {
-    0: 1
-    1: 1
-}
-# mfib = [1,1]
-
-
-fib[int>1 n]:
-    if (mfib has n)
-        return mfib[n]
-    else
-        mfib[n] = fib[n-1] + fib[n-2]
-        # mfib.push[fib[n-1] + fib[n-2]]
-        return mfib[n]
+    [int n]:
+        if n in fib
+            return fib[n]
+        else
+            return fib[n] = fib[n-2] + fib[n-1]
+#        return fib?[n] ?? (fib[n] = fib[n-2] + fib[n-1])
 
 print 'start'
-now: python['timeit.default_timer()']
+now[]:
+    return python['timeit.default_timer()']
 start_time = now
-t1 = now
-for n in range[7000]
+t1 = now[]
+for n in 1 to 7000
     s = fib[n]
     if not n % 500
-        t2 = now
+        t2 = now[]
         print "{n}: {round[1000*(t2-t1)]}ms"
         t1 = t2
 
-end_time = now
+end_time = now[]
 return '\nfinished in {end_time-start_time} seconds'

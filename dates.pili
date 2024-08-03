@@ -27,8 +27,7 @@ month_list = [
     Month.September = Month['September', 30, 9],
     Month.October = Month['October', 31, 10],
     Month.November = Month['November', 30, 11],
-    Month.December = Month['December', 31, 12]
-    ]
+    Month.December = Month['December', 31, 12] ]
 
 month_dict = {}
 for i in 1 to 12
@@ -67,9 +66,9 @@ table Date
         return "{self.year}-{self.month}-{self.day}"
 
     .+[int days]:
-        return Date[year, month, day+days]
+        return Date[self.year, self.month, self.day+days]
     .-[int days]:
-        return Date[year, month, day-days]
+        return Date[self.year, self.month, self.day-days]
 
     .+[Date date]:
         return Date[self.year + date.year,
@@ -101,9 +100,9 @@ table Date
 
 
 d = Date["2022-12-12"]
-d + 1
+print d
 print d + 1
 print d - 1
 
-print d.advance[5]
+print d.advance[50]
 print d
