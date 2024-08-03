@@ -1,3 +1,22 @@
+function max
+    [iter it]:
+        blank
+    [any arg]:
+        return arg
+    [any args+]:
+        return max[args]
+
+function min
+    [iter it]:
+        blank
+    [any arg]:
+        return arg
+    [any args+]:
+        return min[args]
+
+
+
+
 ##############################################
 # files
 ##############################################
@@ -41,3 +60,9 @@ function extend
         for it in its
             ls.extend[it]
         return ls
+
+function filter
+    [list ls, fn f; !mutate]:
+        blank
+    [iter~list it, fn f]:
+        blank

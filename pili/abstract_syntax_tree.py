@@ -82,6 +82,8 @@ class AST:
                     if fn in func_names:
                         raise SyntaxErr(f'Line {stmt.line}: Duplicate function name "{fn}"')
                     func_names.add(fn)
+                case EmptyExpr():
+                    statements.pop()
             if self.tok.type == TokenType.EOF:
                 break
             elif self.tok.type == TokenType.NewLine:
@@ -225,7 +227,7 @@ class AST:
                             reduce(op.postfix)
                             ops.append([op, 'postfix', pos])
                         else:
-                            raise OperatorErr(f"Line {pos.line}: Prefix '{op}' used as binary/postfix operator.")
+                            raise OperatorErr(f"Line {pos.ln}: Prefix '{op}' used as binary/postfix operator.")
                     case None:
                         raise AssertionError  # end of statement
 
@@ -469,8 +471,12 @@ class AST:
                 break
             if self.seek().text == 'else':
                 self.seek()
-                assert self.tok.type is TokenType.BlockStart
-                continue
+                if self.tok.type is TokenType.BlockStart:
+                    continue
+                if self.tok.text == ':':
+                    raise SyntaxErr(f'Line {self.tok.line}: Invalid colon after "else"; '
+                                    f'Pili does not use colons for control blocks.')
+                raise SyntaxErr(f'Line {self.tok.line}: expected block after "else"')
             if self.tok.text == 'elif':
                 self.seek()
                 expr = self.read_expression(TokenType.NewLine, TokenType.BlockStart, TokenType.BlockEnd)

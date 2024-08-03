@@ -151,7 +151,7 @@ class Tokenizer:
         return self.char
 
     def next_line(self):
-        while self.char != '\n':
+        while self.char and self.char != '\n':
             self.next_char()
         # self.ln += 1
         self.indent = 0

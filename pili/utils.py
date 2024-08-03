@@ -5,7 +5,7 @@ from .state import BASES, BuiltIns
 
 print(f'loading {__name__}.py')
 
-class PiliException(Exception):
+class PiliException(BaseException):
     pass
 class RuntimeErr(PiliException):
     def __str__(self):
@@ -14,17 +14,25 @@ class SyntaxErr(PiliException):
     pass
 class ContextErr(SyntaxErr):
     pass
+class OperatorErr(SyntaxErr):
+    pass
 class KeyErr(RuntimeErr):
     pass
-class SlotErr(RuntimeErr):
+class IndexErr(KeyErr):
+    pass
+class ZeroIndexErr(IndexErr):
     pass
 class NoMatchingOptionError(KeyErr):
     pass
-class MissingNameErr(KeyErr):
-    pass
 class InitializationErr(KeyErr):
     pass
-class OperatorErr(SyntaxErr):
+class EnvironmentErr(RuntimeErr):
+    pass
+class MissingNameErr(EnvironmentErr):
+    pass
+class DuplicateNameErr(EnvironmentErr):
+    pass
+class SlotErr(RuntimeErr):
     pass
 class PatternErr(RuntimeErr):
     pass

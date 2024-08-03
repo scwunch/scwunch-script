@@ -1,6 +1,7 @@
 from pili.syntax import default_op_fn
 from .base import *
 from ..utils import limit_str
+from operator import lt, le, gt, ge
 
 print(f'loading {__name__}.py')
 
@@ -264,12 +265,12 @@ Op['.?'].fn = Function({ParamSet(AnyParam, StringParam):
 Op['..'].fn = Function({ParamSet(IterParam, FunctionParam):
                             lambda it, fn: py_value([fn.call(el) for el in it]),
                         ParamSet(IterParam, StringParam):
-                            lambda it, name: py_value([dot_call_fn(el, name) for el in it.value]),
+                            lambda it, name: py_value([dot_call_fn(el, name) for el in it]),
                         }, name='..')
 Op['..?'].fn = Function({ParamSet(IterParam, FunctionParam):
                             lambda it, fn: py_value([fn.call(el, safe_call=True) for el in it]),
                         ParamSet(IterParam, StringParam):
-                            lambda it, name: py_value([dot_call_fn(el, name, safe_get=True) for el in it.value]),
+                            lambda it, name: py_value([dot_call_fn(el, name, safe_get=True) for el in it]),
                         }, name='..')
 Op['.'].eval_args = Op['.?'].eval_args = Op['..'].eval_args = Op['..?'].eval_args = eval_dot_args
 
@@ -295,9 +296,9 @@ Op['['].fn = Function({ParamSet(AnyParam, Parameter(AnyMatcher(), None, '?'), Ar
 
 # def safe_call_fn
 Op['call?'].fn = Function({ParamSet(AnyParam, Parameter(AnyMatcher(), None, '?'), ArgsParam,
-                                named_params=make_flags('swizzle', 'safe_get')):
+                                    named_params=make_flags('swizzle', 'safe_get')):
                                lambda *args, **kwargs: dot_call_fn(*args, **kwargs, safe_call=True),
-                       }, name='call?')
+                           }, name='call?')
 # Op['['].fn = Function({ParamSet(AnyParam, ArgsParam): Record.call,  # lambda rec, args: rec.call(args),
 #                        ParamSet(SeqParam, ArgsParam): list_get,
 #                        ParamSet(Parameter(TableMatcher(BuiltIns['PythonObject'])), ArgsParam): call_py_obj,
@@ -433,31 +434,33 @@ def eval_is_op_args(lhs: Node, rhs: Node) -> Args:
     # if rhs.type is TokenType.Name:
     #     rhs = BindExpr(rhs)
     return Args(lhs.evaluate(), rhs.eval_pattern())
-Op['~'].eval_args = Op['!~'].eval_args = Op['is'].eval_args = Op['is not'].eval_args = eval_is_op_args
-Op['~'].fn = Function({AnyBinopPattern: lambda a, b: py_value(b.match(a) is not None)},
-                      name='~')
-Op['!~'].fn = Function({AnyBinopPattern: lambda a, b: py_value(b.match(a) is None)},
-                       name='!~')
+Op['is'].eval_args = Op['is not'].eval_args = eval_is_op_args
 Op['is'].fn = Function({AnyBinopPattern: lambda a, b: py_value(b.match(a) is not None)},
                        name='is')
 Op['is not'].fn = Function({AnyBinopPattern: lambda a, b: py_value(b.match(a) is None)},
                            name='is not')
+def make_comp_fn(opfn: PyFunction):
+    def inner(*args):
+        if len(args) < 2:
+            raise ValueError(f'Line {state.line}: called comparative function with less than two arguments.')
+        for i in range(1, len(args)):
+            if not opfn(args[i-1].value, args[i].value):
+                return BuiltIns['false']
+        return BuiltIns['true']
+    return inner
 
-def eval_args_as_pattern(*nodes: Node) -> Args:
-    return Args(*(node.eval_pattern() for node in nodes))
-Op['|'].eval_args = Op['&'].eval_args = eval_args_as_pattern
-Op['|'].fn = Function({AnyPlusPattern: lambda *args: Parameter(UnionMatcher(*args))},
-                      name='|')
-Op['<'].fn = Function({NormalBinopPattern: lambda a, b: py_value(a.value < b.value)},
-                   name='<')
-Op['>'].fn = Function({NormalBinopPattern: lambda a, b: py_value(a.value > b.value)},
-                   name='>')
+Op['<'].fn = Function({AnyPlusPattern: make_comp_fn(lt)},
+                      name='<')
+Op['>'].fn = Function({AnyPlusPattern: make_comp_fn(gt)},
+                      name='>')
 Op['<='].fn = Function({AnyBinopPattern:
-                         lambda a, b: py_value(BuiltIns['<'].call(a, b).value or BuiltIns['=='].call(a, b).value)},
-                    name='<=')
+                         lambda a, b: py_value(BuiltIns['<'].call(a, b).value or BuiltIns['=='].call(a, b).value),
+                        AnyPlusPattern: make_comp_fn(le)},
+                       name='<=')
 Op['>='].fn = Function({AnyBinopPattern:
-                         lambda a, b: py_value(BuiltIns['>'].call(a, b).value or BuiltIns['=='].call(a, b).value)},
-                    name='>=')
+                         lambda a, b: py_value(BuiltIns['>'].call(a, b).value or BuiltIns['=='].call(a, b).value),
+                        AnyPlusPattern: make_comp_fn(ge)},
+                       name='>=')
 Op['to'].fn = Function({ParamSet(*[Parameter(UnionMatcher(TraitMatcher(NumTrait), ValueMatcher(BuiltIns['blank'])))]*2):
                             lambda *args: Range(*args)},
                        name='to')
@@ -548,24 +551,40 @@ Op['has'].fn = Function({ParamSet(AnyParam, NonStrSeqParam): has_option,
                          ParamSet(StringParam): lambda s: py_value(state.deref(s, None) is not None),
                          ParamSet(NormalParam): has_option},
                         name='has')
-
-Op['&'].fn = Function({AnyPlusPattern: lambda *args: Parameter(IntersectionMatcher(*map(patternize, args)))},
+def eval_args_as_pattern(*nodes: Node) -> Args:
+    return Args(*(node.eval_pattern() for node in nodes))
+Op['|'].eval_args = Op['&'].eval_args = Op['~'].eval_args = eval_args_as_pattern
+def extract_matchers(params: tuple[Pattern, ...]):
+    for param in params:
+        param = patternize(param)
+        if not isinstance(param, Parameter) or param.binding or param.quantifier or param.default:
+            raise NotImplementedError("Not yet implemented UnionParams / UnionPatts")
+        yield param.pattern
+Op['|'].fn = Function({AnyPlusPattern: lambda *args: Parameter(UnionMatcher(*extract_matchers(args)))},
+                      name='|')
+Op['&'].fn = Function({AnyPlusPattern: lambda *args: Parameter(IntersectionMatcher(*extract_matchers(args)))},
                       name='&')
-Op['@'].fn = Function({AnyParam: lambda rec: Parameter(ValueMatcher(rec))})
+
 def invert_pattern(rec: Record):
     match patternize(rec):
         case Parameter(pattern=Matcher() as patt, binding=b, quantifier=q, default=d):
-            if q[0] in "+*":
+            if q and q[0] in "+*":
                 raise NotImplementedError
             return Parameter(NotMatcher(patt), b, q, d)
     raise NotImplementedError
+Op['~'].fn = Function({AnyParam: invert_pattern,
+                       AnyBinopPattern: lambda a, b:
+                                        Parameter(IntersectionMatcher(*extract_matchers((a, invert_pattern(b)))))},
+                      name='~')
+Op['@'].fn = Function({AnyParam: lambda rec: Parameter(ValueMatcher(rec))})
 
-Op['!'].fn = Function({AnyParam: lambda rec: Parameter(ValueMatcher(rec))})
 
-def eval_declaration_arg(_, arg: Node) -> PyValue[str]:
+# Op['!'].fn = Function({AnyParam: lambda rec: Parameter(ValueMatcher(rec))})
+
+def eval_declaration_arg(_, arg: Node) -> Args:
     match arg:
         case Token(type=TokenType.Name, text=name):
-            return py_value(name)
+            return Args(py_value(name))
     raise AssertionError
 
 

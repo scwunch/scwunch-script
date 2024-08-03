@@ -424,9 +424,8 @@ class Option(Record):
     def set_resolution(self, resolution) -> None: ...
     def get_resolution(self) -> opt_resolution: ...
     def resolve(self, args: Args | None,
-                caller: Record,
                 bindings: dict[str|int, Record] = None,
-                _self: Record = None) \
+                caller: Record = None) \
             -> Record: ...
 
 class Inst:

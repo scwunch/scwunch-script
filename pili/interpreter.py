@@ -87,6 +87,7 @@ class StringNode(ListNode):
                                 case _:
                                     # assume char is one of: ', ", {, \
                                     yield c
+                            continue
                         else:
                             raise SyntaxErr(f"Unrecognized escape character '{c}' @{node.pos}")
                     i += 1
@@ -116,9 +117,10 @@ class Block(ListNode):
         self. function_names = func_names
 
     def evaluate(self):
+        return self.execute()
         # raise NotImplementedError("Use Block.execute instead.")
-        self.execute()
-        return BuiltIns['blank']
+        # self.execute()
+        # return BuiltIns['blank']
 
     def execute(self):
         line = state.line
@@ -140,7 +142,7 @@ class Block(ListNode):
             if state.break_loop or state.continue_:
                 break
         state.line = line
-        return val
+        return state.env.return_value or val
 
     def __repr__(self):
         if not self.statements:

@@ -193,6 +193,8 @@ SettingsSingletonTable = SetTable(Trait({},
                                name="SettingsSingletonTable")
 BuiltIns['settings'] = Record(SettingsSingletonTable)
 
+BuiltIns['repr'] = Function({StringParam: lambda s: py_value(repr(s.value)),
+                             AnyParam: lambda arg: BuiltIns['str'].call(arg)})
 
 BuiltIns['type'] = Function({AnyParam: lambda v: v.table})
 
@@ -249,13 +251,13 @@ RangeTrait.assign_option(Parameter(BuiltIns["num"], quantifier="*"), lambda *arg
 #                                ParamSet(FunctionParam, ListParam):
 #                                    lambda fn, ls: piliize([v for v in ls.value
 #                                                            if BuiltIns['bool'].call(fn.call(v)).value])})
-# BuiltIns['sum'] = Function({SeqParam: lambda ls: BuiltIns['+'].call(*ls.value)})
+BuiltIns['sum'] = Function({IterParam: lambda ls: BuiltIns['+'].call(*ls)})
 BuiltIns['trim'] = Function({StringParam: lambda text: py_value(text.value.strip()),
                             ParamSet(StringParam, StringParam): lambda t, c: py_value(t.value.strip(c.value))})
 BuiltIns['upper'] = Function({StringParam: lambda text: py_value(text.value.upper())})
 BuiltIns['lower'] = Function({StringParam: lambda text: py_value(text.value.lower())})
 BuiltIns['match'] = Function({ParamSet(StringParam, StringParam):
-                                  lambda s, p: py_value(re.match(p.value, s.value)),
+                                  lambda p, s: py_value(re.match(p.value, s.value)),
                               ParamSet(StringParam, StringParam, StringParam):
                                   lambda s, p, f: py_value(re.match(p.value, s.value, f.value))})
 # # BuiltIns['self'] = lambda: state.env.caller or state.env or py_value(None)
@@ -265,71 +267,71 @@ BuiltIns['match'] = Function({ParamSet(StringParam, StringParam):
 # #     return arg_list
 # # BuiltIns['args'] = lambda: Args(state.env)
 #
-def list_get(args: Args):
-    seq = state.env.caller
-    try:
-        seq = seq.value  # noqa
-    except AttributeError:
-        raise TypeErr(f"Line {state.line}: Could not find sequence value of non PyValue {seq}")
-    match args:
-        case Args(positional_arguments=(PyValue() as index,)):
-            pass
-        case Args(named_arguments={'index': PyValue() as index}):
-            pass
-        case _:
-            raise AssertionError
-    try:
-        if isinstance(seq, str):
-            return py_value(seq[index])
-        return seq[index]
-    except IndexError as e:
-        raise KeyErr(f"Line {state.line}: {e}")
-    except TypeError as e:
-        if index.value is None:
-            raise KeyErr(f"Line {state.line}: Pili sequence indices start at 1, not 0.")
-        raise KeyErr(f"Line {state.line}: {e}")
+# def list_get(args: Args):
+#     seq = state.env.caller
+#     try:
+#         seq = seq.value  # noqa
+#     except AttributeError:
+#         raise TypeErr(f"Line {state.line}: Could not find sequence value of non PyValue {seq}")
+#     match args:
+#         case Args(positional_arguments=(PyValue() as index,)):
+#             pass
+#         case Args(named_arguments={'index': PyValue() as index}):
+#             pass
+#         case _:
+#             raise AssertionError
+#     try:
+#         if isinstance(seq, str):
+#             return py_value(seq[index])
+#         return seq[index]
+#     except IndexError as e:
+#         raise KeyErr(f"Line {state.line}: {e}")
+#     except TypeError as e:
+#         if index.value is None:
+#             raise KeyErr(f"Line {state.line}: Pili sequence indices start at 1, not 0.")
+#         raise KeyErr(f"Line {state.line}: {e}")
+#
+# # moved to PyValue.assign_option
+# def list_set(ls: PyValue[list], index: PyValue, val: Record):
+#     if index.value == len(ls.value) + 1:
+#         ls.value.append(val)
+#     else:
+#         ls.value[index] = val
+#     return val
+#
+# def list_slice(args: Args):
+#     seq = state.env.caller
+#     try:
+#         seq = seq.value  # noqa
+#     except AttributeError:
+#         raise TypeErr(f"Line {state.line}: Could not find sequence value of non PyValue {seq}")
+#     match args:
+#         case Args(positional_arguments=(start, end, step)):
+#             step = step.value
+#         case Args(positional_arguments=(start, end)):
+#             step = 1
+#         case _:
+#             raise ValueError("improper slice args")
+#     start = start.__index__() if start.value else None
+#     if step > 0:
+#         end = end.value + (end.value < 0) or None
+#     else:
+#         end = end.value - (end.value > 0) or None
+#     try:
+#         return py_value(seq[start:end:step])
+#     except ValueError as e:
+#         raise KeyErr(f"Line {state.line}: {e}")
+#
+#
+# BuiltIns['slice'] = Function({ParamSet(SeqParam, IntegralParam, IntegralParam): list_slice,
+#                               ParamSet(SeqParam, IntegralParam, IntegralParam, IntegralParam): list_slice})
+# list_get_option = Option(ParamSet(IntegralParam), Closure(list_get))
+# list_slice_option1 = Option(ParamSet(IntegralParam, IntegralParam), Closure(list_slice))
+# list_slice_option2 = Option(ParamSet(IntegralParam, IntegralParam, IntegralParam), Closure(list_slice))
 
-# moved to PyValue.assign_option
-def list_set(ls: PyValue[list], index: PyValue, val: Record):
-    if index.value == len(ls.value) + 1:
-        ls.value.append(val)
-    else:
-        ls.value[index] = val
-    return val
-
-def list_slice(args: Args):
-    seq = state.env.caller
-    try:
-        seq = seq.value  # noqa
-    except AttributeError:
-        raise TypeErr(f"Line {state.line}: Could not find sequence value of non PyValue {seq}")
-    match args:
-        case Args(positional_arguments=(start, end, step)):
-            step = step.value
-        case Args(positional_arguments=(start, end)):
-            step = 1
-        case _:
-            raise ValueError("improper slice args")
-    start = start.__index__() if start.value else None
-    if step > 0:
-        end = end.value + (end.value < 0) or None
-    else:
-        end = end.value - (end.value > 0) or None
-    try:
-        return py_value(seq[start:end:step])
-    except ValueError as e:
-        raise KeyErr(f"Line {state.line}: {e}")
-
-
-BuiltIns['slice'] = Function({ParamSet(SeqParam, IntegralParam, IntegralParam): list_slice,
-                              ParamSet(SeqParam, IntegralParam, IntegralParam, IntegralParam): list_slice})
-list_get_option = Option(ParamSet(IntegralParam), Closure(list_get))
-list_slice_option1 = Option(ParamSet(IntegralParam, IntegralParam), Closure(list_slice))
-list_slice_option2 = Option(ParamSet(IntegralParam, IntegralParam, IntegralParam), Closure(list_slice))
-
-SeqTrait.assign_option(list_get_option)
-SeqTrait.assign_option(list_slice_option1)
-SeqTrait.assign_option(list_slice_option2)
+# SeqTrait.assign_option(list_get_option)
+# SeqTrait.assign_option(list_slice_option1)
+# SeqTrait.assign_option(list_slice_option2)
 
 BuiltIns['push'] = Function({ParamSet(ListParam, AnyParam):
                              lambda ls, item: ls.value.append(item) or ls})

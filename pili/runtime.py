@@ -5,7 +5,8 @@ from typing import TypeVar, Generic
 from . import state
 from .state import BuiltIns
 from .utils import NoMatchingOptionError, RuntimeErr, SlotErr, TypeErr, write_number, MatchErr, frozendict, \
-    InitializationErr, MissingNameErr, PatternErr, SyntaxErr, call, KeyErr, limit_str
+    InitializationErr, MissingNameErr, PatternErr, SyntaxErr, call, KeyErr, limit_str, ZeroIndexErr, IndexErr, \
+    DuplicateNameErr
 
 print(f'loading {__name__}.py')
 
@@ -179,7 +180,7 @@ class Record:
     def to_string(self):
         if self.name:
             return py_value(self.name)
-        return py_value(str(self))
+        return py_value(f'{self.table}{py_value(self.data).to_string().value}')
 
     def __repr__(self):
         return f"Record<{self.table}>({self.data})"
@@ -194,15 +195,16 @@ class PyValue(Record, Generic[T]):
         super().__init__(table)
 
     def to_string(self):
-        for singleton in ('true', 'false', 'blank'):
-            if self is BuiltIns[singleton]:
-                return py_value(singleton)
+        if self.value is None:
+            return py_value('blank')
+        if self.table is BuiltIns['Bool']:
+            return py_value('true') if self.value else py_value('false')
         if BuiltIns['num'] in self.table.traits:
             return py_value(write_number(self.value, state.settings['base']))
+        if self.table is BuiltIns['String']:
+            return self
         if BuiltIns['seq'] in self.table.traits:
-            gen = (f'"{el.value}"' if isinstance(getattr(el, 'value', None), str) else el.to_string().value
-                   for el in self.value)
-            items = ', '.join(gen)
+            items = ', '.join(BuiltIns['repr'].call(item).value for item in self)
             match self.value:
                 case list():
                     return py_value(f'[{items}]')
@@ -210,15 +212,15 @@ class PyValue(Record, Generic[T]):
                     return py_value(f'({items}{"," * (len(self.value) == 1)})')
                 case set() | frozenset():
                     return py_value('{' + items + '}')
-
-        return py_value(str(self.value))
+        raise NotImplementedError
+        # return py_value(str(self.value))
 
     def __index__(self) -> int | None:
         if not isinstance(self.value, int | bool):
-            raise TypeErr(f"Line {state.line}: Value used as seq index must have trait int. "
+            raise TypeErr(f"Value used as seq index must have trait int. "
                           f"{self} is a record of {self.table}")
         if not self.value:
-            raise ValueError(f"Line {state.line}: Pili indices start at ±1.  0 is not a valid index.")
+            raise ZeroIndexErr(f"Pili indices start at ±1.  0 is not a valid index.")
         return self.value - (self.value > 0)
 
     def call(self, *args, safe_call=False):
@@ -244,11 +246,18 @@ class PyValue(Record, Generic[T]):
                 return py_value(seq[index])
             return seq[index]
         except IndexError as e:
-            raise KeyErr(f"Line {state.line}: {e}")
+            if not safe_call:
+                raise IndexErr(f"Line {state.line}: {e}")
         except TypeError as e:
-            if index.value is None:
-                raise KeyErr(f"Line {state.line}: Pili sequence indices start at 1, not 0.")
-            raise KeyErr(f"Line {state.line}: {e}")
+            if not safe_call:
+                if index.value is None:
+                    raise TypeErr(f"Line {state.line}: Pili sequence indices start at 1, not 0.")
+                raise TypeErr(f"Line {state.line}: {e}")
+        except (IndexErr, TypeErr) as e:
+            if not safe_call:
+                raise e
+        assert safe_call
+        return BuiltIns['blank']
 
     def assign_option(self, key, val: Record):
         key: Args
@@ -1988,12 +1997,16 @@ class VarPatt(SpecialBindingParameter):
         self.var_name = name
 
     def match_and_bind(self, arg: Record) -> Record:
+        if self.var_name in state.env.locals:
+            raise DuplicateNameErr(f'Line {state.line}: Cannot declare var {self.var_name} because it is already a local.')
         state.env.vars[self.var_name] = arg
         return arg
 
 
 class LocalPatt(VarPatt):
     def match_and_bind(self, arg: Record) -> Record:
+        if self.var_name in state.env.vars:
+            raise DuplicateNameErr(f'Line {state.line}: Cannot declare local {self.var_name} because it is already a var.')
         state.env.locals[self.var_name] = arg
         return arg
 
@@ -2198,25 +2211,14 @@ class Option(Record):
     resolution = property(get_resolution, set_resolution, nullify)
 
     def resolve(self, args, bindings=None, caller=None):
-        if isinstance(args, tuple):
-            print("WARNING: encountered tuple of args rather than Args object.")
         if self.alias:
             return self.alias.resolve(args, bindings, caller)
         if self.value is not None:
             return self.value
         if self.fn:
-            if isinstance(args, Args):
-                return call(self.fn, args)
-            return self.fn(*args)
-        # if self.dot_option:
-        #     caller = args[0]
+            return call(self.fn, args)
         if self.block:
             return self.block.execute(args, bindings, fn=caller, option=self)
-            # closure = Closure(self.block, args, caller, bindings)
-            # state.push(state.line, closure, self)
-            # res = self.block.evaluate()
-            # state.pop()
-            # return res
         raise NoMatchingOptionError(f"Line {state.line}: Could not resolve null option")
 
     def __eq__(self, other):
@@ -2230,5 +2232,3 @@ class Option(Record):
         if self.alias:
             return f"Opt({self.pattern} -> {self.alias})"
         return f"Opt({self.pattern} -> null)"
-
-

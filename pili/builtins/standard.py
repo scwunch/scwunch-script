@@ -2,6 +2,29 @@ from .base import *
 
 print(f'loading {__name__}.py')
 
+def pili_max(iterable):
+    iterable = iter(iterable)
+    biggest = next(iterable, None)
+    if biggest is None:
+        return BuiltIns['blank']
+    for item in iterable:
+        if BuiltIns['>'].call(item, biggest).value:
+            biggest = item
+    return biggest
+state.deref('max').op_list[0].resolution = pili_max
+
+
+def pili_min(iterable):
+    iterable = iter(iterable)
+    least = next(iterable, None)
+    if least is None:
+        return BuiltIns['blank']
+    for item in iterable:
+        if BuiltIns['<'].call(item, least).value:
+            least = item
+    return least
+state.deref('min').op_list[0].resolution = pili_min
+
 def read_file(arg: Record, lines=BuiltIns['blank']):
     with open(arg.get('path').value, 'r') as f:
         if lines == BuiltIns['true']:

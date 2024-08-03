@@ -36,11 +36,13 @@ def run(*, path: str = None, script: str = None, closure=True, catch_error=True)
         raise ValueError("Specify either file path or script, but not both.")
     if path:
         with open(path) as f:
-            script = f.read()
+            source = f.read()
+    else:
+        source = script
     orig = state.source_path, state.source_code
     state.source_path = path
-    state.source_code = script
-    block = AST(Tokenizer(script)).block
+    state.source_code = source
+    block = AST(Tokenizer(source)).block
     if closure:
         block = Closure(block)
     try:
@@ -58,22 +60,25 @@ def run(*, path: str = None, script: str = None, closure=True, catch_error=True)
             raise e
     finally:
         state.source_path, state.source_code = orig
+        state.return_value = None
+
 
 def pili_shell():
     state.push(Frame(state.env))
     while True:
         code = ''
-        next_line = input('> ')
+        next_line = input(' > ')
         if next_line.endswith(' '):
             while next_line:
                 code += next_line + '\n'
-                next_line = input('  ')
+                next_line = input(' | ')
         else:
             code = next_line
         try:
             output = pili(code.strip())
             if output != BuiltIns['blank']:
-                print(output)
+                print(BuiltIns['repr'].call(output).value)
+            state.return_value = None
         except Exception as e:
             print("Exception: ", e, '\n***')
             raise e
