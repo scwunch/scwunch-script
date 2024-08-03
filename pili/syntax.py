@@ -73,6 +73,7 @@ class Commands(Enum):
     Continue = 'continue'
     Exit = 'exit'
     Debug = 'debug'
+    Shell = 'debug_shell'
     Import = 'import'
     Label = 'label'
     Slot = 'slot'

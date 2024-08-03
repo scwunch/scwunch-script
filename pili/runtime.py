@@ -1959,7 +1959,7 @@ class BindPropertyParam(SpecialBindingParameter):
         return hash((super(), self.field_name, self.rec))
 
     def __repr__(self):
-        return f'Parameter({self.pattern} {self.rec}.{self.field_name}{f' = {self.default}' if self.default else ''})'
+        return f"Parameter({self.pattern} {self.rec}.{self.field_name}{' = ' + str(self.default) if self.default else ''})"
 
 
 class BindKeyParam(SpecialBindingParameter):
@@ -1989,7 +1989,7 @@ class BindKeyParam(SpecialBindingParameter):
         return hash((super(), self.key, self.rec))
 
     def __repr__(self):
-        return f'Parameter({self.pattern} {self.rec}.{self.key}{f' = {self.default}' if self.default else ''})'
+        return f"Parameter({self.pattern} {self.rec}.{self.key}{' = ' +str(self.default) if self.default else ''})"
 
 class VarPatt(SpecialBindingParameter):
     def __init__(self, name: str):

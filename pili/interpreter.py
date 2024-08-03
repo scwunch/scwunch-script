@@ -223,7 +223,7 @@ class ParamsNode(ListNode):
     eval_pattern = evaluate
 
     def __repr__(self):
-        return f'ParamsNode({', '.join(map(str, self.nodes))}; {', '.join(map(str, self.named_params))})'
+        return f"ParamsNode({', '.join(map(str, self.nodes))}; {', '.join(map(str, self.named_params))})"
 
 
 class FieldMatcherNode(ListNode):
@@ -541,6 +541,9 @@ class CommandWithExpr(Command):
                 return py_value(mod)
             case 'label':
                 state.env.name = BuiltIns['str'].call(self.expr.evaluate()).value
+            case 'debug_shell':
+                from pili import pili_shell
+                pili_shell()
             case _:
                 raise SyntaxErr(f"Line {state.line}: Unhandled command {self.command}")
 
