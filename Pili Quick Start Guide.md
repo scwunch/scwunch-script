@@ -288,5 +288,10 @@ table Dog
 ```
 
 
+
+## Other things
+this quick start guide is far from complete... for more info, take a look at the readme.md and the code examples.
+
+
 ***
 [^1]: Originally I was going to implement a range of functionality related to filter views and such, but kinda lost motivation to do that.
