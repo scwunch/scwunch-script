@@ -337,7 +337,7 @@ class AST:
                 header = self.read_expression(TokenType.BlockStart, *end_of_statement)
                 if self.tok.type != TokenType.BlockStart:
                     raise SyntaxErr(f"Line {pos.ln}: missing block after {Cmd} statement.")
-                if self.peek(-1).source_text == ':':
+                if self.peek(-1).text == ':':
                     raise SyntaxErr(pos, f"Pili does not use colons for control blocks like if and for.")
                 blk_nodes = self.read_block_ladder()
                 pos += self.tok.pos

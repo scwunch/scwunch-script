@@ -1,5 +1,6 @@
 print(f'loading {__name__}.py')
 
+file = None
 source_path: str = None
 source_code: str = None
 stack = []
@@ -31,6 +32,13 @@ class Call:
         if self.fn:
             return f"> Line {self.line}:  {self.fn}"
         return f"> Line {self.line}: {self.frame}"
+
+class File:
+    path: str
+    source_code: str
+    def __init__(self, path, source_code):
+        self.path = path
+        self.source_code = source_code
 
 
 def push(frame, fn=None, option=None):

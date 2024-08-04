@@ -3,6 +3,7 @@ from syntax import Operator
 
 print(f'loading {__name__}.py')
 
+file: File | None
 source_path: str | None
 source_code: str | None
 stack: list[Frame]
@@ -31,6 +32,11 @@ class Call:
                  env: Frame,
                  fn: Function = None,
                  option: Option = None): ...
+
+class File:
+    path: str | None
+    source_code: str
+    def __init__(self, path: str | None, source_code: str): ...
 
 def push(frame: Frame, fn: Function = None, option: Option = None): ...
 

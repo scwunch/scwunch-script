@@ -153,9 +153,9 @@ class ArgsNode(ListNode):
         def generate_args(nodes: list[Node]):
             for node in nodes:
                 match node:
-                    case OpExpr('=', [Token(type=TokenType.Name, source_text=name), val_node]):
+                    case OpExpr('=', [Token(type=TokenType.Name, text=name), val_node]):
                         named_args[name] = val_node.evaluate()
-                    case OpExpr('!', [EmptyExpr(), Token(type=TokenType.Name, source_text=name)]):
+                    case OpExpr('!', [EmptyExpr(), Token(type=TokenType.Name, text=name)]):
                         flags.add(name)
                     case OpExpr('*', [EmptyExpr(), iter_node]):
                         yield from BuiltIns['iter'].call(iter_node.evaluate())
@@ -411,7 +411,7 @@ class ForLoop(ExprWithBlock):
     def evaluate(self):
         iterator = BuiltIns['iter'].call(self.iterable.evaluate())
         match self.var:
-            case Token(type=TokenType.Name, source_text=var_name):
+            case Token(type=TokenType.Name, text=var_name):
                 pass
             case _:
                 raise NotImplementedError

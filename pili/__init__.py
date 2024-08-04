@@ -1,5 +1,5 @@
 from pili import state
-from pili.state import Op, BuiltIns
+from pili.state import Op, BuiltIns, File
 from pili.lexer import Tokenizer
 from pili.abstract_syntax_tree import AST
 from pili.runtime import GlobalFrame, Closure, Frame
@@ -39,7 +39,8 @@ def run(*, path: str = None, script: str = None, closure=True, catch_error=True)
             source = f.read()
     else:
         source = script
-    orig = state.source_path, state.source_code
+    orig = state.file, state.source_path, state.source_code
+    state.file = File(path, source)
     state.source_path = path
     state.source_code = source
     block = AST(Tokenizer(source)).block
@@ -59,7 +60,7 @@ def run(*, path: str = None, script: str = None, closure=True, catch_error=True)
         else:
             raise e
     finally:
-        state.source_path, state.source_code = orig
+        state.file, state.source_path, state.source_code = orig
         state.return_value = None
 
 

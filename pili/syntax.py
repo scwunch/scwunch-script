@@ -2,7 +2,7 @@
 from enum import Enum, EnumMeta
 import math
 from . import state
-from .state import BuiltIns, Op
+from .state import BuiltIns, Op, File
 from .utils import OperatorErr
 
 print(f'loading {__name__}.py')
@@ -131,11 +131,13 @@ for key in KeyWords:
 
 
 class Position:
+    file: File
     ln: int
     ch: int | None
     start_index: int = None
     stop_index: int = None
     def __init__(self, pos: tuple[int, int | None], start: int = None, end: int = None):
+        self.file = state.file
         self.ln, self.ch = pos
         if start is not None:
             self.start_index = start
@@ -165,6 +167,9 @@ class Position:
         else:
             return slice(self.start_index, self.stop_index)
 
+    def source_text(self) -> str:
+        return self.file.source_code[self.slice()]
+
 
 class Node:
     type = TokenType.Unknown
@@ -186,7 +191,7 @@ class Node:
 
     @property
     def source_text(self):
-        return state.source_code[self.pos.slice()]
+        return self.pos.file.source_code[self.pos.slice()]
 
     def eval_pattern(self, name_as_any=False):
         raise NotImplementedError('implement this in interpreter.py')
