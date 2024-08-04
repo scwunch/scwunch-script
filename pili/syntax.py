@@ -240,43 +240,7 @@ class ListNode(Node):
     nodes: list[Node]
     def __init__(self, nodes: list[Node], pos: Position = None):
         self.nodes = nodes
-        self.pos = pos  # or Concrete(nodes).pos
-
-class Block(ListNode):
-    """
-    a container for executables (statements, e
-    representing the lines of code to put into a function
-    """
-    empty = frozenset()
-    statements: list[Node]
-    table_names: set[str]
-    trait_names: set[str]
-    function_names: set[str]
-
-    def __init__(self, nodes: list[Node],
-                 table_names: set[str] = empty, trait_names: set[str] = empty, func_names: set[str] = empty,
-                 pos: Position = None):
-        super().__init__(nodes, pos)
-        self.statements = nodes
-        self.table_names = table_names
-        self.trait_names = trait_names
-        self. function_names = func_names
-
-    def evaluate(self):
-        raise NotImplementedError("Use Block.execute instead.")
-        # self.execute()
-        # return BuiltIns['blank']
-
-    def execute(self):
-        raise NotImplementedError('implemented in interpreter.py')
-
-    def __repr__(self):
-        if not self.statements:
-            return 'Block[empty]'
-        elif len(self.statements) == 1:
-            return f"Block[{repr(self.statements[0])}]"
-        else:
-            return f"Block[{len(self.statements)} statements]"
+        self.pos = pos
 
 
 def default_op_fn(*args):

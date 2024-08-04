@@ -2062,12 +2062,13 @@ class Closure:
         if link_frame:
             link_frame.frame = env
         state.push(env, fn, option)
+        val = BuiltIns['blank']
         if hasattr(self, 'block'):
-            self.block.execute()
+            val = self.block.execute()
         else:
             env.return_value = self.fn(args)
         state.pop()
-        return env.return_value or fn
+        return env.return_value or val
 
     def __repr__(self):
         return f"Closure({len(self.block.statements)})"

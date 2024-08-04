@@ -4,7 +4,7 @@ from . import state
 from .state import Op, BuiltIns
 from .utils import read_number, ContextErr, SyntaxErr, RuntimeErr, TypeErr
 from .runtime import *
-from .syntax import Node, TokenType, Token, Position, Operator, SINGLETONS, ListNode, Block
+from .syntax import Node, TokenType, Token, Position, Operator, SINGLETONS, ListNode #, Block
 
 print(f'loading {__name__}.py')
 
@@ -31,28 +31,6 @@ def eval_token_pattern(self: Token, name_as_any=False):
         return Parameter(AnyMatcher(), self.text)
     return patternize(self.evaluate())
 Token.eval_pattern = eval_token_pattern
-
-def execute_block(self: Block) -> Record:
-    line = state.line
-    val = BuiltIns['blank']
-    for tbl in self.table_names:
-        # noinspection PyTypeChecker
-        state.env.locals[tbl] = ListTable(name=tbl, uninitialized=True)
-    for trait in self.trait_names:
-        # noinspection PyTypeChecker
-        state.env.locals[trait] = Trait(name=trait, uninitialized=True)
-    for fn in self.function_names:
-        # noinspection PyTypeChecker
-        state.env.locals[fn] = Function(name=fn, uninitialized=True)
-    for expr in self.statements:
-        state.line = expr.line
-        val = expr.evaluate()
-        if state.env.return_value:
-            break
-        if state.break_loop or state.continue_:
-            break
-    state.line = line
-    return val
 
 class StringNode(ListNode):
     def __repr__(self):
@@ -118,13 +96,9 @@ class Block(ListNode):
 
     def evaluate(self):
         return self.execute()
-        # raise NotImplementedError("Use Block.execute instead.")
-        # self.execute()
-        # return BuiltIns['blank']
 
     def execute(self):
         line = state.line
-        val = BuiltIns['blank']
         for tbl in self.table_names:
             # noinspection PyTypeChecker
             state.env.locals[tbl] = ListTable(name=tbl, uninitialized=True)
@@ -134,6 +108,7 @@ class Block(ListNode):
         for fn in self.function_names:
             # noinspection PyTypeChecker
             state.env.locals[fn] = Function(name=fn, uninitialized=True)
+        val = BuiltIns['blank']
         for expr in self.statements:
             state.line = expr.line
             val = expr.evaluate()
@@ -142,7 +117,7 @@ class Block(ListNode):
             if state.break_loop or state.continue_:
                 break
         state.line = line
-        return state.env.return_value or val
+        return val
 
     def __repr__(self):
         if not self.statements:
@@ -543,6 +518,7 @@ class CommandWithExpr(Command):
                 state.env.name = BuiltIns['str'].call(self.expr.evaluate()).value
             case 'debug_shell':
                 from pili import pili_shell
+                print('Starting interactive pili shell...')
                 pili_shell()
             case _:
                 raise SyntaxErr(f"Line {state.line}: Unhandled command {self.command}")
