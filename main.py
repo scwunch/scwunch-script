@@ -18,7 +18,7 @@ if __name__ == '__main__':
             mode = 'test'
             script_path = "test_script.pili"
             # script_path = 'syntax_demo.pili'
-            # script_path = "dates.pili"
+            script_path = "dates.pili"
             # script_path = 'fibonacci.pili'
             # script_path = 'pili_interpreter.pili'
             # script_path = 'advent.pili'

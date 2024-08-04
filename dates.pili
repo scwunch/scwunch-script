@@ -45,22 +45,55 @@ table Date
         if 1 <= d <= last_day
             self._day = d
         else
-            self.month += d // last_day
+            self.month += (d - 1) // last_day
             self._day = d % last_day or last_day
     formula month int =
         return self._month.order
     setter month[int m]:
-        self.year += m // 12
+        self.year += (m - 1) // 12
         self._month = month_list[m % 12 or 12]
+        if self._day > self._month.days
+            self.day = self.day
 
     [str date_text]:
         date_parts = date_text.split["-"]..int
         return Date[*date_parts]
-    [int year, int month, int day]:
+    [int year, int month = 1, int day = 1]:
         d = Date.new[year]
         d.month = month
         d.day = day
         return d
+    [str date_text, str format = "yyyy-mmm-dd"]:
+        year, month, day = 2024, 1, 1
+        print 'Date[{date_text.repr}, {format.repr}]'
+        if year_span = 'y+'.match[format, !i]
+            print 'year_span: {year_span}'
+            end = year_span.end * (year_span.end != year_span.start)
+            year_match = `\d+`.match[date_text, year_span.start, end]
+            print 'year_match=`\\d+`.match[{date_text}, {year_span.start}, {end}]  =>  {year_match}'
+            if year_match
+                year = year_match[].int
+            if 0 < year < 50
+                year += 2000
+            if 49 < year < 100
+                year += 1900
+        if month_span = 'm+'.match[format, !i]
+            print 'month_span = {month_span}'
+            count = month_span.len
+            if count == 3
+                month_regex = month_list..(m => m.name[to 3]).join['|']
+            elif count > 3
+                month_regex = month_list..(m => m.name).join['|']
+            else
+                month_regex = `\d` * count
+            month_match = month_regex.match[date_text, month_span.start, !i]
+            if month_match
+                month = month_match[].int
+        if day_span = 'dd?'.match[format, !i]
+            if day_match = (`\d` * day_span.len).match[date_text, day_span.start, !i]
+                day = day_match[].int
+        return Date[year, month, day]
+
 
     .str:
         return "{self.year}-{self.month}-{self.day}"
@@ -86,24 +119,49 @@ table Date
                 days -= month_list[i].days
         return days + self.day - date.day
 
-    .advance[int days = 0; int weeks = 0, int months = 0, int years = 0]:
+    .advance[int days = 0; int weeks = 0, int months = 0, int years = 0, !copy]:
+        if copy
+            self = self.copy
         self.day += days + 7 * weeks
         self.month += months
         self.year += years
         return self
     .month_name:
-        return months[self.month]
+        return self._month.name
+    .truncate["year"]:
+        return Date[self.year]
+    .truncate["month"]:
+        return Date[self.year, self.month]
+    .truncate["quarter"]:
+        return Date[self.year, 1 + 3 * (self.month - 1 // 3)]
+    .end_of_month[int offset = 0]:
+        return Date[self.year, self.month + offset + 1, 0]
     .copy[; int year?, int month?, int day?]:
         return Date[year ?? self.year,
                     month ?? self.month,
                     day ?? self.day]
+    .format[str format = "yyyy-mm-dd"]:
+        format = format.lower
+        format = format.replace['yyyy', str[self.year]]
+        format = format.replace['yyy', str[self.year][-3 to]]
+        format = format.replace['yy', str[self.year][-2 to]]
+        format = format.replace['y', str[self.year]]
+        format = format.replace['mmmmm', self._month.name]
+        format = format.replace['mmmm', self._month.name]
+        format = format.replace['mmm', self._month.name[to 3]]
+        format = format.replace['mm', '0' * (self.month < 10) + str[self.month]]
+        format = format.replace['m', self.month]
+        format = format.replace['dd', '0' * (self.day < 10) + str[self.day]]
+        format = format.replace['d', str[self.day]]
+        return format
 
 
-d = Date["2022-12-12"]
+d = Date["2022-12-12"]  # not sure why this only sometimes works ?!?!
+
+# print d
+# print d + 1
+# print d - 1
+
+# print d.advance[50]
+# print d
 debug_shell
-print d
-print d + 1
-print d - 1
-
-print d.advance[50]
-print d

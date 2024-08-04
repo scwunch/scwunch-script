@@ -521,7 +521,7 @@ class CommandWithExpr(Command):
             case 'debug_shell':
                 from pili import pili_shell
                 print('Starting interactive pili shell...')
-                pili_shell()
+                return pili_shell()
             case _:
                 raise SyntaxErr(f"Line {state.line}: Unhandled command {self.command}")
 
@@ -740,7 +740,7 @@ class FormulaExpr(NamedExpr):
         formula_type = self.field_type.eval_pattern()
 
         patt = ParamSet(Parameter(state.env.fn, binding='self'))
-        formula_fn = Function({patt: Closure(self.block)})
+        formula_fn = Function({patt: Closure(self.block)}, name=self.name)
         formula = Formula(self.name, formula_type, formula_fn)
         match state.env.fn:
             case Trait() as trait:
@@ -778,7 +778,7 @@ class SetterExpr(NamedExpr):
         params: ParamSet = self.params.evaluate()
         # params.parameters = (Parameter(AnyMatcher(), 'self'),) + params.parameters
         assert len(params) == 2
-        fn = Function({params: Closure(self.block)})
+        fn = Function({params: Closure(self.block)}, name=self.name)
         setter = Setter(self.field_name, fn)
         match state.env.fn:
             case Trait() as trait:

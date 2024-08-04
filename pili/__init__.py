@@ -76,9 +76,12 @@ def pili_shell():
             code = next_line
         try:
             output = pili(code.strip())
-            if output != BuiltIns['blank']:
+            if isinstance(output, BaseException):
+                print(output)
+            elif output != BuiltIns['blank']:
                 print(BuiltIns['repr'].call(output).value)
-            state.return_value = None
+            if state.return_value is not None:
+                return state.return_value
         except Exception as e:
             print("Exception: ", e, '\n***')
             raise e

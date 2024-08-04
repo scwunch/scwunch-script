@@ -43,6 +43,35 @@ trait regex
 table RegEx(regex, str)
     blank
 
+match[str pattern, str text, int start=0, int end=0; !a, !i, !m, !s, !x, !l]:
+    blank
+
+table Match
+    opt [int|str index*]:
+        return self.group[*index]
+    opt [range indices]:
+        return self.group[*indices]
+    .group[int|str idx*]:
+        blank
+    .expand[str template]:
+        blank
+    .groups[default?]:
+        blank
+    .span[int group=0]:
+        return self.start[group], self.end[group]
+    .start[int group=0]:
+        blank
+    .end[int group=0]:
+        blank
+    .range[int group=0]:
+        return self.start[group] to self.end[group]
+    .len:
+        return self.end - self.start + 1
+    .str:
+        return self.group
+    .repr:
+        return "Match[span={self.span}, match={self.str.repr}]"
+
 
 ##############################################
 # list functions

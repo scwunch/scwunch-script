@@ -256,10 +256,9 @@ BuiltIns['trim'] = Function({StringParam: lambda text: py_value(text.value.strip
                             ParamSet(StringParam, StringParam): lambda t, c: py_value(t.value.strip(c.value))})
 BuiltIns['upper'] = Function({StringParam: lambda text: py_value(text.value.upper())})
 BuiltIns['lower'] = Function({StringParam: lambda text: py_value(text.value.lower())})
-BuiltIns['match'] = Function({ParamSet(StringParam, StringParam):
-                                  lambda p, s: py_value(re.match(p.value, s.value)),
-                              ParamSet(StringParam, StringParam, StringParam):
-                                  lambda s, p, f: py_value(re.match(p.value, s.value, f.value))})
+BuiltIns['replace'] = \
+    Function({ParamSet(StringParam, StringParam, StringParam, Parameter(IntegralParam, default=py_value(-1))):
+                  lambda self, old, new, count=-1: py_value(self.value.replace(old.value, new.value, count.value))})
 # # BuiltIns['self'] = lambda: state.env.caller or state.env or py_value(None)
 # # def Args(fn: Function):
 # #     arg_list = piliize([opt.value for opt in fn.args])
