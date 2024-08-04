@@ -17,7 +17,7 @@ function fib
 print 'start'
 now[]:
     return python['timeit.default_timer()']
-start_time = now
+start_time = now[]
 t1 = now[]
 for n in 1 to 7000
     s = fib[n]
