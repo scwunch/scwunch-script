@@ -42,7 +42,7 @@ class StringNode(ListNode):
                 if node.type != TokenType.StringPart:
                     yield BuiltIns['str'].call(node.evaluate()).value
                     continue
-                text = node.source_text
+                text = node.text
                 start = i = 0
                 while i < len(text):
                     if text[i] == '\\':
@@ -281,6 +281,8 @@ class OpExpr(Node):
                 param = self.terms[0].eval_pattern()
                 if not isinstance(param, Parameter):
                     return Parameter(param, quantifier='+')
+            case '?' if isinstance(self.terms[-1], EmptyExpr):
+                return Parameter(self.terms[0].eval_pattern(name_as_any=name_as_any), quantifier='?')
             case _:
                 pass
 
