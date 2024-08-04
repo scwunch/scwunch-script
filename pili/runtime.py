@@ -182,6 +182,9 @@ class Record:
             return py_value(self.name)
         return py_value(f'{self.table}{py_value(self.data).to_string().value}')
 
+    def __str__(self):
+        return self.to_string().value
+
     def __repr__(self):
         return f"Record<{self.table}>({self.data})"
 
@@ -212,6 +215,8 @@ class PyValue(Record, Generic[T]):
                     return py_value(f'({items}{"," * (len(self.value) == 1)})')
                 case set() | frozenset():
                     return py_value('{' + items + '}')
+        if self.table == BuiltIns['Match']:
+            return py_value(str(self.value))
         raise NotImplementedError
         # return py_value(str(self.value))
 
@@ -876,6 +881,9 @@ class Args(Record):
         d = self.dict()
         return hash((frozenset(d), frozenset(d.values())))
 
+    def __str__(self):
+        return repr(self)
+
     def __repr__(self):
         pos = map(str, self.positional_arguments)
         names = (f"{k}={v}" for (k, v) in self.named_arguments.items())
@@ -990,6 +998,9 @@ class TableMatcher(Matcher):
     def equivalent(self, other):
         return isinstance(other, TableMatcher) and self.table == other.table
 
+    def __str__(self):
+        return str(self.table)
+
 class TraitMatcher(Matcher):
     trait: Trait
     rank = 6, 0
@@ -1005,6 +1016,9 @@ class TraitMatcher(Matcher):
 
     def equivalent(self, other):
         return isinstance(other, TraitMatcher) and other.trait == self.trait
+
+    def __str__(self):
+        return str(self.trait)
 
 class ValueMatcher(Matcher):
     value: Record
@@ -1028,6 +1042,9 @@ class ValueMatcher(Matcher):
 
     def equivalent(self, other):
         return isinstance(other, ValueMatcher) and other.value == self.value
+
+    def __str__(self):
+        return '@' + str(self.value)
 
 class ArgsMatcher(Matcher):
     rank = 5, 0
@@ -1100,6 +1117,9 @@ class AnyMatcher(Matcher):
     def equivalent(self, other):
         return isinstance(other, AnyMatcher)
 
+    def __str__(self):
+        return 'any'
+
 class EmptyMatcher(Matcher):
     rank = 3, 0
     def basic_score(self, arg: Record) -> bool:
@@ -1120,6 +1140,9 @@ class EmptyMatcher(Matcher):
 
     def equivalent(self, other):
         return isinstance(other, EmptyMatcher)
+
+    def __str__(self):
+        return 'empty'
 
 class IterMatcher(Matcher):
     # params: ParamSet
@@ -1261,6 +1284,9 @@ class NotMatcher(Matcher):
     def __le__(self, other):
         return other < self.matcher
 
+    def __str__(self):
+        return "~" + str(self.matcher)
+
 class IntersectionMatcher(Matcher):
     # I'm confused.  I think I made this inherit from "Pattern" rather than "Matcher" so that you could do
     # intersections of multiple parameters in a row
@@ -1322,6 +1348,9 @@ class IntersectionMatcher(Matcher):
             case _:
                 return any(p <= other for p in self.matchers)
 
+    def __str__(self):
+        return '&'.join(map(str, self.matchers))
+
 class UnionMatcher(Matcher):
     rank = 7, 0
     matchers: tuple[Matcher, ...]
@@ -1362,6 +1391,9 @@ class UnionMatcher(Matcher):
                 return all(p < other for p in self.matchers)
             case _:
                 raise NotImplementedError
+
+    def __str__(self):
+        return '|'.join(map(str, self.matchers))
 
 
 class Parameter(Pattern):
@@ -1517,6 +1549,12 @@ class Parameter(Pattern):
             case Matcher():
                 return self >= Parameter(other)
         return NotImplemented
+
+    def __str__(self):
+        patt = str(self.pattern) + ' ' if self.pattern is not AnyMatcher() else ''
+        q = self.quantifier * (not (self.quantifier == '?' and self.default))
+        default = ' = ' + str(self.default) if self.default else ''
+        return patt + self.binding + q + default
 
     def __repr__(self):
         return (f"Parameter({self.pattern}{f' {self.binding}' if self.binding else ''}{self.quantifier}"
@@ -1924,6 +1962,11 @@ class ParamSet(Pattern):
         if not isinstance(other, ParamSet):
             return NotImplemented
         return self.parameters >= other.parameters
+
+    def __str__(self):
+        def comma_sep(params):
+            return ', '.join(map(str, params))
+        return f"[{comma_sep(self.parameters)}{'; ' + comma_sep(self.named_params) if self.named_params else ''}]"
 
     def __repr__(self):
         return f"ParamSet({', '.join(map(repr, self.parameters))}{'; ' + str(self.named_params) if self.named_params else ''})"

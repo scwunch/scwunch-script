@@ -238,7 +238,7 @@ greet['Anthony', !excited]
 greet['Anthony', excited=true]
 ```
 
-###  Tables and Traits
+##  Tables and Traits
 Classes in Pili are called tables for hysterical raisins[^1].  Traits are like table components that can be combined to make tables.  Each value in Pili is a record of exactly one table.  Each table implements zero or more traits.
 
 Traits and tables are also functions, and therefore can have variables and options defined in their body.  Unlike functions, traits and tables also have **fields**: slot, formula (ie getter), and setter.  The syntax for fields is as follows:
@@ -271,7 +271,7 @@ print rover
 Dog['Rover', 4, true, true]
 ```
 
-#### Methods: dot-options etc
+### Methods: dot-options etc
 Any variable defined in a trait/table body is accessible via dot syntax, just like with functions.  Additionally, these values are also accessible by instances of the table.  If the value accessed in this way is a function, it will be supplied the instance as it's first argument.  This is how Pili does class methods.
 
 ```
