@@ -65,12 +65,9 @@ table Date
         return d
     [str date_text, str format = "yyyy-mmm-dd"]:
         year, month, day = 2024, 1, 1
-        print 'Date[{date_text.repr}, {format.repr}]'
         if year_span = 'y+'.match[format, !i]
-            print 'year_span: {year_span}'
             end = year_span.end * (year_span.end != year_span.start)
             year_match = `\d+`.match[date_text, year_span.start, end]
-            print 'year_match=`\\d+`.match[{date_text}, {year_span.start}, {end}]  =>  {year_match}'
             if year_match
                 year = year_match[].int
             if 0 < year < 50
@@ -78,7 +75,6 @@ table Date
             if 49 < year < 100
                 year += 1900
         if month_span = 'm+'.match[format, !i]
-            print 'month_span = {month_span}'
             count = month_span.len
             if count == 3
                 month_regex = month_list..(m => m.name[to 3]).join['|']
