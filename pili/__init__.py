@@ -61,7 +61,7 @@ def run(*, path: str = None, script: str = None, closure=True, catch_error=True)
             raise e
     finally:
         state.file, state.source_path, state.source_code = orig
-        state.return_value = None
+        # state.return_value = None
 
 
 def pili_shell():
@@ -81,8 +81,11 @@ def pili_shell():
                 print(output)
             elif output != BuiltIns['blank']:
                 print(BuiltIns['repr'].call(output).value)
-            if state.return_value is not None:
-                return state.return_value
+            if state.env.return_value is not None:
+                res = state.env.return_value
+                state.env.return_value = None
+                print('Exiting pili_shell.')
+                return res
         except Exception as e:
             print("Exception: ", e, '\n***')
             raise e

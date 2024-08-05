@@ -160,4 +160,5 @@ print d = Date["2022-1-1"]
 
 # print d.advance[50]
 # print d
-debug_shell
+print (debug_shell) + 100
+return "returned from dates.pili"
