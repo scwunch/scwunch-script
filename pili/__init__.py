@@ -68,11 +68,11 @@ def pili_shell():
     state.push(Frame(state.env))
     while True:
         code = ''
-        next_line = input(' > ')
+        next_line = input(' >  ')
         if next_line.endswith(' '):
             while next_line:
                 code += next_line + '\n'
-                next_line = input(' | ')
+                next_line = input(' |  ')
         else:
             code = next_line
         try:

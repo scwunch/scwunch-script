@@ -557,9 +557,12 @@ Op['|'].eval_args = Op['&'].eval_args = Op['~'].eval_args = eval_args_as_pattern
 def extract_matchers(params: tuple[Pattern, ...]):
     for param in params:
         param = patternize(param)
-        if not isinstance(param, Parameter) or param.binding or param.quantifier or param.default:
-            raise NotImplementedError("Not yet implemented UnionParams / UnionPatts")
-        yield param.pattern
+        if not isinstance(param, Parameter) or param.quantifier or param.default:
+            raise NotImplementedError("Not yet implemented union/intersection of multi-parameter patterns.")
+        if param.binding:
+            yield BindingMatcher(param.pattern, param.binding)
+        else:
+            yield param.pattern
 Op['|'].fn = Function({AnyPlusPattern: lambda *args: Parameter(UnionMatcher(*extract_matchers(args)))},
                       name='|')
 Op['&'].fn = Function({AnyPlusPattern: lambda *args: Parameter(IntersectionMatcher(*extract_matchers(args)))},

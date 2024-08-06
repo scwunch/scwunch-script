@@ -1287,6 +1287,16 @@ class NotMatcher(Matcher):
     def __str__(self):
         return "~" + str(self.matcher)
 
+class BindingMatcher(Matcher):
+    def __init__(self, matcher: Matcher, binding: str):
+        self.matcher = matcher
+        self.binding = binding
+    def match(self, arg):
+        bindings = self.matcher.match(arg)
+        if bindings is not None:
+            bindings.update({self.binding: arg})
+            return bindings
+
 class IntersectionMatcher(Matcher):
     # I'm confused.  I think I made this inherit from "Pattern" rather than "Matcher" so that you could do
     # intersections of multiple parameters in a row

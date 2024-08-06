@@ -282,6 +282,12 @@ class LambdaMatcher(Matcher):
 class NotMatcher(Matcher):
     def __init__(self, matcher: Matcher): ...
 
+class BindingMatcher(Matcher):
+    matcher: Matcher
+    binding: str
+    def __init__(self, matcher: Matcher, binding: str): ...
+
+
 class IntersectionMatcher(Matcher):
     matchers: tuple[Matcher, ...]
     def __init__(self, *matchers: Matcher, binding: str = None, ): ...
