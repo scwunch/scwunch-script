@@ -95,3 +95,15 @@ function filter
         blank
     [iter~list it, fn f]:
         blank
+
+
+##############################################
+# list functions
+##############################################
+function parse_json
+    [str json]:
+        blank
+
+function write_json
+    [fn func]:
+        blank

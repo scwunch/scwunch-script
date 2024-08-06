@@ -1,5 +1,6 @@
 from .base import *
 from ..utils import IndexErr
+import json
 
 print(f'loading {__name__}.py')
 
@@ -115,3 +116,6 @@ state.deref('join').op_list[0].resolution = \
     lambda ls, sep=py_value(''): py_value(sep.value.join(BuiltIns['str'].call(item).value for item in iter(ls)))
 state.deref('join').op_list[1].resolution = \
     lambda sep, *args: py_value(sep.value.join(BuiltIns['str'].call(item).value for item in args))
+
+
+state.deref('parse_json').op_list[0].resolution = lambda text: py_value(json.loads(text.value))

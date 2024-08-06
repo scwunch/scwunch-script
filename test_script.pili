@@ -676,6 +676,12 @@ test[132] &&= (fools..?c
 test[132] &&= and[*fools..?add?[foo2]]
 print_test[132]
 
+json_text = `{ "name": "John", "age": 30, "city": "New York"}`
+json = parse_json[json_text]
+test[133] = json is {'name': str, "age": int}
+test[133] &&= json is not {'NAME': str} and json is not {'name': int}
+print_test[133]
+
 
 
 

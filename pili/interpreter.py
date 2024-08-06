@@ -226,7 +226,16 @@ class FunctionLiteral(ListNode):
         return fn
 
     def eval_pattern(self, name_as_any=False) -> Pattern:
-        raise NotImplementedError
+        d = {}
+        for node in self.nodes:
+            match node:
+                case OpExpr(':', [key_node, pattern_node]):
+                    key = key_node.evaluate()
+                    pattern = pattern_node.eval_pattern(name_as_any=name_as_any)
+                    d[key] = pattern
+                case _:
+                    raise NotImplementedError
+        return Parameter(KeyValueMatcher(d))
 
 
 class OpExpr(Node):

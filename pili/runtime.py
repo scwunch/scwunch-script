@@ -206,7 +206,7 @@ class PyValue(Record, Generic[T]):
             return py_value(write_number(self.value, state.settings['base']))
         if self.table is BuiltIns['String']:
             return self
-        if BuiltIns['seq'] in self.table.traits:
+        if BuiltIns['seq'] in self.table.traits or BuiltIns['set'] in self.table.traits:
             items = ', '.join(BuiltIns['repr'].call(item).value for item in self)
             match self.value:
                 case list():
@@ -217,7 +217,10 @@ class PyValue(Record, Generic[T]):
                     return py_value('{' + items + '}')
         if self.table == BuiltIns['Match']:
             return py_value(str(self.value))
-        raise NotImplementedError
+        # if self.table == BuiltIns['Function']:
+        #     items = (f'{}: {}' for item in self.)
+        #     return py_value('{' + ', '.join(BUi))
+        raise NotImplementedError(f'str[{self.table}]')
         # return py_value(str(self.value))
 
     def __index__(self) -> int | None:
@@ -328,8 +331,7 @@ def py_value(value: T | object):
             t = type(value)
             value = t(map(py_value, value))
         case dict() as d:
-            table = BuiltIns['Function']
-            value = Function({py_value(k): py_value(v) for k, v in d.items()})
+            return Function({py_value(k): py_value(v) for k, v in d.items()})
         case Record():
             return value
         # case Parameter():
@@ -1065,7 +1067,7 @@ class ArgsMatcher(Matcher):
         return self.params.match(arg)
 
 
-class FunctionMatcher(Matcher):
+class FunctionSignatureMatcher(Matcher):
     def __init__(self, pattern, return_type):
         self.pattern = pattern
         self.return_type = return_type
@@ -1086,19 +1088,44 @@ class FunctionMatcher(Matcher):
 
     def issubset(self, other):
         match other:
-            case FunctionMatcher(pattern=patt, return_type=ret):
+            case FunctionSignatureMatcher(pattern=patt, return_type=ret):
                 return self.pattern.issubset(patt) and self.return_type.issubset(ret)
             case TraitMatcher(trait=BuiltIns.get('fn')) | TableMatcher(table=BuiltIns.get('Function')):
                 return True
         return False
 
     def equivalent(self, other):
-        return (isinstance(other, FunctionMatcher)
+        return (isinstance(other, FunctionSignatureMatcher)
                 and other.pattern == self.pattern
                 and other.return_type == self.return_type)
 
     def __repr__(self):
-        return f"FunctionMatcher({self.pattern} => {self.return_type})"
+        return f"FunctionSignatureMatcher({self.pattern} => {self.return_type})"
+
+class KeyValueMatcher(Matcher):
+    items: dict  #dict[Record, Parameter]
+    def __init__(self, items: dict):
+        self.items = frozendict(items)
+
+    def match(self, arg):
+        if not isinstance(arg, Function):
+            return
+        d = arg.op_map
+        bindings = {}
+        for key, param in self.items.items():
+            try:
+                value = d[Args(key)].value
+            except KeyError:
+                if param.required:
+                    return
+                continue
+            sub_bindings = param.match(value)
+            if sub_bindings is None:
+                return None
+            else:
+                bindings.update(sub_bindings)
+        return bindings
+
 
 class AnyMatcher(Matcher):
     rank = 100, 0
