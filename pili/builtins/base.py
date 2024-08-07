@@ -194,6 +194,7 @@ SettingsSingletonTable = SetTable(Trait({},
 BuiltIns['settings'] = Record(SettingsSingletonTable)
 
 BuiltIns['repr'] = Function({StringParam: lambda s: py_value(repr(s.value)),
+                             FunctionParam: lambda fn: fn.to_string(True),
                              AnyParam: lambda arg: BuiltIns['str'].call(arg)})
 
 BuiltIns['type'] = Function({AnyParam: lambda v: v.table})
@@ -259,99 +260,11 @@ BuiltIns['lower'] = Function({StringParam: lambda text: py_value(text.value.lowe
 BuiltIns['replace'] = \
     Function({ParamSet(StringParam, StringParam, StringParam, Parameter(IntegralParam, default=py_value(-1))):
                   lambda self, old, new, count=-1: py_value(self.value.replace(old.value, new.value, count.value))})
-# # BuiltIns['self'] = lambda: state.env.caller or state.env or py_value(None)
-# # def Args(fn: Function):
-# #     arg_list = piliize([opt.value for opt in fn.args])
-# #     arg_list.add_option(FunctionParam, lambda fn: Args(fn))
-# #     return arg_list
-# # BuiltIns['args'] = lambda: Args(state.env)
-#
-# def list_get(args: Args):
-#     seq = state.env.caller
-#     try:
-#         seq = seq.value  # noqa
-#     except AttributeError:
-#         raise TypeErr(f"Line {state.line}: Could not find sequence value of non PyValue {seq}")
-#     match args:
-#         case Args(positional_arguments=(PyValue() as index,)):
-#             pass
-#         case Args(named_arguments={'index': PyValue() as index}):
-#             pass
-#         case _:
-#             raise AssertionError
-#     try:
-#         if isinstance(seq, str):
-#             return py_value(seq[index])
-#         return seq[index]
-#     except IndexError as e:
-#         raise KeyErr(f"Line {state.line}: {e}")
-#     except TypeError as e:
-#         if index.value is None:
-#             raise KeyErr(f"Line {state.line}: Pili sequence indices start at 1, not 0.")
-#         raise KeyErr(f"Line {state.line}: {e}")
-#
-# # moved to PyValue.assign_option
-# def list_set(ls: PyValue[list], index: PyValue, val: Record):
-#     if index.value == len(ls.value) + 1:
-#         ls.value.append(val)
-#     else:
-#         ls.value[index] = val
-#     return val
-#
-# def list_slice(args: Args):
-#     seq = state.env.caller
-#     try:
-#         seq = seq.value  # noqa
-#     except AttributeError:
-#         raise TypeErr(f"Line {state.line}: Could not find sequence value of non PyValue {seq}")
-#     match args:
-#         case Args(positional_arguments=(start, end, step)):
-#             step = step.value
-#         case Args(positional_arguments=(start, end)):
-#             step = 1
-#         case _:
-#             raise ValueError("improper slice args")
-#     start = start.__index__() if start.value else None
-#     if step > 0:
-#         end = end.value + (end.value < 0) or None
-#     else:
-#         end = end.value - (end.value > 0) or None
-#     try:
-#         return py_value(seq[start:end:step])
-#     except ValueError as e:
-#         raise KeyErr(f"Line {state.line}: {e}")
-#
-#
-# BuiltIns['slice'] = Function({ParamSet(SeqParam, IntegralParam, IntegralParam): list_slice,
-#                               ParamSet(SeqParam, IntegralParam, IntegralParam, IntegralParam): list_slice})
-# list_get_option = Option(ParamSet(IntegralParam), Closure(list_get))
-# list_slice_option1 = Option(ParamSet(IntegralParam, IntegralParam), Closure(list_slice))
-# list_slice_option2 = Option(ParamSet(IntegralParam, IntegralParam, IntegralParam), Closure(list_slice))
-
-# SeqTrait.assign_option(list_get_option)
-# SeqTrait.assign_option(list_slice_option1)
-# SeqTrait.assign_option(list_slice_option2)
-
-BuiltIns['push'] = Function({ParamSet(ListParam, AnyParam):
-                             lambda ls, item: ls.value.append(item) or ls})
-BuiltIns['pop'] = Function({ParamSet(ListParam,
-                                     Parameter(IntegralParam, None, '?', py_value(-1))):
-                            lambda ls, idx=-1: ls.value.pop(idx - (idx > 0))})
-# BuiltIns['join'] = Function({ParamSet(SeqParam, StringParam):
-#                              lambda ls, sep: py_value(sep.value.join(BuiltIns['str'].call(item).value
-#                                                                      for item in iter(ls))),
-#                              ParamSet(StringParam, Parameter(AnyMatcher(), quantifier="+")):
-#                              lambda sep, items: py_value(sep.value.join(BuiltIns['str'].call(item).value
-#                                                                         for item in iter(items))),
-#                              })
-BuiltIns['split'] = Function({ParamSet(StringParam, StringParam):
-                                  lambda txt, sep: py_value([py_value(s) for s in txt.value.split(sep.value)])})
 
 BuiltIns['new'] = Function({ParamSet(TableParam, AnyPattern[0], kwargs='kwargs'):
                                 lambda t, *args, **kwargs: Record(t, *args, **kwargs)})
 
 # class File(Record):
-
 
 # def convert(name: str) -> Function:
 #     o = object()

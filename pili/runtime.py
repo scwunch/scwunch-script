@@ -217,9 +217,6 @@ class PyValue(Record, Generic[T]):
                     return py_value('{' + items + '}')
         if self.table == BuiltIns['Match']:
             return py_value(str(self.value))
-        # if self.table == BuiltIns['Function']:
-        #     items = (f'{}: {}' for item in self.)
-        #     return py_value('{' + ', '.join(BUi))
         raise NotImplementedError(f'str[{self.table}]')
         # return py_value(str(self.value))
 
@@ -481,9 +478,33 @@ class Function(Record, OptionCatalog):
             return option, bindings
         return self.table.catalog.select_and_bind(args)
 
+    def to_dict(self):
+        d = {}
+        for k, v in self.op_map.items():
+            key = k[0].value if len(k) == 1 else k.positional_arguments
+            d[key] = v.value.value
+        return d
+
+    def to_string(self, as_repr=False):
+        if self.name and not as_repr:
+            return py_value(self.name)
+        items = (f'{BuiltIns['repr'].call(k[0] if len(k) == 1 else py_value(k.positional_arguments)).value}: '
+                 f'{BuiltIns['repr'].call(v.value).value}' for k, v in self.op_map.items())
+        options = (f'{BuiltIns['repr'].call(opt.pattern).value} => ...' for opt in self.op_list)
+        names = ()
+        if self.frame:
+            names = (f'{k} = {BuiltIns['repr'].call(v).value}' for k, v in self.frame.items())
+        segments = []
+        items, options, names = tuple(items), tuple(options), tuple(names)
+        if names:
+            segments.append(names)
+        if items:
+            segments.append(items)
+        if options:
+            segments.append(options)
+        return py_value('{' + '; '.join(', '.join(seg) for seg in segments) + '}')
+
     def __repr__(self):
-        if self is state.root:
-            return 'root'
         return f"Function({self.name or ''})"
 
 
@@ -2216,6 +2237,10 @@ class Frame:
     def update(self, bindings: dict):
         for name, rec in bindings.items():
             self.assign(name, rec)
+
+    def items(self):
+        yield from self.locals.items()
+        yield from self.vars.items()
 
     def __repr__(self):
         return (f"Frame({len(self.vars) + len(self.locals)} names; "
