@@ -9,7 +9,8 @@ class PiliException(BaseException):
     pass
 class RuntimeErr(PiliException):
     def __str__(self):
-        return f"\n\nTraceback:\n{state.get_trace()}\n> {super().__str__()}"
+        state.trace.append(state.Call(state.env.file_path, state.line, state.env, error_text=super().__str__()))
+        return f"\n\nTraceback:\n{state.get_trace()}"
 class SyntaxErr(PiliException):
     pass
 class ContextErr(SyntaxErr):

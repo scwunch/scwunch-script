@@ -31,7 +31,8 @@ class Call:
                  line: int,
                  env: Frame,
                  fn: Function = None,
-                 option: Option = None): ...
+                 option: Option = None,
+                 error_text: str = None): ...
 
 class File:
     path: str | None

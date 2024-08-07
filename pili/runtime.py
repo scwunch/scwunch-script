@@ -2138,7 +2138,10 @@ class Closure:
 
     def execute(self, args=None, bindings=None, *, fn=None, option=None, link_frame=None):
         fn = fn or link_frame
-        env = Frame(self.scope, args, bindings, fn, option)
+        path = state.env.file_path
+        if hasattr(self, 'block') and self.block.pos:
+            path = self.block.pos.file.path
+        env = Frame(self.scope, args, bindings, fn, option, path)
         if link_frame:
             link_frame.frame = env
         state.push(env, fn, option)
@@ -2183,7 +2186,7 @@ class Closure:
 class Frame:
     return_value = None
 
-    def __init__(self, scope, args=None, bindings=None, fn=None, option=None):
+    def __init__(self, scope, args=None, bindings=None, fn=None, option=None, file_path=None):
         # self.names = bindings or {}
         self.vars = {}
         self.locals = bindings or {}
@@ -2193,6 +2196,7 @@ class Frame:
         self.args = args
         self.fn = fn
         self.option = option
+        self.file_path = file_path or state.source_path
 
     def assign(self, name: str, value: Record):
         scope = self
@@ -2219,6 +2223,7 @@ class Frame:
 
 
 class GlobalFrame(Frame):
+    file_path = None
     block = None
     scope = None
     args = None
