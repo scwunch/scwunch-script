@@ -413,7 +413,7 @@ Op['not'].fn = Function({AnyParam: lambda x: py_value(not x.truthy)},
 
 Op['in'].fn = Function({ParamSet(AnyParam, FunctionParam):
                             lambda a, b: py_value(Args(a) in b.op_map),
-                        ParamSet(AnyParam, NonStrSeqParam):
+                        ParamSet(AnyParam, Parameter(UnionMatcher(NonStrSeqParam, SetParam))):
                             lambda a, b: py_value(a in b.value),
                         ParamSet(AnyParam, StringParam):
                             lambda a, b: py_value(a.value in b.value)},

@@ -58,6 +58,8 @@ class PyObj(Record, Generic[A]):
 
 def py_value(value: T) -> PyValue: ...
 
+def to_python(rec: Record): ...
+
 class Range(Record):
     data: list[PyValue[int]]
     slice: slice | None

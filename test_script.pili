@@ -682,8 +682,30 @@ test[133] = json is {'name': str, "age": int}
 test[133] &&= json is not {'NAME': str} and json is not {'name': int}
 print_test[133]
 
+sample_yaml = ```
+---
+title: A New Hope # This is a text property
+year: 1977
+favorite: true
+date: 2020-08-21
+time: 2020-08-21T10:30:00
+cast: # This is a list property
+  - Mark Hamill
+  - Harrison Ford
+  - Carrie Fisher
+link: "[[Link]]"
+linklist:
+  - "[[Link]]"
+  - "[[Link2]]"
 
-
+last: # this will default to blank
+---
+```
+y = yaml[sample_yaml]
+test[134] = (y['title'] == 'A New Hope'
+             and y['linklist'] == ["[[Link]]", "[[Link2]]"]
+             and 'date: 2020-08-21' in yaml.dump[y].split['\n'].set)
+print_test[134]
 
 iter[@test]:
     return range[0, test.len-1]

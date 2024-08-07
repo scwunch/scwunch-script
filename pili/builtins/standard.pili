@@ -46,6 +46,12 @@ table RegEx(regex, str)
 match[str pattern, str text, int start=0, int end=0; !a, !i, !m, !s, !x, !l]:
     blank
 
+function split
+    [str text, RegEx patt, int max_split = 0; !a, !i, !m, !s, !x, !l]:
+        blank
+    [str text, str sep = '']:
+        blank
+
 table Match
     opt [int|str index*]:
         return self.group[*index]
@@ -76,10 +82,12 @@ table Match
 ##############################################
 # list functions
 ##############################################
-function join
-    [iter it, str sep = '']:
+function push
+    [list ls, any item, int idx?]:
         blank
-    [str sep = '', any args+]:
+
+function pop
+    [list ls, int idx = -1]:
         blank
 
 function extend
@@ -90,20 +98,46 @@ function extend
             ls.extend[it]
         return ls
 
+function join
+    [iter it, str sep = '']:
+        blank
+    [str sep = '', any args+]:
+        blank
+
 function filter
     [list ls, fn f; !mutate]:
-        blank
+        1/0
     [iter~list it, fn f]:
         blank
 
 
 ##############################################
-# list functions
+# JSON / YAML
 ##############################################
 function parse_json
     [str json]:
         blank
 
 function write_json
+    [fn func]:
+        blank
+
+function yaml
+    [;str path]:
+        return yaml[File[path].read]
+    [str content]:
+        docs = content.split[regex[`\n*(\.{3}\n)?---\n*`]]
+        docs.filter[doc => doc and doc.trim, !mutate]
+        if docs.len == 0
+            return yaml.load[content]
+        if docs.len == 1
+            return yaml.load[docs[1]]
+        return docs..(yaml.load)
+    load[str yaml_text]:
+        blank
+    dump[fn func]:
+        blank
+
+function write_yaml
     [fn func]:
         blank

@@ -125,6 +125,14 @@ class Record:
             self.set(k, v)
         table.add_record(self)
 
+    @property
+    def value(self):
+        return getattr(self, '_value', getattr(self, 'obj', self))
+
+    @value.setter
+    def value(self, value):
+        self._value = value
+
     def get(self, name: str, *default, search_table_frame_too=False):
         if name in self.table.getters:
             match self.table.getters[name]:
@@ -339,6 +347,34 @@ def py_value(value: T | object):
             return PyObj(value)
     return PyValue(table, value)
 
+def to_python(rec: Record):
+    match rec:
+        case PyValue(value=value):
+            if isinstance(value, str):
+                return value
+            try:
+                iter(value)
+            except TypeError:
+                return value
+            t = type(value)
+            return t(map(to_python, value))
+        case PyObj(obj=obj):
+            return obj
+        case Function(op_map=op_map, op_list=op_list):
+            d = {}
+            for k, opt in op_map.items():
+                key = to_python(k[0]) if len(k) == 1 else to_python(k)
+                d[key] = to_python(opt.value)
+            for opt in op_list:
+                d[opt.pattern] = to_python(opt.resolution)
+            return d
+        case Args(positional_arguments=args, flags=flags, named_arguments=kwargs) as rec:
+            if not flags and not kwargs:
+                return tuple(map(to_python, args))
+            return {to_python(k): to_python(v) for k, v in rec.dict().items()}
+        case _:
+            return rec
+
 
 class PyObj(Record, Generic[A]):
     def __init__(self, obj):
@@ -478,12 +514,12 @@ class Function(Record, OptionCatalog):
             return option, bindings
         return self.table.catalog.select_and_bind(args)
 
-    def to_dict(self):
-        d = {}
-        for k, v in self.op_map.items():
-            key = k[0].value if len(k) == 1 else k.positional_arguments
-            d[key] = v.value.value
-        return d
+    # def to_dict(self):
+    #     d = {}
+    #     for k, v in self.op_map.items():
+    #         key = k[0].value if len(k) == 1 else k.positional_arguments
+    #         d[key] = v.value.value
+    #     return d
 
     def to_string(self, as_repr=False):
         if self.name and not as_repr:
