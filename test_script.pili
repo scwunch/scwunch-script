@@ -707,8 +707,12 @@ test[134] = (y['title'] == 'A New Hope'
              and 'date: 2020-08-21' in yaml.dump[y].split['\n'].set)
 print_test[134]
 
+
+
+
 iter[@test]:
     return range[0, test.len-1]
+
 failed_tests = []
 for t in test
 	if not t in test or not test[t]
@@ -738,4 +742,5 @@ print 'MAIN Execution time (hms): {float[round[10000 * execution_time, 4]]}'
 print "MAIN Execution time (decimal ms): {str[1000d * execution_time, 10d]}"
 print 'LOOP ({reps} iterations) Execution time (hms): {float[round[10000 * loop_time, 4]]}'
 print "LOOP ({str[reps, 10d]} iterations) Execution time (decimal ms): " + str[1000d * loop_time, 10d]
+debug_shell
 return 'TOTAL time: ' + str[1000d * loop_time, 10d] + "ms"

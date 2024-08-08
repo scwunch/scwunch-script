@@ -1648,7 +1648,7 @@ class Parameter(Pattern):
         patt = str(self.pattern) + ' ' if self.pattern is not AnyMatcher() else ''
         q = self.quantifier * (not (self.quantifier == '?' and self.default))
         default = ' = ' + str(self.default) if self.default else ''
-        return patt + self.binding + q + default
+        return patt + (self.binding or '') + q + default
 
     def __repr__(self):
         return (f"Parameter({self.pattern}{f' {self.binding}' if self.binding else ''}{self.quantifier}"

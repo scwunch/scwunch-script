@@ -579,7 +579,8 @@ Op['~'].fn = Function({AnyParam: invert_pattern,
                        AnyBinopPattern: lambda a, b:
                                         Parameter(IntersectionMatcher(*extract_matchers((a, invert_pattern(b)))))},
                       name='~')
-Op['@'].fn = Function({AnyParam: lambda rec: Parameter(ValueMatcher(rec))})
+Op['@'].eval_args = lambda *args: Args(*(arg.eval_pattern() for arg in args if not isinstance(arg, EmptyExpr)))
+Op['@'].fn = Function({AnyParam: lambda x: x})
 
 
 # Op['!'].fn = Function({AnyParam: lambda rec: Parameter(ValueMatcher(rec))})
