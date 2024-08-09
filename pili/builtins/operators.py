@@ -461,6 +461,7 @@ Op['>='].fn = Function({AnyBinopPattern:
                          lambda a, b: py_value(BuiltIns['>'].call(a, b).value or BuiltIns['=='].call(a, b).value),
                         AnyPlusPattern: make_comp_fn(ge)},
                        name='>=')
+
 Op['to'].fn = Function({ParamSet(*[Parameter(UnionMatcher(TraitMatcher(NumTrait), ValueMatcher(BuiltIns['blank'])))]*2):
                             lambda *args: Range(*args)},
                        name='to')
@@ -579,13 +580,13 @@ Op['~'].fn = Function({AnyParam: invert_pattern,
                        AnyBinopPattern: lambda a, b:
                                         Parameter(IntersectionMatcher(*extract_matchers((a, invert_pattern(b)))))},
                       name='~')
-Op['@'].eval_args = lambda *args: Args(*(arg.eval_pattern() for arg in args if not isinstance(arg, EmptyExpr)))
+Op['@'].eval_args = lambda *args: Args(*(arg.eval_pattern() for arg in args))
 Op['@'].fn = Function({AnyParam: lambda x: x})
 
 
 # Op['!'].fn = Function({AnyParam: lambda rec: Parameter(ValueMatcher(rec))})
 
-def eval_declaration_arg(_, arg: Node) -> Args:
+def eval_declaration_arg(arg: Node) -> Args:
     match arg:
         case Token(type=TokenType.Name, text=name):
             return Args(py_value(name))

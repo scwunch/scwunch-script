@@ -125,7 +125,7 @@ class AST:
                         if op.text == ':':
                             # try to insert self param in dot methods
                             match t0:
-                                case OpExpr('.', [EmptyExpr(), method], pos=t0pos):
+                                case OpExpr('.', [method], prefix=True, pos=t0pos):
                                     if not self.in_function_body:
                                         raise SyntaxErr(f'Line {pos.ln}: dot methods not allowed '
                                                         f'outside of table/trait/function blocks.')
@@ -147,13 +147,13 @@ class AST:
                         terms.append(t1)
                     else:
                         pos = op_pos + t1.pos
-                        if fixity == 'prefix':
-                            op_terms = (EmptyExpr(pos.pos), t1)
-                        elif fixity == 'postfix':
-                            op_terms = (t1, EmptyExpr((pos.ln, pos.ch + pos.stop_index - pos.start_index)))
-                        else:
-                            raise AssertionError(fixity)
-                        terms.append(OpExpr(op, *op_terms, pos=pos))
+                        terms.append(OpExpr(op, t1, pos=pos, fixity=fixity))
+                        if op.text == 'to':
+                            # special case can get EmptyExprs as terms
+                            if fixity == 'prefix':
+                                terms[-1].terms = (EmptyExpr(pos.pos), t1)
+                            elif fixity == 'postfix':
+                                terms[-1].terms = (t1, EmptyExpr((pos.ln, pos.ch + pos.stop_index - pos.start_index)))
                 else:
                     return
 

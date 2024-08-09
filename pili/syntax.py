@@ -282,7 +282,7 @@ class Operator:
     @staticmethod
     def eval_args(*terms):
         raise NotImplementedError('This function is defined in interpreter.py')
-        # return Args(*(t.evaluate() for t in terms if not isinstance(t, EmptyExpr)))
+        # return Args(*(t.evaluate() for t in terms))
 
     def __repr__(self):
         return self.text

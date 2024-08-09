@@ -155,9 +155,9 @@ class ArgsNode(ListNode):
                 match node:
                     case OpExpr('=', [Token(type=TokenType.Name, text=name), val_node]):
                         named_args[name] = val_node.evaluate()
-                    case OpExpr('!', [EmptyExpr(), Token(type=TokenType.Name, text=name)]):
+                    case OpExpr('!', [Token(type=TokenType.Name, text=name)]):
                         flags.add(name)
-                    case OpExpr('*', [EmptyExpr(), iter_node]):
+                    case OpExpr('*', [iter_node], prefix=True):
                         yield from BuiltIns['iter'].call(iter_node.evaluate())
                     case _:
                         yield node.evaluate()
@@ -185,7 +185,7 @@ class ParamsNode(ListNode):
         def gen_params(nodes) -> tuple[str, Parameter]:
             for node in nodes:
                 match node:
-                    case OpExpr('!', [EmptyExpr(), Token(TokenType.Name, text=name)]):
+                    case OpExpr('!', [Token(TokenType.Name, text=name)]):
                         param = Parameter(TraitMatcher(BuiltIns['bool']), name, '?', BuiltIns['blank'])
                     case _:
                         param = node.eval_pattern(name_as_any=True)
@@ -242,16 +242,20 @@ class OpExpr(Node):
     op: Operator
     terms: tuple[Node, ...]
     fixity: str  # prefix|postfix
+    prefix: bool
+    postfix: bool
     def __init__(self, op: Operator, *terms: Node, pos: Position = None, fixity: str = None):
         assert terms
         self.pos = pos
         self.op = op
+        self.prefix = fixity == 'prefix'
+        self.postfix = fixity == 'postfix'
         if op.text == '=>':
             pos = terms[1].pos
             terms = terms[0], Block([CommandWithExpr('return', terms[1], pos)], pos=pos)
         if op.text == ':' and isinstance(terms[1], Block):
             match terms[0]:
-                case OpExpr('[') | OpExpr('.', [EmptyExpr(), _]) | ParamsNode():
+                case OpExpr('[') | OpExpr('.', prefix=True) | ParamsNode():
                     pass
                 case _:
                     raise SyntaxErr(f'Line {self.line}: invalid syntax: "{terms[0].source_text}".  A colon followed by '
@@ -277,8 +281,6 @@ class OpExpr(Node):
                 if not (isinstance(lhs, Token) and lhs.type == TokenType.Name):
                     raise SyntaxErr(f'Line {self.line}: could not patternize "{self.source_text}"; '
                                     f'left-hand-side of colon must be a name.')
-                    # TODO: but at some point I will make this work for options too like Foo(["key"]: str value)
-                    # probably in the context of braces like {"key": str value}
                 field_name = lhs.text
                 return Parameter(FieldMatcher((), {field_name: rhs.eval_pattern(name_as_any=True)}))
             case '=':
@@ -290,7 +292,7 @@ class OpExpr(Node):
                 param = self.terms[0].eval_pattern()
                 if not isinstance(param, Parameter):
                     return Parameter(param, quantifier='+')
-            case '?' if isinstance(self.terms[-1], EmptyExpr):
+            case '?' if self.postfix:
                 return Parameter(self.terms[0].eval_pattern(name_as_any=name_as_any), quantifier='?')
             case _:
                 pass
@@ -890,12 +892,12 @@ class EmptyExpr(Node):
         return "EmptyExpr()"
 
 
-Operator.eval_args = lambda op, *terms: Args(*(t.evaluate() for t in terms if not isinstance(t, EmptyExpr)))
+Operator.eval_args = lambda op, *terms: Args(*(t.evaluate() for t in terms))
 
 def eval_list_nodes(nodes):
     for n in nodes:
         match n:
-            case OpExpr('*', [EmptyExpr(), iter_node]):
+            case OpExpr('*', [iter_node], prefix=True):
                 yield from BuiltIns['iter'].call(iter_node.evaluate())
             case EmptyExpr():
                 continue
