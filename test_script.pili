@@ -1,7 +1,7 @@
 import timeit
 settings.base = 'h'
 now[]:
-    return python ['timeit.default_timer()']
+	return python ['timeit.default_timer()']
 start_time = now  []
 
 
@@ -15,8 +15,12 @@ function foo
 	bar[int a, str b]:
 		return str[a] + b + str[self]
 
-# 	.bar[int a, str b]:
-# 		return str[a] + b + str[self]
+	numn = num n
+	[a,  numn | str,  int | str b,  int cint | str cstr,  numn+,  numn?,  d1?,  d2+,  int e1?,  int e2+]:
+		return n
+
+	[numn = 1, numn x = 2]:
+		return n, x
 
 
 print foo[a=-1, "one", "two", "three", d=20/30]
@@ -32,9 +36,9 @@ function multiprint
 
 (repeats: n) = multiprint
 if n == multiprint.repeats
-    print "`(repeats: int n) = multiprint` set n to same value as multiprint.repeats"
+	print "`(repeats: int n) = multiprint` set n to same value as multiprint.repeats"
 else
-    print "FAILURE to set `(repeats: int n) = multiprint`"
+	print "FAILURE to set `(repeats: int n) = multiprint`"
 
 multiprint['hello x3']
 print multiprint.repeats
@@ -59,7 +63,7 @@ test[1] = greet == 'hello world'
 print 'test 1 passed' if test[1] == true else 'test 1 FAILED'
 
 greeting[str src]:
-    return 'Hello ' + src
+	return 'Hello ' + src
 test[2] = "Hello Veronica" == greeting['Veronica']
 print 'test 2 passed' if test[2] == true else 'test 2 FAILED'
 
@@ -69,7 +73,7 @@ my_var[int num]:
 	return num + 5
 
 my_var[str text]:
-    return text + '!'
+	return text + '!'
 test[3] = my_var[1] == 10
 print 'test 3 passed' if test[3] else 'test 3 FAILED'
 
@@ -78,7 +82,7 @@ print 'test 4 passed' if test[4] else 'test 4 FAILED'
 
 function next_var
 	[str text]:
-	    return text + '?!?!'
+		return text + '?!?!'
 test[5] = next_var['hahahahaha'] == 'hahahahaha?!?!'
 print 'test 5 passed' if test[5] else 'test 5 FAILED'
 
@@ -86,26 +90,19 @@ my_var[3] = "three"
 test[6d] = my_var[3] == 'three'
 print 'test 10 passed' if test[6d] else 'test 10 FAILED'
 
-test[7d] = not 345 is type["345"] and 345 is type[3333] and 345 is not str
 
+test[7d] = not 345 is type["345"] and 345 is type[3333] and 345 is not str
 print 'test 11 passed' if test[7d] else 'test 11 FAILED'
 
 table Dog
 	slot name str
 	slot breed str
 	.bark[]:
-	    return "hello my name is " + self.name
+		return "hello my name is " + self.name
 	bark_breed[Dog|(breed: str) self]:
 		return self.breed
-	# .bark: "hello my name is " + self.name
-	# I really need to have the dot-option here, because otherwise, methods like str and len will work but
-	# new methods will only be defined within the context of Dog!
-	# On second thought, I guess it should it be a local in Dog, and locals of Dog should be accessible like rec.name
-	# ... but if spot stands in for the namespace, then how can spot.bark actually make spot an argument of bark?
-	# ... ... do I need to revive the 'self' keyword?
 
 spot = Dog['Spot', 'terrier']
-# return debug spot.bark_breed[]
 test[8d] = spot.bark[] == "hello my name is Spot"
 print 'test 12 passed' if test[8d] else 'test 12 FAILED'
 
@@ -156,12 +153,12 @@ test[23] = (Dog?[23] ?? "fall back") == "fall back" and (spot.?name ?? "no name"
 print 'test 23 passed' if test[23] else 'test 23 FAILED'
 
 foo[str|int]:
-    return 'it worked'
+	return 'it worked'
 test[24] = foo[4] + foo["4"] == 'it worked' * 2
 print 'test 24 ' + ('passed' if test[24] else 'FAILED')
 
 foo2[str|int|bool var_name]:
-    return str[var_name] + ' worked'
+	return str[var_name] + ' worked'
 test[25] = foo2[1] == "1 worked"
 print 'test 25 ' + ('passed' if test[25] else 'FAILED')
 
@@ -172,7 +169,7 @@ table Cat
 	.meow[]:
 		return "hello my name is " + self.name
 	.str:
-	    return "Cat {self.name}"
+		return "Cat {self.name}"
 
 my_cat = Cat["Ruby"]
 # return str[my_cat], my_cat.str
@@ -181,15 +178,15 @@ print 'test 30 ' + ('passed' if test[30] else 'FAILED')
 
 numberlicious = int|float|bool|ratio  # this is actually basically the same as num
 add[numberlicious a, numberlicious b]:
-    return int[a] + b
+	return int[a] + b
 fav_num = 5
 test[31] = add[fav_num, 5]  == fav_num.add[5]
 print 'test 31 ' + ('passed' if test[31] else 'FAILED')
 
 
 test[32] = type[-10 / 20].str == "Fraction" \
-	        and type[4 * (1 + (-15 / 4))].str == "Integer" \
-		    and type[1.0f / 1 + 1].str == "Float"
+			and type[4 * (1 + (-15 / 4))].str == "Integer" \
+			and type[1.0f / 1 + 1].str == "Float"
 # print type[-10/20]
 # print type[4 * (1 + (-15 / 4))]
 # print type[1.0f / 1 + 1]
@@ -238,12 +235,12 @@ print 'test 41 ' + ('passed' if test[41] else 'FAILED')
 empty_func = {}
 my_func = {'one': 1, 2: 'two', empty_func: 'yeah', (1,2): 'this is not a block'}
 my_func = {'one': 1
-            2: 'two'
-            empty_func: 'yeah'
-            (1,2): 'this is not a block'
-          }
+			2: 'two'
+			empty_func: 'yeah'
+			(1,2): 'this is not a block'
+		  }
 test[42] = my_func['one'] == 1 and my_func[2] == 'two' and my_func[empty_func] == 'yeah' \
-           and my_func[(1,2)] == "this is not a block"
+		   and my_func[(1,2)] == "this is not a block"
 print 'test 42 ' + ('passed' if test[42] else 'FAILED')
 stringify = any arg => str[arg]
 add_one = [num arg] => str[arg + 1]
@@ -278,7 +275,7 @@ while i < 130
 print 'test 44 ' + ('passed' if (test[44] = i == 130) else 'FAILED')
 
 lt[num a, num b]:
-    return a < b
+	return a < b
 
 function item1
 	length = 230
@@ -299,7 +296,7 @@ table Bear
 	slot name str
 	slot length num
 	roar[]:
-	    return "Roar!  My name is " + self.name
+		return "Roar!  My name is " + self.name
 	. < [Bear other]:
 		return self.length < other.length
 	. > [Bear other]:
@@ -329,7 +326,7 @@ join_strings[str items+, num n?]:
 		items.push[n.str]
 	return items.join[' :: ']
 
-# print join_strings["hi"]
+print join_strings["hi"]
 # print join_strings["hi", "there"]
 # print join_strings["hi", "there", "someone"]
 # print join_strings["hi", "there", 3]
@@ -394,8 +391,8 @@ print_test[55]
 
 function joiner
 	[list|tuple ls, str sep]:
-	    if len[ls] == 0
-	        return ''
+		if len[ls] == 0
+			return ''
 		result = ''
 		for s in ls[0>>-2]
 			result += s.str + sep
@@ -424,11 +421,11 @@ fsf[float f1*, str s*, float f2*]:
 # return '*********************'
 
 test[100] = fsf[-1.3f, 's', -0.122f] == "f1: -1.3, s: s, f2: -0.122" \
-            and fsf['s', -0.122f]    == "s: s, f2: -0.122" \
-            and fsf[0.2345f]         == "f1: 0.2345" \
-            and fsf['STRING']        == "s: STRING" \
-            and fsf['h', 0.1f, 0.2f] == "s: h, f2: 0.1 0.2" \
-            and fsf[]                == ""
+			and fsf['s', -0.122f]	== "s: s, f2: -0.122" \
+			and fsf[0.2345f]		 == "f1: 0.2345" \
+			and fsf['STRING']		== "s: STRING" \
+			and fsf['h', 0.1f, 0.2f] == "s: h, f2: 0.1 0.2" \
+			and fsf[]				== ""
 print_test[100]
 
 fsnfi[float f1?, str s*, num n*, float f2*, int op_i+]:
@@ -480,19 +477,19 @@ print_test[104]
 # this still needs more work; `three_ralphs..meow[].join['']` doesn't work yet.
 
 iter[@test]:
-    return list[range[1, test.len]..(i => (test[i] if i in test else blank))]
+	return list[range[1, test.len]..(i => (test[i] if i in test else blank))]
 
 ```
 iterator[seq~str collection, ~blank non_blank_value]:
-    for item in collection
-        do something
-    return
+	for item in collection
+		do something
+	return
 
 iterator[seq!str collection, !blank non_blank_value]:
-    for item in collection
-        do something
-        "abc".."zed"
-    return
+	for item in collection
+		do something
+		"abc".."zed"
+	return
 ```
 
 count = 0
@@ -593,20 +590,20 @@ test[120] *= (asdf = 10; asdf += 2; asdf == 12)
 print_test[120]
 
 table Fruit
-    slot name str
-    slot color Color?
-    slot weight_in_grams (num>0)?
+	slot name str
+	slot color Color?
+	slot weight_in_grams (num>0)?
 
 table Color
-    slot name 'red'|'orange'|'yellow'|'green'|'blue'|'purple'
-    var red
-    var orange
-    var yellow
-    var green
-    var blue
-    var purple
-    .str:
-        return "Color.{self.name}"
+	slot name 'red'|'orange'|'yellow'|'green'|'blue'|'purple'
+	var red
+	var orange
+	var yellow
+	var green
+	var blue
+	var purple
+	.str:
+		return "Color.{self.name}"
 Color.red = Color['red']
 Color.orange = Color['orange']
 Color.yellow = Color['yellow']
@@ -616,10 +613,10 @@ Color.purple = Color['purple']
 
 
 function bind_weight
-    [Fruit(weight_in_grams: w, color: Color.red | Color.orange) fruit]:
-	    return "Weight of red or orange fruit: {w}"
+	[Fruit(weight_in_grams: w, color: Color.red | Color.orange) fruit]:
+		return "Weight of red or orange fruit: {w}"
 	[Fruit(weight_in_grams: w, color: Color.purple) fruit]:
-	    return "Weight of purple fruit: {w}"
+		return "Weight of purple fruit: {w}"
 
 
 apple = Fruit['apple', Color.red, 200]
@@ -657,29 +654,29 @@ print_test[131]
 
 
 table Foo
-    slot a int
-    slot b str?
-    .echo:
-        return self.?c ?? self.?b ?? self.a
-    .add[Foo other]:
-        return Foo[self.a + other.a,
-                   (self.b ?? '') + (other.b ?? '')]
+	slot a int
+	slot b str?
+	.echo:
+		return self.?c ?? self.?b ?? self.a
+	.add[Foo other]:
+		return Foo[self.a + other.a,
+				   (self.b ?? '') + (other.b ?? '')]
 
 foo1 = Foo[11]
 foo2 = Foo[22, 'twenny-one']
 fools = [foo1, foo2, foo1.add[foo2]]
 test[132] = fools..a == [11, 22, 33] and fools..b == [blank, 'twenny-one', 'twenny-one']
 test[132] &&= (fools..?c
-               == fools..?subtract[foo2]
-               == fools..add?['no match']
-               == [blank] * 3 )
+			   == fools..?subtract[foo2]
+			   == fools..add?['no match']
+			   == [blank] * 3 )
 test[132] &&= and[*fools..?add?[foo2]]
 print_test[132]
 
 json_text = `{ "name": "John", "age": 30, "city": "New York"}`
 json = parse_json[json_text]
-test[133] = json is {'name': str, "age": int}
-test[133] &&= json is not {'NAME': str} and json is not {'name': int}
+test[133] = json is {'name': @str, "age": int jage}
+test[133] &&= json is not {'NAME': _} and json is not {'name': @int} and json is not {'name': blank}
 print_test[133]
 
 sample_yaml = ```
@@ -703,15 +700,15 @@ last: # this will default to blank
 ```
 y = yaml[sample_yaml]
 test[134] = (y['title'] == 'A New Hope'
-             and y['linklist'] == ["[[Link]]", "[[Link2]]"]
-             and 'date: 2020-08-21' in yaml.dump[y].split['\n'].set)
+			 and y['linklist'] == ["[[Link]]", "[[Link2]]"]
+			 and 'date: 2020-08-21' in yaml.dump[y].split['\n'].set)
 print_test[134]
 
 
 
 
 iter[@test]:
-    return range[0, test.len-1]
+	return range[0, test.len-1]
 
 failed_tests = []
 for t in test
@@ -728,9 +725,9 @@ execution_time = end_time - start_time
 
 start_time = now[]
 function long_loop
-    [int n]:
-        for i in range[n]
-            (print i) if i % 1000 == 0 else blank
+	[int n]:
+		for i in range[n]
+			(print i) if i % 1000 == 0 else blank
 
 reps = 100_0000
 # long_loop[reps]

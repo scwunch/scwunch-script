@@ -2,8 +2,9 @@ from .state import Op
 from .utils import SyntaxErr, OperatorErr
 from .syntax import Node, TokenType, Token, Position, Operator
 from .lexer import Tokenizer
-from .interpreter import Block, TableExpr, TraitExpr, FunctionExpr, OpExpr, EmptyExpr, ParamsNode, BindExpr, IfElse, \
-    EXPRMAP, CommandWithExpr, NamedExpr, ListLiteral, FunctionLiteral, FieldMatcherNode, ArgsNode, StringNode
+from .interpreter import Block, TableExpr, TraitExpr, FunctionExpr, OpExpr, EmptyExpr, ParamsNode, BindExpr, \
+    IfElse, EXPRMAP, CommandWithExpr, NamedExpr, ListLiteral, FunctionLiteral, FieldMatcherNode, \
+    ArgsNode, StringNode
 
 print(f'loading {__name__}.py')
 
@@ -141,10 +142,11 @@ class AST:
                                                                              'self', pos=ppos)],
                                                                    []), pos=t0pos)
                         terms.append(OpExpr(op, t0, t1, pos=pos))
-                    elif fixity == 'postfix' and op.text[0] in '?+*' and isinstance(t1, BindExpr):
-                        t1.quantifier = op.text
-                        t1.pos += op_pos
-                        terms.append(t1)
+                    # elif fixity == 'postfix' and op.text[0] in '?+*' and isinstance(t1, BindExpr):
+                    #     terms.append(ParamQuantNode(t1, op.text, pos=t1.pos + op_pos))
+                    #     t1.quantifier = op.text
+                    #     t1.pos += op_pos
+                    #     terms.append(t1)
                     else:
                         pos = op_pos + t1.pos
                         terms.append(OpExpr(op, t1, pos=pos, fixity=fixity))

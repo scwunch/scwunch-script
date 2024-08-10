@@ -1,4 +1,4 @@
-from runtime import Frame, Record, Function, Option, Table, Trait, PyValue
+from runtime import Frame, Record, Function, Option, Table, Trait, PyValue, ParamSet
 from syntax import Operator
 
 print(f'loading {__name__}.py')
@@ -19,7 +19,7 @@ settings: dict[str]
 Op: dict[str, Operator] = {}
 BuiltIns: dict[str, Record | Function | Table | Trait | PyValue] = {}
 BASES: dict[str, int] = {'b': 2, 't': 3, 'q': 4, 'p': 5, 'h': 6, 's': 7, 'o': 8, 'n': 9, 'd': 10}
-
+DEFAULT_PATTERN: ParamSet
 
 class Call:
     file: str

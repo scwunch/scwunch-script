@@ -50,7 +50,7 @@ def state_deref(name: str, *default):
         if val:
             return val
         if val is None:
-            raise MissingNameErr(f"Line {state.line}: '{name}' is not yet initialized.")
+            raise MissingNameErr(f"'{name}' is not yet initialized.")
         scope = scope.scope
     if default:
         return default[0]

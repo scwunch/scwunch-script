@@ -2,13 +2,19 @@ import importlib
 from . import state
 # from runtime import FieldMatcher
 from .state import Op, BuiltIns
-from .utils import read_number, ContextErr, SyntaxErr, RuntimeErr, TypeErr
+from .utils import read_number, ContextErr, SyntaxErr, RuntimeErr, TypeErr, PatternErr
 from .runtime import *
-from .syntax import Node, TokenType, Token, Position, Operator, SINGLETONS, ListNode #, Block
+from .syntax import Node, TokenType, Token, Position, Operator, SINGLETONS, ListNode  # , Block
 
 print(f'loading {__name__}.py')
 
-Node.eval_pattern = lambda self, name_as_any=False: patternize(self.evaluate())
+def node_eval_as_pattern(self, as_param=False):
+    patt = patternize(self.evaluate())
+    if as_param and not isinstance(as_param, Parameter):
+        return Parameter(patt)
+    return patt
+
+Node.eval_pattern = node_eval_as_pattern
 
 def eval_token(self: Token):
     s = self.text
@@ -26,10 +32,13 @@ def eval_token(self: Token):
     raise NotImplementedError(f"Line {self.line}: Could not evaluate token", self)
 Token.evaluate = eval_token
 
-def eval_token_pattern(self: Token, name_as_any=False):
-    if name_as_any and self.type is TokenType.Name:
+def eval_token_pattern(self: Token, as_param=False):
+    if as_param and self.type is TokenType.Name and self.text not in SINGLETONS:
         return Parameter(AnyMatcher(), self.text)
-    return patternize(self.evaluate())
+    patt = patternize(self.evaluate())
+    if as_param and not isinstance(patt, Parameter):
+        return Parameter(patt)
+    return patt
 Token.eval_pattern = eval_token_pattern
 
 class StringNode(ListNode):
@@ -132,8 +141,11 @@ class ListLiteral(ListNode):
     def evaluate(self):
         return py_value(list(eval_list_nodes(self.nodes)))
 
-    def eval_pattern(self, name_as_any=False) -> Pattern:
-        return ParamSet(*(item.eval_pattern() for item in self.nodes))
+    def eval_pattern(self, as_param=False) -> Pattern:
+        patt = ParamSet(*(item.eval_pattern() for item in self.nodes))
+        if as_param:
+            return Parameter(patt)
+        return patt
 
     def __repr__(self):
         res = map(str, self.nodes)
@@ -164,7 +176,7 @@ class ArgsNode(ListNode):
 
         return Args(*generate_args(self.nodes), flags=flags, named_arguments=named_args)
 
-    def eval_pattern(self, name_as_any=False) -> Pattern:
+    def eval_pattern(self, as_param=False) -> Pattern:
         raise NotImplementedError
 
     def __repr__(self):
@@ -187,9 +199,25 @@ class ParamsNode(ListNode):
                 match node:
                     case OpExpr('!', [Token(TokenType.Name, text=name)]):
                         param = Parameter(TraitMatcher(BuiltIns['bool']), name, '?', BuiltIns['blank'])
+                    case OpExpr('+' | '*' | '?' as quant, [node], postfix=True):
+                        # parameter expression; extract binding
+                        match node:
+                            case BindExpr(node=node, name=name):
+                                param = Parameter(node.eval_pattern(), name, quant)
+                            case Token(TokenType.Name, text=name):
+                                param = Parameter(AnyMatcher(), name, quant)
+                            case _:
+                                # TODO: This is where we would catch multi-param expressions as well
+                                pass
+                                # param = Parameter(node.eval_pattern(name_as_any=True), quantifier=quant)
+                    # case OpExpr('=', [BindExpr])  # Do I need to pull out the default and binding from these as well?
                     case _:
-                        param = node.eval_pattern(name_as_any=True)
+                        param = Parameter(node.eval_pattern(name_as_any=True))
                 yield param.binding, param
+
+        return ParamSet(*(p.eval_pattern(as_param=True) for p in self.nodes),
+                        named_params={p.binding: p for p in (p.eval_pattern(as_param=True) for p in self.named_params)},
+                        kwargs=self.any_kwargs)
 
         return ParamSet(*(p[1] for p in gen_params(self.nodes)),
                         named_params=dict(tuple(gen_params(self.named_params))),
@@ -209,14 +237,14 @@ class FieldMatcherNode(ListNode):
             for node in nodes:
                 match node:
                     case OpExpr(':', [Token(type=TokenType.Name, text=name), patt_node]):
-                        field_dict[name] = patt_node.eval_pattern(name_as_any=True)
+                        field_dict[name] = patt_node.eval_pattern(as_param=True)
                     case _:
-                        yield node.eval_pattern()
+                        yield node.eval_pattern(as_param=True)
 
         return FieldMatcher(tuple(generate_matchers(self.nodes)), field_dict)
 
-    def eval_pattern(self, name_as_any=False) -> Pattern:
-        return Parameter(self.evaluate())
+    # def eval_pattern(self, name_as_any=False) -> Pattern:
+    #     return Parameter(self.evaluate())
 
 
 class FunctionLiteral(ListNode):
@@ -225,17 +253,17 @@ class FunctionLiteral(ListNode):
         Closure(Block(self.nodes)).execute(link_frame=fn)
         return fn
 
-    def eval_pattern(self, name_as_any=False) -> Pattern:
+    def eval_pattern(self, as_param=False) -> Pattern:
         d = {}
         for node in self.nodes:
             match node:
                 case OpExpr(':', [key_node, pattern_node]):
                     key = key_node.evaluate()
-                    pattern = pattern_node.eval_pattern(name_as_any=name_as_any)
+                    pattern = pattern_node.eval_pattern(as_param=True)
                     d[key] = pattern
                 case _:
                     raise NotImplementedError
-        return Parameter(KeyValueMatcher(d))
+        return Parameter(KeyValueMatcher(d)) if as_param else KeyValueMatcher(d)
 
 
 class OpExpr(Node):
@@ -272,32 +300,58 @@ class OpExpr(Node):
         args: Args = self.op.eval_args(*self.terms)
         return self.op.fn.call(args)
 
-    def eval_pattern(self, name_as_any=False) -> Pattern:
+    def eval_pattern(self, as_param=False) -> Pattern:
         match self.op.text:
             case ',':
-                return ParamSet(*(t.eval_pattern(name_as_any=True) for t in self.terms))
+                return ParamSet(*(t.eval_pattern(as_param=True) for t in self.terms))
             case ':':
                 lhs, rhs = self.terms
                 if not (isinstance(lhs, Token) and lhs.type == TokenType.Name):
                     raise SyntaxErr(f'Line {self.line}: could not patternize "{self.source_text}"; '
                                     f'left-hand-side of colon must be a name.')
                 field_name = lhs.text
-                return Parameter(FieldMatcher((), {field_name: rhs.eval_pattern(name_as_any=True)}))
+                return FieldMatcher((), {field_name: rhs.eval_pattern(as_param=True)})
             case '=':
                 lhs, rhs = self.terms
                 default = rhs.evaluate()
-                left = lhs.eval_pattern(name_as_any=True)
-                return Parameter(left, default=default)
-            case '+' if len(self.terms) == 1:
-                param = self.terms[0].eval_pattern()
-                if not isinstance(param, Parameter):
-                    return Parameter(param, quantifier='+')
-            case '?' if self.postfix:
-                return Parameter(self.terms[0].eval_pattern(name_as_any=name_as_any), quantifier='?')
+                # match lhs:
+                #     case OpExpr('+' | '*' as q, [node], postfix=True):
+                #         return Parameter(node.eval_pattern())
+                match lhs.eval_pattern(as_param=True):
+                    case BindingPattern() as patt:
+                        return patt.merge(default=default)
+                    case patt:
+                        raise PatternErr(f'Cannot set default of non-binding pattern "{patt}" to "{default}".')
+            case '+' | '*' | '?' as quantifier if self.postfix:
+                match self.terms[0]:
+                    case BindExpr(node=node, name=name):
+                        return Parameter(node.eval_pattern(), name, quantifier)
+                    case node:
+                        return Parameter(node.eval_pattern(as_param), quantifier=quantifier)
+
+                raise NotImplementedError("I guess this should return a sequence matcher, or ParamSet."
+                                          "  Also maybe this should be implemented in operators.py")
+                # param = self.terms[0].eval_pattern()
+                # if not isinstance(param, Parameter):
+                #     return Parameter(param, quantifier='+')
+            # case '?' if self.postfix:
+            #     match self.terms[0].eval_pattern(name_as_any=name_as_any):
+            #         case BindingPattern() as patt:
+            #             return patt.bind(default=BuiltIns['blank'])
+            #         case patt:
+            #             return UnionMatcher(patt, ValueMatcher(BuiltIns['blank']))
+            #     # return BindingPattern(self.terms[0].eval_pattern(name_as_any=name_as_any), default=BuiltIns['blank'])
+            case '!':
+                match self.terms:
+                    case [Token(TokenType.Name, text=name)]:
+                        return Parameter(AnyMatcher(), name, '?', BuiltIns['blank'])
+                    case _:
+                        raise PatternErr('!syntax')
+            case 'var':
+                return VarPatt()
             case _:
                 pass
-
-        return patternize(self.evaluate())
+        return super().eval_pattern(as_param=as_param)
 
     def __repr__(self):
         if self.op.text == '[':
@@ -308,22 +362,21 @@ class OpExpr(Node):
 class BindExpr(Node):
     node: Node
     name: str | None
-    quantifier: str
-    def __init__(self, node: Node, name: str = None, quantifier: str = '', pos: Position = None):
+    def __init__(self, node: Node, name: str = None, pos: Position = None):
         self.node = node
         self.name = name
-        self.quantifier = quantifier
         self.pos = pos
 
-    def evaluate(self, name_as_any=False):
-        if self.node.type is TokenType.Name:
-            return Parameter(patternize(self.node.evaluate()), self.name, self.quantifier)
-        return Parameter(self.node.eval_pattern(), self.name, self.quantifier)
+    # def evaluate(self):
+    #     return BindingPattern(self.node.eval_pattern(), self.name)
 
-    eval_pattern = evaluate
+    def eval_pattern(self, as_param=False):
+        return (Parameter if as_param else BindingPattern)(self.node.eval_pattern(), self.name)
+
+    evaluate = eval_pattern
 
     def __repr__(self):
-        return f"Bind({self.node} {self.name}{self.quantifier})"
+        return f"Bind({self.node} {self.name})"
 
 
 class IfElse(Node):
@@ -536,12 +589,12 @@ class CommandWithExpr(Command):
             case _:
                 raise SyntaxErr(f"Line {state.line}: Unhandled command {self.command}")
 
-    def eval_pattern(self, name_as_any=False) -> Pattern:
+    def eval_pattern(self, as_param=False) -> Pattern:
         match self.command:
             case 'debug':
                 state.debug = True
                 print('Start debugging...')
-                result = self.expr.eval_pattern(name_as_any)
+                result = self.expr.eval_pattern(as_param)
                 return result
 
     def __repr__(self):
@@ -690,7 +743,7 @@ class SlotExpr(NamedExpr):
         super().__init__(cmd, field_name, pos)
         # self.field_type = BindExpr(node, '')
         match node:
-            case OpExpr('='|':', terms):
+            case OpExpr('=' | ':', terms):
                 self.field_type, self.default = terms
             case _:
                 self.field_type = node
@@ -847,39 +900,46 @@ class OptExpr(Command):
         ret_type = f', {self.return_type}' if self.return_type else ''
         return f"Opt({self.params}{ret_type}, {self.block})"
 
-class Declaration(NamedExpr):
+class Declaration(CommandWithExpr):
     var_name: str
     # context_expr: None | Expression = None
     value_expr: None | Node = None
 
-    def __init__(self, cmd: str, var_name: str, node: Node, pos: Position = None):
-        super().__init__(cmd, var_name, pos)
-        self.value_expr = node
+    def __init__(self, cmd: str, node: Node, pos: Position = None):
+        super().__init__(cmd, node, pos)
+        match node:
+            case OpExpr('=', [Token(TokenType.Name, text=name), expr]):
+                self.var_name = name
+                self.value_expr = expr
+            case Token(TokenType.Name, text=name):
+                self.var_name = name
+            case _:
+                raise SyntaxErr(f'Line {pos.ln}: Invalid syntax for var/local declaration: "{self.source_text}".')
 
     def __repr__(self):
         return f"{self.__class__.__name__}({self.var_name}={self.value_expr})"
 
 class LocalExpr(Declaration):
     def evaluate(self):
-        value = self.value_expr.evaluate()
+        value = self.value_expr.evaluate() if self.value_expr else None
         state.env.locals[self.var_name] = value
         return value
 
-    def eval_pattern(self, name_as_any=False) -> Pattern:
-        value = self.value_expr.evaluate()
+    def eval_pattern(self, as_param=False) -> Pattern:
+        value = self.value_expr.evaluate() if self.value_expr else None
         state.env.locals[self.var_name] = value
-        return Parameter(AnyMatcher(), self.var_name, default=value)
+        return (Parameter if as_param else BindingPattern)(AnyMatcher(), self.var_name, default=value)
 
 class VarExpr(Declaration):
     def evaluate(self):
-        value = self.value_expr.evaluate()
+        value = self.value_expr.evaluate() if self.value_expr else None
         state.env.vars[self.var_name] = value
         return value
 
-    def eval_pattern(self, name_as_any=False) -> Pattern:
-        value = self.value_expr.evaluate()
+    def eval_pattern(self, as_param=False) -> Pattern:
+        value = self.value_expr.evaluate() if self.value_expr else None
         state.env.vars[self.var_name] = value
-        return Parameter(AnyMatcher(), self.var_name, default=value)
+        return (Parameter if as_param else BindingPattern)(AnyMatcher(), self.var_name, default=value)
 
 class EmptyExpr(Node):
     def __init__(self, pos: tuple[int, int]):

@@ -5,7 +5,6 @@ from pili import run, pili_shell
 
 print('Start main.py')
 
-
 if __name__ == '__main__':
     if len(sys.argv) == 1 and sys.executable == '/usr/bin/python3':  # test if running in console; pycharm executable is python3.10
         mode = 'shell'

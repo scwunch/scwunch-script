@@ -11,12 +11,12 @@ debug = False
 trace = []
 break_loop = 0
 continue_ = 0
-settings = {'base': 10, 'sort_options': True}
+settings = {'base': 10, 'sort_options': False}
 
 Op = {}
 BuiltIns = {}
 BASES = {'b': 2, 't': 3, 'q': 4, 'p': 5, 'h': 6, 's': 7, 'o': 8, 'n': 9, 'd': 10}
-
+DEFAULT_PATTERN = None
 
 class Call:
     def __init__(self, file, line, frame, fn=None, option=None, error_text=None):

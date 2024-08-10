@@ -1,4 +1,5 @@
 import re
+import warnings
 from collections import deque
 from fractions import Fraction
 from typing import TypeVar, Generic
@@ -16,7 +17,8 @@ PyFunction = type(lambda: None)
 class OptionCatalog:
     op_list: list
     op_map: dict
-    def __init__(self, options=None, *traits):
+    default_option = None
+    def __init__(self, options=None, *traits, default=None):
         self.op_list = []
         self.op_map = {}
         if options:
@@ -26,8 +28,15 @@ class OptionCatalog:
             for option in trait.op_list:
                 self.assign_option(option)
             self.op_map.update(trait.op_map)
+        if default:
+            self.assign_default(default)
 
-    def assign_option(self, pattern, resolution=None, *, no_clobber=False):
+    def assign_default(self, resolution):
+        if self.default_option is None:
+            self.default_option = Option(state.DEFAULT_PATTERN)
+        self.default_option.resolution = resolution
+
+    def assign_option(self, pattern, resolution=None, *, no_clobber=False, prioritize=False):
         match pattern, resolution:
             case Option(pattern=pattern, resolution=resolution) as option, None:
                 key = pattern.to_args()
@@ -61,7 +70,10 @@ class OptionCatalog:
             else:
                 self.op_list.append(option)
         elif opt := self.select_by_pattern(pattern):
-            opt.resolution = resolution
+            if not no_clobber:
+                opt.resolution = resolution
+        elif prioritize:
+            self.op_list.insert(0, option)
         else:
             self.op_list.append(option)
 
@@ -80,15 +92,15 @@ class OptionCatalog:
         except TypeError as e:
             if not (e.args and e.args[0].startswith('unhashable type')):
                 raise e
-        if state.debug and self is BuiltIns['call']:
-            state.debug = 0  # pause debugger
+        if state.debug and (self is BuiltIns['call'] or self is BuiltIns['call?']):
+            state.debug = None  # pause debugger
         option = bindings = None
         high_score = 0
         for opt in self.op_list:
             bindings = opt.pattern.match(key)
             score, saves = bindings is not None, bindings
             if score == 1:
-                if not state.debug and state.debug is not False:
+                if state.debug is None:
                     state.debug = True  # unpause debug
                 return opt, saves
             if score > high_score:
@@ -96,6 +108,10 @@ class OptionCatalog:
                 option, bindings = opt, saves
         if not state.debug and state.debug is not False:
             state.debug = True  # unpause debug
+        if option is None and self.default_option:
+            bindings = self.default_option.pattern.match(key)
+            if bindings is not None:
+                return self.default_option, bindings
         return option, bindings
 
     def select_by_pattern(self, patt, default=None):
@@ -174,7 +190,7 @@ class Record:
             return option.resolve(args, bindings, self)
         if safe_call:
             return BuiltIns['blank']
-        raise NoMatchingOptionError(f'Line {state.line}: {args} not found in "{self.name or self}"')
+        raise NoMatchingOptionError(f'{limit_str(args)} not found in "{self.name or self}"')
 
     def select(self, args):
         return self.table.catalog.select_and_bind(args)
@@ -272,7 +288,7 @@ class PyValue(Record, Generic[T]):
         assert safe_call
         return BuiltIns['blank']
 
-    def assign_option(self, key, val: Record):
+    def assign_option(self, key, val: Record, prioritize=None):
         key: Args
         assert self.table == BuiltIns['List']
         index: PyValue[int] = key[0]  # noqa
@@ -482,14 +498,14 @@ class Function(Record, OptionCatalog):
     frame = None
 
     def __init__(self, options=None, name=None,
-                 table_name='Function', traits=(), frame=None, uninitialized=False):
+                 table_name='Function', traits=(), frame=None, uninitialized=False, default=None):
         if name:
             self.name = name
         if uninitialized:
             self.uninitialized = True
         if frame:
             self.frame = frame        
-        OptionCatalog.__init__(self, options or {}, *traits)
+        OptionCatalog.__init__(self, options or {}, *traits, default=default)
         super().__init__(BuiltIns[table_name])
 
     def get(self, name: str, *default, search_table_frame_too=False):
@@ -525,7 +541,8 @@ class Function(Record, OptionCatalog):
         if self.name and not as_repr:
             return py_value(self.name)
         items = (f'{BuiltIns['repr'].call(k[0] if len(k) == 1 else py_value(k.positional_arguments)).value}: '
-                 f'{BuiltIns['repr'].call(v.value).value}' for k, v in self.op_map.items())
+                 f'{BuiltIns['repr'].call(v.value).value if v.value else "..."}'
+                 for k, v in self.op_map.items())
         options = (f'{BuiltIns['repr'].call(opt.pattern).value} => ...' for opt in self.op_list)
         names = ()
         if self.frame:
@@ -538,7 +555,10 @@ class Function(Record, OptionCatalog):
             segments.append(items)
         if options:
             segments.append(options)
-        return py_value('{' + '; '.join(', '.join(seg) for seg in segments) + '}')
+        ret = '{' + '; '.join(', '.join(seg) for seg in segments) + '}'
+        if self.name:
+            return py_value(f'<{self.__class__.__name__} "{self.name}" {ret}>')
+        return py_value(ret)
 
     def __repr__(self):
         return f"Function({self.name or ''})"
@@ -547,10 +567,11 @@ class Function(Record, OptionCatalog):
 class Trait(Function):
     # trait = None
     # noinspection PyDefaultArgument
-    def __init__(self, options={}, *fields, name=None, fn_options={}, fn_fields=[], uninitialized=False):
+    def __init__(self, options={}, *fields, name=None, fn_options={}, fn_fields=[], uninitialized=False, default=None):
         self.options = [Option(patt, res) for (patt, res) in options.items()]
         self.fields = list(fields)
-        super().__init__(fn_options, *fn_fields, name=name, table_name='Trait', uninitialized=uninitialized)
+        super().__init__(fn_options, *fn_fields,
+                         name=name, table_name='Trait', uninitialized=uninitialized, default=default)
 
     def upsert_field(self, field):
         for i, f in self.fields:
@@ -573,12 +594,13 @@ class Table(Function):
     types: dict[str]  # Matcher
     # noinspection PyDefaultArgument
     def __init__(self, *traits: Trait, name: str = None, fn_options: dict = {}, fn_fields: list = [],
-                 uninitialized: bool = False):
+                 uninitialized: bool = False, default=None):
         self.traits = (Trait(name=name), *traits)
         self.getters = {}
         self.setters = {}
         self.defaults = ()
-        super().__init__(fn_options, *fn_fields, name=name, table_name='Table', traits=traits)
+        super().__init__(fn_options, *fn_fields,
+                         name=name, table_name='Table', traits=traits, uninitialized=uninitialized, default=default)
         if uninitialized:
             self.uninitialized = True
         else:
@@ -803,11 +825,11 @@ class Slot(Field):
     def __init__(self, name, type, default=None):
         match default:
             case Function(op_list=[Option(pattern=
-                                          ParamSet(parameters=(Parameter(binding='self'), ))
+                                          ParamSet(parameters=[Parameter()])
                                           )]):
                 pass  # assert that default is a function whose sole option is [<patt> self]: ...
-            case _:
-                assert default is None
+            case _ if default is not None:
+                raise AssertionError('slot default did not match the appropriate function signature')
         self.default = default
         super().__init__(name, type, default)
 
@@ -968,11 +990,21 @@ class Pattern(Record):
         state.env.update(match)
         return arg
 
+    def merge(self, binding: str, default: Record = None):
+        return BindingPattern(self, binding, default)
+
     def bytecode(self):
         raise NotImplementedError(self.__class__.__name__)
 
+    def __repr__(self):
+        return (f"{self.__class__.__name__}"
+                f"{tuple(v for k, v in self.__dict__.items() if k not in {'hash', 'table', 'data', 'index'})}")
 
-class Matcher:
+    def __str__(self):
+        return repr(self)
+
+
+class Matcher(Pattern):
     hash: int
     def match_score(self, arg: Record) -> None | dict[str, Record]:
         try:
@@ -1020,7 +1052,7 @@ class Matcher:
 
     def __repr__(self):
         return (f"{self.__class__.__name__}"
-                f"{tuple(v for k, v in self.__dict__.items() if k != 'hash')}")
+                f"{tuple(v for k, v in self.__dict__.items() if k not in {'hash', 'table', 'data', 'index'})}")
 
     def __eq__(self, other):
         return (self.__class__ is other.__class__
@@ -1036,29 +1068,30 @@ class Matcher:
             return self.hash
 
 class TableMatcher(Matcher):
-    table: Table
+    table_: Table
     rank = 5, 0
 
     def __init__(self, table):
         assert isinstance(table, Table)
-        self.table = table
+        self.table_ = table
+        super().__init__()
 
     def basic_score(self, arg: Record) -> bool:
-        return arg.table == self.table
+        return arg.table == self.table_
 
     def issubset(self, other):
         match other:
-            case TableMatcher(table=table):
-                return table == self.table
+            case TableMatcher(table_=table):
+                return table == self.table_
             case TraitMatcher(trait=trait):
-                return trait in self.table.traits
+                return trait in self.table_.traits
         return False
 
     def equivalent(self, other):
-        return isinstance(other, TableMatcher) and self.table == other.table
+        return isinstance(other, TableMatcher) and self.table_ == other.table
 
     def __str__(self):
-        return str(self.table)
+        return str(self.table_)
 
 class TraitMatcher(Matcher):
     trait: Trait
@@ -1066,6 +1099,7 @@ class TraitMatcher(Matcher):
 
     def __init__(self, trait):
         self.trait = trait
+        super().__init__()
 
     def basic_score(self, arg: Record) -> bool:
         return self.trait in arg.table.traits
@@ -1085,6 +1119,7 @@ class ValueMatcher(Matcher):
 
     def __init__(self, value):
         self.value = value
+        super().__init__()
 
     def basic_score(self, arg: Record) -> bool:
         return arg == self.value
@@ -1093,7 +1128,7 @@ class ValueMatcher(Matcher):
         match other:
             case ValueMatcher(value=value):
                 return value == self.value
-            case TableMatcher(table=table):
+            case TableMatcher(table_=table):
                 return self.value.table == table
             case TraitMatcher(trait=trait):
                 return trait in self.value.table.traits
@@ -1115,6 +1150,7 @@ class ArgsMatcher(Matcher):
                 self.params = params
             case _ if params:
                 self.params = ParamSet(*params)
+        super().__init__()
 
     def match(self, arg: Record) -> None | dict[str, Record]:
         if not isinstance(arg, Args):
@@ -1128,6 +1164,7 @@ class FunctionSignatureMatcher(Matcher):
     def __init__(self, pattern, return_type):
         self.pattern = pattern
         self.return_type = return_type
+        super().__init__()
 
     def basic_score(self, arg):
         if not hasattr(arg, 'op_list'):
@@ -1147,7 +1184,7 @@ class FunctionSignatureMatcher(Matcher):
         match other:
             case FunctionSignatureMatcher(pattern=patt, return_type=ret):
                 return self.pattern.issubset(patt) and self.return_type.issubset(ret)
-            case TraitMatcher(trait=BuiltIns.get('fn')) | TableMatcher(table=BuiltIns.get('Function')):
+            case TraitMatcher(trait=BuiltIns.get('fn')) | TableMatcher(table_=BuiltIns.get('Function')):
                 return True
         return False
 
@@ -1160,9 +1197,10 @@ class FunctionSignatureMatcher(Matcher):
         return f"FunctionSignatureMatcher({self.pattern} => {self.return_type})"
 
 class KeyValueMatcher(Matcher):
-    items: dict  #dict[Record, Parameter]
+    items: dict  # dict[Record, Parameter]
     def __init__(self, items: dict):
         self.items = frozendict(items)
+        super().__init__()
 
     def match(self, arg):
         if not isinstance(arg, Function):
@@ -1189,6 +1227,7 @@ class AnyMatcher(Matcher):
     def __new__(cls):
         global ANYMATCHER
         ANYMATCHER = object.__new__(cls)
+        Matcher.__init__(ANYMATCHER)
         cls.__new__ = lambda cls: ANYMATCHER
         return ANYMATCHER
 
@@ -1236,6 +1275,7 @@ class IterMatcher(Matcher):
                 self.params = params
             case _ if params:
                 self.params = ParamSet(*params)
+        super().__init__()
 
     def match(self, arg: Record) -> None | dict[str, Record]:
         try:
@@ -1297,6 +1337,7 @@ class FieldMatcher(Matcher):
             if not isinstance(p, Parameter):
                 fields[f] = Parameter(p)
         self.fields = frozendict(fields)
+        super().__init__()
 
     def match(self, arg: Record) -> None | dict[str, Record]:
         bindings = {}
@@ -1335,6 +1376,7 @@ class ExprMatcher(Matcher):
     rank = 2, 0
     def __init__(self, expr):
         self.expr = expr
+        super().__init__()
 
     def basic_score(self, arg: Record) -> bool:
         return self.expr.evaluate().truthy
@@ -1346,40 +1388,32 @@ class LambdaMatcher(Matcher):
 
     def __init__(self, fn: PyFunction):
         self.fn = fn
+        super().__init__()
 
     def basic_score(self, arg: Record) -> bool:
         return self.fn(arg)
 
 
 class NotMatcher(Matcher):
-    def __init__(self, matcher: Matcher):
-        self.matcher = matcher
+    def __init__(self, pattern: Pattern):
+        self.pattern = pattern
+        super().__init__()
 
     def match(self, arg: Record) -> None | dict[str, Record]:
-        if self.matcher.match(arg) is None:
+        if self.pattern.match(arg) is None:
             return {}
 
     def get_rank(self):
-        return AnyMatcher.rank[0] - self.matcher.get_rank()[0], 0
+        return AnyMatcher.rank[0] - self.pattern.get_rank()[0], 0
 
     def __lt__(self, other):
-        return other <= self.matcher
+        return other <= self.pattern
 
     def __le__(self, other):
-        return other < self.matcher
+        return other < self.pattern
 
     def __str__(self):
-        return "~" + str(self.matcher)
-
-class BindingMatcher(Matcher):
-    def __init__(self, matcher: Matcher, binding: str):
-        self.matcher = matcher
-        self.binding = binding
-    def match(self, arg):
-        bindings = self.matcher.match(arg)
-        if bindings is not None:
-            bindings.update({self.binding: arg})
-            return bindings
+        return "~" + str(self.pattern)
 
 class IntersectionMatcher(Matcher):
     # I'm confused.  I think I made this inherit from "Pattern" rather than "Matcher" so that you could do
@@ -1398,6 +1432,7 @@ class IntersectionMatcher(Matcher):
                 raise ValueError(f"Line {state.line}: IntersectionMatcher called with only 1 matcher."
                                  f"Catch this and return that single matcher na lang.")
         self.matchers = matchers
+        super().__init__()
 
     def match(self, arg: Record) -> None | dict[str, Record]:
         bindings = {}
@@ -1457,6 +1492,7 @@ class UnionMatcher(Matcher):
                 raise ValueError(f"Line {state.line}: UnionMatcher called with only 1 matcher."
                                  f"Catch this and return that single matcher na lang.")
         self.matchers = matchers
+        super().__init__()
 
     def match(self, arg: Record) -> None | dict[str, Record]:
         for m in self.matchers:
@@ -1490,47 +1526,158 @@ class UnionMatcher(Matcher):
         return '|'.join(map(str, self.matchers))
 
 
-class Parameter(Pattern):
-    pattern: Matcher | None = None
-    binding: str = None  # property
+class BindingPattern(Pattern):
+    def __init__(self, pattern: Pattern, binding: str, default: Record = None):
+        self.pattern = pattern
+        self.binding = binding
+        self.default = default
+        super().__init__()
+
+    def match(self, arg):
+        bindings = self.pattern.match(arg)
+        if bindings is None:
+            if self.default:
+                return {self.binding: self.default}
+            return
+        bindings[self.binding] = arg
+        return bindings
+
+    def merge(self, binding: str = None, default: Record = None):
+        return BindingPattern(self.pattern, binding or self.binding, default or self.default)
+
+    def __repr__(self):
+        return (f"BindingPattern({self.pattern} {self.binding or '<no binding>'}"
+                f"{' = ' + str(self.default) if self.default else ''})")
+
+class Parameter(BindingPattern):
+    pattern: Pattern
+    binding: str = None
     quantifier: str  # "+" | "*" | "?" | "!" | ""
     optional: bool
     required: bool
     multi: bool
-    default = None
-    def __init__(self, pattern, binding: str = None, quantifier="", default=None):
-        match pattern:
-            case Matcher() as matcher:
-                self.pattern = matcher
-            case Parameter(pattern=pattern, binding=b, quantifier=q, default=d):
-                if b and binding and b != binding:
-                    raise PatternErr(f'Line {state.line}: '
-                                     f'Cannot apply two bindings {b, binding} to a single parameter.')
-                binding = b or binding
-                if q and quantifier and q != quantifier:
-                    raise PatternErr(f'Line {state.line}: '
-                                     f'Cannot apply two quantifiers {q, quantifier} to a single parameter.')
-                quantifier = q or quantifier
-                if d and default and d != default:
-                    raise PatternErr(f'Line {state.line}: '
-                                     f'Cannot apply two defaults {d, default} to a single parameter.')
-                default = d or default
-                self.pattern = pattern
-            case _:
-                self.pattern = patternize(pattern).pattern
+    default: Record = None
+    # def __new__(cls, pattern, binding: str = None, quantifier="", default=None):
+    #     #########################################################
+    #     # remove this code once it is safe to do so
+    #     if not isinstance(pattern, Pattern):
+    #         if isinstance(pattern, Parameter):
+    #             print(f'WARNING Line {state.line}: PARAMETER {repr(pattern)} passed pattern of another param!!!!')
+    #             if pattern.quantifier:
+    #                 raise ValueError("Double quantifier")
+    #             pattern = pattern.pattern
+    #         else:
+    #             print(
+    #                 f'WARNING Line {state.line}: Non-pattern {repr(pattern)} passed as pattern parameter to Parameter.')
+    #             pattern = patternize(pattern)
+    #     #########################################################
+    #     if quantifier[:1] in ('+', '*'):
+    #         if default is not None:
+    #             raise ValueError(
+    #                 f'Cannot instantiate multi Parameter with default:'
+    #                 f' Parameter({pattern}, {binding}, {quantifier}, {default})')
+    #         return object.__new__(MultiParam)
+    #     if default and binding is None is getattr(pattern, 'binding', None):
+    #         raise ValueError(f'Cannot instantiate non-binding parameter with a default: '
+    #                          f' Parameter({pattern}, {binding}, {quantifier}, {default})')
+    #     return object.__new__(SingleParam)
 
-        self.binding = binding
-        self.quantifier = quantifier
-        if default:
-            if self.multi:
-                raise SyntaxErr(f"Line {state.line}: parameters matching multiple args cannot have a default defined.")
-            if not quantifier:
-                self.quantifier = '?'
-        if not default and quantifier.startswith('?'):
-            self.default = BuiltIns['blank']
-        else:
+    def __init__(self, pattern, binding: str = None, quantifier="", default=None):
+        while isinstance(pattern, Parameter):
+            binding = binding or pattern.binding
+            default = default or pattern.default
+            pattern = pattern.pattern
+        #########################################################
+        # remove this code once it is safe to do so
+        # if not isinstance(pattern, Pattern):
+        #     if isinstance(pattern, Parameter):
+        #         print(f'WARNING Line {state.line}: PARAMETER {repr(pattern)} passed pattern of another param!!!!')
+        #         if pattern.quantifier:
+        #             raise ValueError("Double quantifier")
+        #         pattern = pattern.pattern
+        #     else:
+        #         print(f'WARNING Line {state.line}: Non-pattern {repr(pattern)} passed as pattern parameter to Parameter.')
+        #         pattern = patternize(pattern)
+        #########################################################
+        super().__init__(pattern, binding)
+        if default is not None:
+            self.quantifier = quantifier or '?'
+            if binding is None or self.multi:
+                raise ValueError(f'Cannot instantiate {"multi" if self.multi else "non-binding"} Parameter with default:'
+                                 f' Parameter({pattern}, {binding}, {quantifier}, {default})')
             self.default = default
-        super().__init__()
+        else:
+            self.quantifier = quantifier
+            if quantifier.startswith('?'):
+                self.default = BuiltIns['blank']
+
+        # self.quantifier = quantifier
+        # if default is None and quantifier.startswith('?'):
+        #     default = BuiltIns['blank']
+        # elif default:
+        #     if binding is None or self.multi:
+        #         raise ValueError(f'Cannot instantiate {"multi" if self.multi else "non-binding"} Parameter with default:'
+        #                          f' Parameter({pattern}, {binding}, {quantifier}, {default})')
+        #     if quantifier == '':
+        #         self.quantifier = '?'
+        # if self.multi:
+        #     self.binding = binding
+        #     self.pattern = pattern
+        # else:
+        #     pattern = pattern.bind(binding, default)
+        #     self.pattern, self.binding, self.default = pattern.pattern, pattern.binding, pattern.default
+        # elif binding or default:
+        #     self.pattern = pattern.bind(binding, default)
+        #     self.binding = self.pattern.binding  # I don't think this should be necessary
+        # else:
+        #     self.pattern = pattern
+        #     self.binding = getattr(pattern, 'binding', None)
+
+        # if binding is None or self.multi:
+        #     self.pattern = pattern
+        #     if default:
+        #         raise ValueError(f'Cannot instantiate {"multi" if self.multi else "non-binding"} Parameter with default:'
+        #                          f' Parameter({pattern}, {binding}, {quantifier}, {default})')
+        # else:
+        #     if default is None and quantifier.startswith('?'):
+        #         default = BuiltIns['blank']
+        #     self.pattern = BindingPattern(pattern, binding, default)
+
+    # @property
+    # def binding(self):
+    #     patt = self
+    #     while patt := getattr(patt, 'pattern', None):
+    #         if hasattr(patt, 'binding'):
+    #             return patt.binding
+
+    # @property
+    # def default(self):
+    #     patt = self
+    #     while patt := getattr(patt, 'pattern', None):
+    #         if hasattr(patt, 'default'):
+    #             return patt.default
+
+    optional = property(lambda self: self.default or self.quantifier[:1] in ('?', '*'))
+    required = property(lambda self: self.default is None and self.quantifier[:1] in ('', '+'))
+    multi = property(lambda self: self.quantifier[:1] in ('+', '*'))
+
+    def merge(self, binding=None, default=None):
+        return Parameter(self.pattern, binding or self.binding, self.quantifier, default or self.default)
+
+    def match(self, arg: Record) -> None | dict[str, Record]:
+        if self.multi:
+            return ParamSet(self).match(arg)
+        return super().match(arg)
+        return self.pattern.match(arg)
+        bindings = self.pattern.match(arg)
+        if bindings is None:
+            return
+        if self.binding:
+            bindings.update({self.binding: arg})
+        return bindings
+
+    def match_and_bind(self, arg):
+        return super().match_and_bind(arg)
 
     def issubset(self, other):
         if not isinstance(other, Parameter):
@@ -1539,28 +1686,12 @@ class Parameter(Pattern):
             return False
         return self.pattern.issubset(other.pattern)
 
-    optional = property(lambda self: self.default or self.quantifier[:1] in ('?', '*'))
-    required = property(lambda self: self.default is None and self.quantifier[:1] in ('', '+'))
-    multi = property(lambda self: self.quantifier[:1] in ('+', '*'))
-
-    def match(self, arg: Record) -> None | dict[str, Record]:
-        bindings = self.pattern.match(arg)
-        if bindings is None:
-            return
-        if self.binding:
-            bindings.update({self.binding: arg})
-        return bindings
-
     def compare_quantifier(self, other):
         return "_?+*".find(self.quantifier) - "_?+*".find(other.quantifier)
 
     def bytecode(self):
         vm: list
-        match self.pattern:
-            case Matcher() as matcher:
-                vm = [Inst().match(matcher, self.binding if not self.multi else None)]  # , self.default)]
-            case _:
-                raise NotImplementedError  # vm = self.pattern.bytecode()
+        vm = [Inst().match(self.pattern, self.binding if not self.multi else None)]  # , self.default)]
 
         match self.quantifier:
             case '':
@@ -1653,6 +1784,229 @@ class Parameter(Pattern):
     def __repr__(self):
         return (f"Parameter({self.pattern}{f' {self.binding}' if self.binding else ''}{self.quantifier}"
                 f"{'='+str(self.default) if self.default else ''})")
+
+
+class SingleParam(Parameter, BindingPattern):
+    pass
+
+class MultiParam(Parameter, BindingPattern):
+    pass
+
+class BindPropertyPattern(BindingPattern):
+    def __init__(self, rec: Record, field_name: str, pattern: Pattern = None, default=None):
+        super().__init__(pattern or AnyMatcher(), '', default)
+        self.rec = rec
+        self.field_name = field_name
+
+    def match_and_bind(self, arg: Record):
+        match = self.pattern.match(arg)
+        if match is None:
+            if self.default is None:
+                raise MatchErr(f"Line {state.line}: "
+                               f"pattern '{self}' did not match value {arg}")
+            else:
+                arg = self.default
+        else:
+            state.env.update(match)
+        self.rec.set(self.field_name, arg)
+        return arg
+
+    def __eq__(self, other):
+        return (isinstance(other, BindPropertyPattern)
+                and self.rec == other.rec and self.field_name == other.field_name and self.default == other.default)
+    def __hash__(self):
+        return hash((super(), self.field_name, self.rec))
+
+    def __repr__(self):
+        return f"BindProperty({self.pattern} {self.rec}.{self.field_name}{' = ' + str(self.default) if self.default else ''})"
+
+
+class BindKeyPattern(Parameter):
+    def __init__(self, rec: Function, key, pattern: Pattern = None, default=None):
+        super().__init__(pattern or AnyMatcher(), default=default)
+        self.rec: Function = rec
+        self.key = key
+
+    def match_and_bind(self, arg: Record):  # Record | Closure
+        match = self.pattern.match(arg)
+        if match is None:
+            if self.default is None:
+                raise MatchErr(f"Line {state.line}: "
+                               f"pattern '{self}' did not match value {arg}")
+            else:
+                arg = self.default
+        else:
+            state.env.update(match)
+        self.rec.assign_option(self.key, arg)
+        return arg
+
+    def __eq__(self, other):
+        return (isinstance(other, BindKeyPattern)
+                and self.rec == other.rec and self.key == other.field_name and self.default == other.default)
+
+    def __hash__(self):
+        return hash((super(), self.key, self.rec))
+
+    def __repr__(self):
+        return f"BindKey({self.pattern} {self.rec}.{self.key}{' = ' +str(self.default) if self.default else ''})"
+
+class VarPatt(Parameter):
+    def __init__(self, name: str):
+        super().__init__(AnyMatcher())
+        self.var_name = name
+
+    def match_and_bind(self, arg: Record) -> Record:
+        if self.var_name in state.env.locals:
+            raise DuplicateNameErr(f'Line {state.line}: Cannot declare var {self.var_name} because it is already a local.')
+        state.env.vars[self.var_name] = arg
+        return arg
+
+    def __repr__(self):
+        return f'VarPatt({self.var_name})'
+
+
+class LocalPatt(VarPatt):
+    def match_and_bind(self, arg: Record) -> Record:
+        if self.var_name in state.env.vars:
+            raise DuplicateNameErr(f'Line {state.line}: Cannot declare local {self.var_name} because it is already a var.')
+        state.env.locals[self.var_name] = arg
+        return arg
+
+class ParamSet(Pattern):
+    parameters: tuple
+    named_params: frozendict
+    names_of_ordered_params: frozenset
+    allow_arbitrary_kwargs: str | bool | None
+    vm: list
+    def __init__(self, *parameters, named_params: dict = None, kwargs: str = None):
+        self.parameters = parameters
+        self.named_params = frozendict(named_params or {})
+        self.names_of_ordered_params = frozenset(param.binding for param in parameters
+                                                 if param.binding and not param.multi)
+        self.allow_arbitrary_kwargs = kwargs
+        # self.vm = VM(parameters)
+        super().__init__()
+        self.vm = []
+        for param in self.parameters:
+            self.vm.extend(param.bytecode())
+        # if kwargs:
+        #     self.vm.append(Inst().bind_remaining(kwargs))
+
+    def prepend(self, param: Parameter):
+        self.parameters = (param, *self.parameters)
+        self.vm[:0] = param.bytecode()
+
+    def issubset(self, other):
+        return (isinstance(other, ParamSet)
+                and all(p1.issubset(p2) for (p1, p2) in zip(self.parameters, other.parameters))
+                and all(self.named_params[k].issubset(other.named_params[k])
+                        for k in set(self.named_params).union(other.named_params)))
+
+    def __len__(self):
+        return len(self.parameters) + len(self.named_params)
+
+    def __getitem__(self, item):
+        return self.named_params.get(item, self.parameters[item])
+
+    def to_tuple(self):
+        if self.named_params:
+            return None
+        key: list[Record] = []
+        for parameter in self.parameters:
+            match parameter.pattern.matchers:
+                case (ValueMatcher(value=value), ) if value.hashable():
+                    key.append(value)
+                case _:
+                    return None
+        return tuple(key)
+
+    def to_args(self):
+        pos_args = []
+        names = {}
+        for id, param in self:
+            match param:
+                case Parameter(quantifier='', pattern=ValueMatcher(value=val)):
+                    pass
+                case _:
+                    return None
+            if isinstance(id, int):
+                pos_args.append(val)
+            else:
+                names[id] = val
+        return Args(*pos_args, **names)
+
+    def __iter__(self):
+        yield from enumerate(self.parameters)
+        yield from self.named_params.items()
+
+    def match(self, args: Args | Record) -> None | dict[str, Record]:
+        if not isinstance(args, Args):
+            if BuiltIns['iter'] not in args.table.traits:
+                return
+            args = Args(*args)  # noqa
+        kwargs: dict[str, Record] = dict(args.named_arguments)
+        for f in args.flags:
+            kwargs[f] = BuiltIns['true']
+        bindings: dict[str, Record] = {}
+
+        # check for agreement of named parameters
+        for name, param in self.named_params.items():
+            param: Parameter
+            if name in kwargs:
+                match = param.match(kwargs[name])
+                if match is None:
+                    return
+                bindings.update(match)
+                bindings[name] = kwargs[name]
+                del kwargs[name]
+            elif param.default:
+                bindings[name] = param.default
+            elif param.required:
+                return
+
+        if not self.allow_arbitrary_kwargs:
+            # check for illegal kwargs
+            for name in kwargs:
+                if name not in self.names_of_ordered_params and name not in bindings:
+                    return
+
+        return virtual_machine(self.vm, args.positional_arguments, kwargs, bindings, self.allow_arbitrary_kwargs)
+
+    def __lt__(self, other):
+        if not isinstance(other, ParamSet):
+            return NotImplemented
+        return self.parameters < other.parameters
+
+    def __le__(self, other):
+        if not isinstance(other, ParamSet):
+            return NotImplemented
+        return self.parameters <= other.parameters
+
+    def __eq__(self, other):
+        return (isinstance(other, ParamSet)
+                and self.parameters == other.parameters
+                and self.named_params == other.named_params)
+
+    def __hash__(self):
+        return hash((self.parameters, self.named_params))
+
+    def __gt__(self, other):
+        if not isinstance(other, ParamSet):
+            return NotImplemented
+        return self.parameters > other.parameters
+
+    def __ge__(self, other):
+        if not isinstance(other, ParamSet):
+            return NotImplemented
+        return self.parameters >= other.parameters
+
+    def __str__(self):
+        def comma_sep(params):
+            return ', '.join(map(str, params))
+        return f"[{comma_sep(self.parameters)}{'; ' + comma_sep(self.named_params) if self.named_params else ''}]"
+
+    def __repr__(self):
+        return f"ParamSet({', '.join(map(repr, self.parameters))}{'; ' + str(self.named_params) if self.named_params else ''})"
 
 class Inst:
     opcode: str = 'tail'
@@ -1929,225 +2283,6 @@ def virtual_machine(prog: list[Inst], args: tuple, kwargs: dict, initial_binding
     # return 0, {}
 
 
-class ParamSet(Pattern):
-    parameters: tuple
-    named_params: frozendict
-    names_of_ordered_params: frozenset
-    allow_arbitrary_kwargs: str | bool | None
-    vm: list
-    def __init__(self, *parameters, named_params: dict = None, kwargs: str = None):
-        self.parameters = parameters
-        self.named_params = frozendict(named_params or {})
-        self.names_of_ordered_params = frozenset(param.binding for param in parameters
-                                                 if param.binding and not param.multi)
-        self.allow_arbitrary_kwargs = kwargs
-        # self.vm = VM(parameters)
-        super().__init__()
-        self.vm = []
-        for param in self.parameters:
-            self.vm.extend(param.bytecode())
-        # if kwargs:
-        #     self.vm.append(Inst().bind_remaining(kwargs))
-
-    def prepend(self, param: Parameter):
-        self.parameters = (param, *self.parameters)
-        self.vm[:0] = param.bytecode()
-
-    def issubset(self, other):
-        return (isinstance(other, ParamSet)
-                and all(p1.issubset(p2) for (p1, p2) in zip(self.parameters, other.parameters))
-                and all(self.named_params[k].issubset(other.named_params[k])
-                        for k in set(self.named_params).union(other.named_params)))
-
-    def __len__(self):
-        return len(self.parameters) + len(self.named_params)
-
-    def __getitem__(self, item):
-        return self.named_params.get(item, self.parameters[item])
-
-    def to_tuple(self):
-        if self.named_params:
-            return None
-        key: list[Record] = []
-        for parameter in self.parameters:
-            match parameter.pattern.matchers:
-                case (ValueMatcher(value=value), ) if value.hashable():
-                    key.append(value)
-                case _:
-                    return None
-        return tuple(key)
-
-    def to_args(self):
-        pos_args = []
-        names = {}
-        for id, param in self:
-            match param:
-                case Parameter(quantifier='', pattern=ValueMatcher(value=val)):
-                    pass
-                case _:
-                    return None
-            if isinstance(id, int):
-                pos_args.append(val)
-            else:
-                names[id] = val
-        return Args(*pos_args, **names)
-
-    def __iter__(self):
-        yield from enumerate(self.parameters)
-        yield from self.named_params.items()
-
-    def match(self, args: Args | Record) -> None | dict[str, Record]:
-        if not isinstance(args, Args):
-            if BuiltIns['iter'] not in args.table.traits:
-                return
-            args = Args(*args)  # noqa
-        kwargs: dict[str, Record] = dict(args.named_arguments)
-        for f in args.flags:
-            kwargs[f] = BuiltIns['true']
-        bindings: dict[str, Record] = {}
-
-        # check for agreement of named parameters
-        for name, param in self.named_params.items():
-            param: Parameter
-            if name in kwargs:
-                match = param.match(kwargs[name])
-                if match is None:
-                    return
-                bindings.update(match)
-                bindings[name] = kwargs[name]
-                del kwargs[name]
-            elif param.default:
-                bindings[name] = param.default
-            elif param.required:
-                return
-
-        if not self.allow_arbitrary_kwargs:
-            # check for illegal kwargs
-            for name in kwargs:
-                if name not in self.names_of_ordered_params and name not in bindings:
-                    return
-
-        return virtual_machine(self.vm, args.positional_arguments, kwargs, bindings, self.allow_arbitrary_kwargs)
-
-    def __lt__(self, other):
-        if not isinstance(other, ParamSet):
-            return NotImplemented
-        return self.parameters < other.parameters
-
-    def __le__(self, other):
-        if not isinstance(other, ParamSet):
-            return NotImplemented
-        return self.parameters <= other.parameters
-
-    def __eq__(self, other):
-        return (isinstance(other, ParamSet)
-                and self.parameters == other.parameters
-                and self.named_params == other.named_params)
-
-    def __hash__(self):
-        return hash((self.parameters, self.named_params))
-
-    def __gt__(self, other):
-        if not isinstance(other, ParamSet):
-            return NotImplemented
-        return self.parameters > other.parameters
-
-    def __ge__(self, other):
-        if not isinstance(other, ParamSet):
-            return NotImplemented
-        return self.parameters >= other.parameters
-
-    def __str__(self):
-        def comma_sep(params):
-            return ', '.join(map(str, params))
-        return f"[{comma_sep(self.parameters)}{'; ' + comma_sep(self.named_params) if self.named_params else ''}]"
-
-    def __repr__(self):
-        return f"ParamSet({', '.join(map(repr, self.parameters))}{'; ' + str(self.named_params) if self.named_params else ''})"
-
-
-class SpecialBindingParameter(Parameter):
-    def match(self, arg):
-        raise PatternErr(f'Line {state.line}: oops, I don\'t think this should be called.')
-
-class BindPropertyParam(SpecialBindingParameter):
-    def __init__(self, rec: Record, field_name: str, pattern: Pattern = AnyMatcher(), default=None):
-        super().__init__(pattern, None, '', default)
-        self.rec = rec
-        self.field_name = field_name
-
-    def match_and_bind(self, arg: Record):
-        match = self.pattern.match(arg)
-        if match is None:
-            if self.default is None:
-                raise MatchErr(f"Line {state.line}: "
-                               f"pattern '{self}' did not match value {arg}")
-            else:
-                arg = self.default
-        else:
-            state.env.update(match)
-        self.rec.set(self.field_name, arg)
-        return arg
-
-    def __eq__(self, other):
-        return (isinstance(other, BindPropertyParam)
-                and self.rec == other.rec and self.field_name == other.field_name and self.default == other.default)
-    def __hash__(self):
-        return hash((super(), self.field_name, self.rec))
-
-    def __repr__(self):
-        return f"Parameter({self.pattern} {self.rec}.{self.field_name}{' = ' + str(self.default) if self.default else ''})"
-
-
-class BindKeyParam(SpecialBindingParameter):
-    def __init__(self, rec: Function, key: Args | ParamSet, pattern: Pattern = AnyMatcher(), default=None):
-        super().__init__(pattern, None, '', default)
-        self.rec: Function = rec
-        self.key = key
-
-    def match_and_bind(self, arg: Record):  # Record | Closure
-        match = self.pattern.match(arg)
-        if match is None:
-            if self.default is None:
-                raise MatchErr(f"Line {state.line}: "
-                               f"pattern '{self}' did not match value {arg}")
-            else:
-                arg = self.default
-        else:
-            state.env.update(match)
-        self.rec.assign_option(self.key, arg)
-        return arg
-
-    def __eq__(self, other):
-        return (isinstance(other, BindKeyParam)
-                and self.rec == other.rec and self.key == other.field_name and self.default == other.default)
-
-    def __hash__(self):
-        return hash((super(), self.key, self.rec))
-
-    def __repr__(self):
-        return f"Parameter({self.pattern} {self.rec}.{self.key}{' = ' +str(self.default) if self.default else ''})"
-
-class VarPatt(SpecialBindingParameter):
-    def __init__(self, name: str):
-        super().__init__(AnyMatcher())
-        self.var_name = name
-
-    def match_and_bind(self, arg: Record) -> Record:
-        if self.var_name in state.env.locals:
-            raise DuplicateNameErr(f'Line {state.line}: Cannot declare var {self.var_name} because it is already a local.')
-        state.env.vars[self.var_name] = arg
-        return arg
-
-
-class LocalPatt(VarPatt):
-    def match_and_bind(self, arg: Record) -> Record:
-        if self.var_name in state.env.vars:
-            raise DuplicateNameErr(f'Line {state.line}: Cannot declare local {self.var_name} because it is already a var.')
-        state.env.locals[self.var_name] = arg
-        return arg
-
-
 class RegEx(Pattern, PyValue[str]):
     value: str
     flags: str
@@ -2165,18 +2300,16 @@ class RegEx(Pattern, PyValue[str]):
             return {}
 
 
-def patternize(val) -> Parameter:
+def patternize(val) -> Pattern:
     match val:
-        case Matcher():
-            return Parameter(val)
-        case Parameter():
+        case Pattern():
             return val
         case Table():
-            return Parameter(TableMatcher(val))
+            return TableMatcher(val)
         case Trait():
-            return Parameter(TraitMatcher(val))
+            return TraitMatcher(val)
         case Record():
-            return Parameter(ValueMatcher(val))
+            return ValueMatcher(val)
         case _:
             raise TypeErr(f"Line {state.line}: Could not patternize {val}")
 

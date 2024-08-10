@@ -103,7 +103,7 @@ BuiltIns['PythonObject'] = ListTable(name='PythonObject')
 """ DONE ADDING BUILTIN TABLES."""
 
 
-BuiltIns['any'] = Parameter(AnyMatcher())
+BuiltIns['any'] = AnyMatcher()
 NoneParam = Parameter(ValueMatcher(BuiltIns["blank"]))
 BoolParam = Parameter(TraitMatcher(BuiltIns["bool"]))
 IntegralParam = Parameter(TraitMatcher(BuiltIns["int"]))
@@ -135,7 +135,7 @@ AnyPattern = ParamSet(Parameter(AnyMatcher(), quantifier="*"))
 # OneIndexList = Parameter(TableMatcher(BuiltIns['List'],
 #                                       guard=lambda x: py_value(len(x.value) == 1 and
 #                                                                NonZeroIntParam.match_score(x.value[0]))))
-
+state.DEFAULT_PATTERN = ParamSet(Parameter(AnyMatcher(), 'args', "*"), kwargs='kwargs')
 
 BuiltIns['bool'].assign_option(ParamSet(AnyParam), lambda x: py_value(x.truthy))
 BuiltIns['num'].assign_option(ParamSet(BoolParam), lambda x: py_value(int(x.truthy)))
@@ -146,18 +146,18 @@ BuiltIns['num'].assign_option(ParamSet(StringParam, IntegralParam),
 BuiltIns['int'].assign_option(ParamSet(NormalParam), lambda x: py_value(int(BuiltIns['num'].call(x).value)))
 BuiltIns['ratio'].assign_option(ParamSet(NormalParam), lambda x: py_value(Fraction(BuiltIns['num'].call(x).value)))
 BuiltIns['float'].assign_option(ParamSet(NormalParam), lambda x: py_value(float(BuiltIns['num'].call(x).value)))
-BuiltIns['str'].assign_option(ParamSet(AnyParam), lambda x: x.to_string())
+BuiltIns['str'].assign_default(lambda x: x.to_string())
 BuiltIns['str'].assign_option(Option(StringParam, lambda x: x))
 BuiltIns['str'].assign_option(ParamSet(NumericParam, IntegralParam),
                               lambda n, b: py_value(write_number(n.value, b.value)))
 # BuiltIns['list'].assign_option(ParamSet(SeqParam), lambda x: py_value(list(x.value)))
-BuiltIns['list'].assign_option(ParamSet(IterParam), lambda x: py_value(list(x)))
-BuiltIns['tuple'].assign_option(ParamSet(IterParam), lambda x: py_value(tuple(x)))
-BuiltIns['set'].assign_option(ParamSet(IterParam), lambda x: py_value(set(x)))
+BuiltIns['list'].default_option = Option(ParamSet(IterParam), lambda x: py_value(list(x)))
+BuiltIns['tuple'].default_option = Option(ParamSet(IterParam), lambda x: py_value(tuple(x)))
+BuiltIns['set'].default_option = Option(ParamSet(IterParam), lambda x: py_value(set(x)))
 # BuiltIns['iter'].assign_option(Option(UnionMatcher(*(TraitMatcher(BuiltIns[t])
 #                                                      for t in ('tuple', 'list', 'set', 'frozenset', 'str', 'range'))),
 #                                       lambda x: x))
-BuiltIns['iter'].assign_option(ParamSet(IterParam), lambda x: x)
+BuiltIns['iter'].default_option = Option(ParamSet(IterParam), lambda x: x)
 
 def make_custom_iter(rec: Record):
     while not dot_call_fn(rec, 'done').value:
@@ -198,12 +198,12 @@ BuiltIns['repr'] = Function({StringParam: lambda s: py_value(repr(s.value)),
                              FunctionParam: lambda fn: fn.to_string(True),
                              AnyParam: lambda arg: BuiltIns['str'].call(arg)})
 
-BuiltIns['type'] = Function({AnyParam: lambda v: v.table})
+BuiltIns['type'] = Function(default=lambda v: v.table)
 
 BuiltIns['len'] = Function({SeqParam: lambda s: py_value(len(s.value)),
                             PatternParam: lambda p: py_value(len(p)),
-                            FunctionParam: lambda fn: py_value(len(fn.op_map)),
-                            ParamSet(Parameter(TableMatcher(BuiltIns['Table']))): lambda t: py_value(len(t.records))
+                            FunctionParam: lambda fn: py_value(len(fn.op_map) + len(fn.op_list)),
+                            # ParamSet(Parameter(TableMatcher(BuiltIns['Table']))): lambda t: py_value(len(t.records))
                             })
 # BuiltIns['traits'] = Function({Parameter(BuiltIns['Table']): lambda t: py_value(t.traits)})
 # # BuiltIns['contains'] = Function({ParamSet(FunctionParam: AnyParam),
@@ -244,7 +244,7 @@ BuiltIns['round'] = Function({NumericParam: lambda n: py_value(round(n.value)),
                               ParamSet(NumericParam, IntegralParam): round_to_rational})
 
 
-RangeTrait.assign_option(Parameter(BuiltIns["num"], quantifier="*"), lambda *args: Range(*args))
+RangeTrait.assign_option(Parameter(TraitMatcher(BuiltIns["num"]), quantifier="*"), lambda *args: Range(*args))
 # BuiltIns['map'] = Function({ParamSet(SeqParam, FunctionParam): lambda ls, fn: piliize([fn.call(val) for val in ls.value]),
 #                             ParamSet(FunctionParam, SeqParam): lambda fn, ls: piliize([fn.call(val) for val in ls.value])})
 # BuiltIns['filter'] = Function({ParamSet(ListParam, FunctionParam):
@@ -259,7 +259,7 @@ BuiltIns['trim'] = Function({StringParam: lambda text: py_value(text.value.strip
 BuiltIns['upper'] = Function({StringParam: lambda text: py_value(text.value.upper())})
 BuiltIns['lower'] = Function({StringParam: lambda text: py_value(text.value.lower())})
 BuiltIns['replace'] = \
-    Function({ParamSet(StringParam, StringParam, StringParam, Parameter(IntegralParam, default=py_value(-1))):
+    Function({ParamSet(StringParam, StringParam, StringParam, Parameter(TraitMatcher(IntTrait), quantifier='?')):
                   lambda self, old, new, count=-1: py_value(self.value.replace(old.value, new.value, count.value))})
 
 BuiltIns['new'] = Function({ParamSet(TableParam, AnyPattern[0], kwargs='kwargs'):
@@ -281,7 +281,7 @@ BuiltIns['new'] = Function({ParamSet(TableParam, AnyPattern[0], kwargs='kwargs')
 #     return Function({AnyPattern: lambda *args: py_value(py_fn(*(arg.value for arg in args)))})
 #
 def make_flags(*names: str) -> dict[str, Parameter]:
-    return {n: Parameter(BoolParam, n, '?', BuiltIns['blank']) for n in names}
+    return {n: Parameter(TraitMatcher(BuiltIns['bool']), n, '?', BuiltIns['blank']) for n in names}
 
 
 BuiltIns['python'] = Function({ParamSet(StringParam,

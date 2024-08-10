@@ -66,8 +66,8 @@ class Commands(Enum):
     # If = 'if'
     # For = 'for'
     # While = 'while'
-    # Local = 'local'
-    # Var = 'var'
+    Local = 'local'
+    Var = 'var'
     Return = 'return'
     Break = 'break'
     Continue = 'continue'
@@ -97,8 +97,8 @@ class OperatorWord(Enum):
     # If = 'if'
     Has = 'has'
     # Else = 'else'
-    Var = 'var'
-    Local = 'local'
+    # Var = 'var'
+    # Local = 'local'
 
 
 for op in OperatorWord:
@@ -193,7 +193,7 @@ class Node:
     def source_text(self):
         return self.pos.file.source_code[self.pos.slice()]
 
-    def eval_pattern(self, name_as_any=False):
+    def eval_pattern(self, as_param=False):
         raise NotImplementedError('implement this in interpreter.py')
         # return patternize(self.evaluate())
 
@@ -226,7 +226,7 @@ class Token(Node):
         #         return state.deref(s)
         # raise NotImplementedError(f"Line {self.line}: Could not evaluate token", self)
 
-    def eval_pattern(self, name_as_any=False):
+    def eval_pattern(self, as_param=False):
         raise NotImplementedError('implement this in interpreter.py')
         # if name_as_any and self.type is TokenType.Name:
         #     return Parameter(AnyMatcher(), self.text)
