@@ -13,6 +13,8 @@ print(f'loading {__name__}.py')
 
 PyFunction = type(lambda: None)
 
+def pili_repr(rec):
+    return BuiltIns['str'].call(Args(rec, flags={'info'}))
 
 class OptionCatalog:
     op_list: list
@@ -201,10 +203,16 @@ class Record:
         except TypeError:
             return False
 
-    def to_string(self):
+    def to_string(self, as_repr=False):
+        if not as_repr:
+            if self.name:
+                return py_value(self.name)
+            return py_value(f'{self.table}{py_value(self.data).to_string().value}')
+        elements = [self.table.to_string().value]
         if self.name:
-            return py_value(self.name)
-        return py_value(f'{self.table}{py_value(self.data).to_string().value}')
+            elements.append(repr(self.name))
+        elements.extend(f'{key}:{pili_repr(self.get(key)).value}' for key in self.table.getters)
+        return py_value('<' + ' '.join(elements) + '>')
 
     def __str__(self):
         return self.to_string().value
@@ -221,7 +229,7 @@ class PyValue(Record, Generic[T]):
         self.value = value
         super().__init__(table)
 
-    def to_string(self):
+    def to_string(self, as_repr=False):
         if self.value is None:
             return py_value('blank')
         if self.table is BuiltIns['Bool']:
@@ -229,9 +237,11 @@ class PyValue(Record, Generic[T]):
         if BuiltIns['num'] in self.table.traits:
             return py_value(write_number(self.value, state.settings['base']))
         if self.table is BuiltIns['String']:
-            return self
+            return py_value(repr(self.value)) if as_repr else self
         if BuiltIns['seq'] in self.table.traits or BuiltIns['set'] in self.table.traits:
-            items = ', '.join(BuiltIns['repr'].call(item).value for item in self)
+            items = ', '.join(repr(item.value) if isinstance(item.value, str)
+                                               else BuiltIns['str'].call(item).value
+                              for item in self)
             match self.value:
                 case list():
                     return py_value(f'[{items}]')
@@ -332,7 +342,7 @@ class PyValue(Record, Generic[T]):
 
 
 class2table = dict(bool='Bool', int="Integer", Fraction='Fraction', float="Float", str='String', tuple="Tuple",
-                   list='List', set='Set', frozenset='FrozenSet', dict='Dictionary')
+                   list='List', set='Set', frozenset='FrozenSet', dict='Function')
 def py_value(value: T | object):
     match value:
         case None:
@@ -397,7 +407,7 @@ class PyObj(Record, Generic[A]):
         self.obj = obj
         super().__init__(BuiltIns['PythonObject'])
 
-    def to_string(self):
+    def to_string(self, as_repr=False):
         return py_value(repr(self.obj))
 
     def get(self, name, *default, search_table_frame_too=False):
@@ -540,13 +550,13 @@ class Function(Record, OptionCatalog):
     def to_string(self, as_repr=False):
         if self.name and not as_repr:
             return py_value(self.name)
-        items = (f'{BuiltIns['repr'].call(k[0] if len(k) == 1 else py_value(k.positional_arguments)).value}: '
-                 f'{BuiltIns['repr'].call(v.value).value if v.value else "..."}'
+        items = (f'{pili_repr(k[0] if len(k) == 1 else py_value(k.positional_arguments)).value}: '
+                 f'{pili_repr(v.value).value if v.value else "..."}'
                  for k, v in self.op_map.items())
-        options = (f'{BuiltIns['repr'].call(opt.pattern).value} => ...' for opt in self.op_list)
+        options = (f'{pili_repr(opt.pattern).value} => ...' for opt in self.op_list)
         names = ()
         if self.frame:
-            names = (f'{k} = {BuiltIns['repr'].call(v).value}' for k, v in self.frame.items())
+            names = (f'{k} = {pili_repr(v).value}' for k, v in self.frame.items())
         segments = []
         items, options, names = tuple(items), tuple(options), tuple(names)
         if names:
@@ -565,7 +575,6 @@ class Function(Record, OptionCatalog):
 
 
 class Trait(Function):
-    # trait = None
     # noinspection PyDefaultArgument
     def __init__(self, options={}, *fields, name=None, fn_options={}, fn_fields=[], uninitialized=False, default=None):
         self.options = [Option(patt, res) for (patt, res) in options.items()]
@@ -590,7 +599,7 @@ class Table(Function):
     records: list[Record] | dict[Record, Record] | set[Record] | None
     # getters = dict[str, tuple[int, Field]]
     # setters = dict[str, tuple[int, Field]]
-    # fields = list[Field]
+    # fields = list[PiliField]
     types: dict[str]  # Matcher
     # noinspection PyDefaultArgument
     def __init__(self, *traits: Trait, name: str = None, fn_options: dict = {}, fn_fields: list = [],
@@ -621,9 +630,14 @@ class Table(Function):
     def trait(self):
         return self.traits[0]
 
+    def raw_fields(self):
+        for trait in self.traits:
+            yield from trait.fields
+
     def integrate_traits(self):
         defaults: dict[str, Function | None] = {}
-        types: dict[str, Matcher] | dict[str] = {}
+        types: dict[str, Pattern] | dict[str] = {}
+        fields: dict[str, PiliField] = {}
 
         for trait in self.traits:
             # if trait.frame:
@@ -633,7 +647,12 @@ class Table(Function):
             # ^^ I thought about transferring all names from all traits into the current table, but that's a bit heavy
             for trait_field in trait.fields:
                 name = trait_field.name
-                pattern: Matcher = getattr(trait_field, 'type', None)
+                if name in fields:
+                    fields[name] += trait_field
+                else:
+                    fields[name] = PiliField(trait_field)
+
+                pattern = getattr(trait_field, 'type', None)
                 if pattern:
                     # if isinstance(pattern, Parameter):
                     #     assert pattern.binding == name
@@ -671,6 +690,7 @@ class Table(Function):
 
         self.defaults = tuple(defaults[n] for n in defaults)
         self.types = types
+        self.fields = fields
         patt = ParamSet(*(Parameter(types[name],
                                     name,
                                     "?" * (defaults[name] is not None))
@@ -803,18 +823,18 @@ class VirtTable(SetTable):
         return True
 
 
-class Field(Record):
+class Field:
     type = None
 
     def __init__(self, name: str, type=None, default=None, formula=None):
         self.name = name
         if type:
             self.type = type
-        if default is None:
-            default = py_value(None)
-        if formula is None:
-            formula = py_value(None)
-        super().__init__(BuiltIns['Field'])
+        # if default is None:
+        #     default = py_value(None)
+        # if formula is None:
+        #     formula = py_value(None)
+        # super().__init__(BuiltIns['Field'])
         # , name=py_value(name),
         # type=ParamSet(Parameter(type)) if type else BuiltIns['blank'],
         # is_formula=py_value(formula is not None),
@@ -833,12 +853,11 @@ class Slot(Field):
         self.default = default
         super().__init__(name, type, default)
 
-    # def get_data(self, rec, idx):
-    #     return rec.data[idx]
-    #
-    # def set_data(self, rec, idx, value):
-    #     rec.data[idx] = value
-    #     return BuiltIns['blank']
+    def to_string(self, as_repr=False):
+        if not as_repr:
+            return py_value(self.name)
+        ret = ' = ' + pili_repr(self.default).value if self.default else ''
+        return py_value(f"<slot {repr(self.name)} {pili_repr(self.type).value}{ret}>")
 
     def __repr__(self):
         return f"Slot({self.name}: {self.type}{' (' + str(self.default) + ')' if self.default else ''})"
@@ -846,11 +865,18 @@ class Slot(Field):
 
 class Formula(Field):
     def __init__(self, name, type, formula):
-        self.formula = formula
+        if isinstance(formula, Function):
+            self.formula = formula
+        elif isinstance(formula, PyFunction):
+            self.formula = Function({AnyMatcher(): formula})
+        else:
+            raise ValueError
         super().__init__(name, type, None, formula)
 
-    # def get_data(self, rec, idx):
-    #     return self.formula.call(rec)
+    def to_string(self, as_repr=False):
+        if not as_repr:
+            return py_value(self.name)
+        return py_value(f"<formula {repr(self.name)} {pili_repr(self.formula).value}>")
 
     def __repr__(self):
         return f"Formula({self.name}: {str(self.formula)})"
@@ -860,11 +886,18 @@ class Setter(Field):
     fn: Function
 
     def __init__(self, name: str, fn: Function):
-        self.fn = fn
+        if isinstance(fn, Function):
+            self.fn = fn
+        elif isinstance(fn, PyFunction):
+            self.fn = Function({ParamSet(Parameter(AnyMatcher()), Parameter(AnyMatcher())): fn})
+        else:
+            raise ValueError
         super().__init__(name)
 
-    # def set_data(self, rec, idx, value):
-    #     return self.fn.call(rec, value)
+    def to_string(self, as_repr=False):
+        if not as_repr:
+            return py_value(self.name)
+        return py_value(f"<setter {repr(self.name)} {pili_repr(self.fn).value}>")
 
     def __repr__(self):
         return f"Setter({self.name}: {self.fn})"
@@ -962,6 +995,16 @@ class Args(Record):
         d = self.dict()
         return hash((frozenset(d), frozenset(d.values())))
 
+    def to_string(self, as_repr=False):
+        pos = ', '.join(pili_repr(arg).value for arg in self.positional_arguments)
+        names = ', '.join(f"{name}={pili_repr(value).value}"
+                          for name, value in self.named_arguments.items())
+        flags = ', '.join('!' + f for f in self.flags)
+        string = f'[{"; ".join(item for item in (pos, names, flags) if item)}]'
+        if as_repr:
+            return f'<Args {string}>'
+        return string
+
     def __str__(self):
         return repr(self)
 
@@ -996,9 +1039,14 @@ class Pattern(Record):
     def bytecode(self):
         raise NotImplementedError(self.__class__.__name__)
 
+    def to_string(self, as_repr=False):
+        return py_value(f'<{self.table} '
+                        f'{' '.join(f"{k}={v}" for k, v in self.__dict__.items()
+                                    if k not in {'hash', 'table', 'data', 'index'})}>')
+
     def __repr__(self):
         return (f"{self.__class__.__name__}"
-                f"{tuple(v for k, v in self.__dict__.items() if k not in {'hash', 'table', 'data', 'index'})}")
+                f"{tuple(f"{k}={v}" for k, v in self.__dict__.items() if k not in {'hash', 'table', 'data', 'index'})}")
 
     def __str__(self):
         return repr(self)
@@ -2512,3 +2560,52 @@ class Option(Record):
         if self.alias:
             return f"Opt({self.pattern} -> {self.alias})"
         return f"Opt({self.pattern} -> null)"
+
+class PiliField(Record):
+    name: str
+    type: Pattern = None
+    getter: Function | bool = None
+    setter: Function | bool = None
+    default: Record = None
+    def __init__(self, field: Field):
+        self.name = field.name
+        match field:
+            case Slot(type=type, default=default):
+                self.type = type
+                self.default = default
+                self.getter = self.setter = True
+            case Formula(type=type, formula=getter):
+                self.type = type
+                self.getter = getter
+            case Setter(fn=setter):
+                self.setter = setter
+        super().__init__(BuiltIns["Field"])
+
+    def wrap_default(self):
+        if self.default is None:
+            return BuiltIns['blank']
+        frame = Frame(state.root, bindings={'value': self.default})
+        return Function({}, frame=frame)
+
+    def __iadd__(self, other: Field):
+        if self.name != other.name:
+            raise ValueError("Incompatible fields: different name")
+        if self.type is not None and other.type is not None and not self.type.issubset(other.type):
+            raise ValueError('Incompatible field types')
+        if self.type is None and (type := getattr(other, 'type', None)) is not None:
+            self.type = type
+        match other:
+            case Slot(default=default):
+                if self.default is None:
+                    self.default = default
+                if not self.getter:
+                    self.getter = True
+                if not self.setter:
+                    self.setter = True
+            case Formula(formula=getter):
+                if not self.getter:
+                    self.getter = getter
+            case Setter(fn=setter):
+                if not self.setter:
+                    self.setter = setter
+

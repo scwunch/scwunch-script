@@ -80,7 +80,7 @@ def pili_shell():
             if isinstance(output, BaseException):
                 print(output)
             elif output != BuiltIns['blank']:
-                print(BuiltIns['repr'].call(output).value)
+                print(pili_repr(output).value)
             if state.env.return_value is not None:
                 res = state.env.return_value
                 state.env.return_value = None

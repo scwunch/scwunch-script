@@ -43,7 +43,7 @@ class Record:
     # I should not make Records python callable... that's just confusing
     def select(self, args: Args) -> tuple[Option | None, dict | None]: ...
     def hashable(self) -> bool: ...
-    def to_string(self) -> PyValue[str]: ...
+    def to_string(self, as_repr=False) -> PyValue[str]: ...
     def __index__(self) -> int: ...
 
 
@@ -91,10 +91,7 @@ class Function(Record, OptionCatalog):
 
 class Trait(Function):
     options: list[Option]
-    # hashed_options: dict[tuple[Record, ...], Option]
-    # field_ids: dict[str, int]
     fields: list[Field]
-    # trait: Trait | None = None  # its own trait, since traits can be treated like functions
     # noinspection PyDefaultArgument
     def __init__(self, options: dict[FlexiPatt, opt_resolution] = {},
                  *fields: Field,
@@ -117,6 +114,7 @@ class Table(Function):
     setters: dict[str, int | Function]
     defaults: tuple[Function, ...]  # this is for instantiation of Records
     types: tuple[str, Pattern]  # the type of each field, in the same order as defaults
+    fields: list[PiliField]
     trait: Trait  # property that points to the first trait in traits
     # noinspection PyDefaultArgument
     def __init__(self, *traits: Trait,
@@ -153,9 +151,9 @@ class VirtTable(SetTable):
 
 class Field(Record):
     name: str
-    type: Matcher = None
+    type: Pattern = None
     def __init__(self, name: str,
-                 type: Matcher = None,
+                 type: Pattern = None,
                  default: Function | None = py_value(None),
                  formula: Function = py_value(None)): ...
 
@@ -164,13 +162,13 @@ class Field(Record):
 
 class Slot(Field):
     default: Function | None  # default should be a function with a single option with a single parameter: self
-    def __init__(self, name: str, type: Matcher, default: Function = None): ...
+    def __init__(self, name: str, type: Pattern, default: Function = None): ...
     # def get_data(self, rec: Record, idx: int): ...
     # def set_data(self, rec: Record, idx: int, value): ...
 
 class Formula(Field):
     formula: Function
-    def __init__(self, name: str, type: Matcher, formula: Function): ...
+    def __init__(self, name: str, type: Pattern, formula: Function | PyFunction): ...
     # def get_data(self, rec: Record, idx: int): ...
 
 class Setter(Field):
@@ -482,3 +480,14 @@ def virtual_machine(prog: list[Inst],
                     initial_bindings: dict[str, Record],
                     allow_arbitrary_kwargs: bool = False) \
         -> None | dict[str, Record]: ...
+
+
+class PiliField(Record):
+    name: str
+    type: Pattern = None
+    getter: Function | True = None
+    setter: Function | True = None
+    default: Record | None = None
+    def __init__(self, field: Field): ...
+    def wrap_default(self) -> Function: ...
+    def __iadd__(self, other: Field): ...

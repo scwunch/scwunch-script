@@ -704,7 +704,9 @@ test[134] = (y['title'] == 'A New Hope'
 			 and 'date: 2020-08-21' in yaml.dump[y].split['\n'].set)
 print_test[134]
 
-
+print Table.fields..str[!info].join['\n']
+# for field in Table.fields
+# 	print field.repr
 
 
 iter[@test]:

@@ -141,3 +141,51 @@ function yaml
 function write_yaml
     [fn func]:
         blank
+
+
+return
+
+####################################################
+if false
+	trait pattern
+
+		match[any arg]:
+			blank
+
+	table Field
+		slot name str
+		slot type pattern
+		slot getter fn|true?
+		slot setter fn|true?
+		slot default {'value': any}?
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

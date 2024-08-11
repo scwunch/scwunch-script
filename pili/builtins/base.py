@@ -8,6 +8,7 @@ print(f'loading {__name__}.py')
 # BuiltIns['blank'] = None
 BuiltIns['Table'] = TableTable = MetaTable()
 BuiltIns['Trait'] = TraitTable = BootstrapTable('Trait')
+BuiltIns['pattern'] = PattTrait = Trait(name='pattern')
 BuiltIns['Pattern'] = IntermediatePatternTable = BootstrapTable('Pattern')
 BuiltIns['Option'] = IntermediateOptionTable = BootstrapTable('Option')
 BuiltIns['Args'] = IntermediateArgsTable = BootstrapTable('Args')
@@ -53,7 +54,6 @@ BuiltIns['String'] = VirtTable(StrTrait, SeqTrait, IterTrait, name='String')
 BuiltIns['Tuple'] = VirtTable(TupTrait, SeqTrait, IterTrait, name='Tuple')
 BuiltIns['Set'] = VirtTable(SetTrait, IterTrait, name='Set')
 BuiltIns['List'] = VirtTable(ListTrait, SeqTrait, IterTrait, name='List')
-BuiltIns['Dictionary'] = VirtTable(DictTrait, IterTrait, name='Dictionary')
 BuiltIns['Range'] = VirtTable(RangeTrait, IterTrait, IndexTrait, name='Range')
 BuiltIns['Args'] = VirtTable(SeqTrait, DictTrait, IterTrait, name='Args')
 for rec in IntermediateArgsTable.records:
@@ -67,18 +67,17 @@ BuiltIns['Trait'].traits += (FuncTrait,)
 
 BuiltIns['Pattern'] = ListTable(SeqTrait, IterTrait, name='Pattern')
 BuiltIns['Pattern'].records = IntermediatePatternTable.records
-# BuiltIns["Pattern"] = BuiltIns['ParamSet']
 BuiltIns['Block'] = ListTable(name='Block')
 
-BuiltIns['Field'] = ListTable(name='Field')
+# BuiltIns['Field'] = ListTable(name='Field')
 
-def upsert_field_fields(fields: list[Field]):
-    fields.append(Slot('name', TraitMatcher(BuiltIns['str'])))
-    fields.append(Slot('type', TableMatcher(BuiltIns['Pattern'])))
-    fields.append(Slot('is_formula', TraitMatcher(BuiltIns['bool'])))
-    fields.append(Slot('default', UnionMatcher(TraitMatcher(FuncTrait), AnyMatcher())))
-    fields.append(Slot('formula', TraitMatcher(FuncTrait)))
-    fields.append(Slot('setter', TraitMatcher(FuncTrait)))
+# def upsert_field_fields(fields: list[Field]):
+#     fields.append(Slot('name', TraitMatcher(BuiltIns['str'])))
+#     fields.append(Slot('type', TableMatcher(BuiltIns['Pattern'])))
+#     fields.append(Slot('is_formula', TraitMatcher(BuiltIns['bool'])))
+#     fields.append(Slot('default', UnionMatcher(TraitMatcher(FuncTrait), AnyMatcher())))
+#     fields.append(Slot('formula', TraitMatcher(FuncTrait)))
+#     fields.append(Slot('setter', TraitMatcher(FuncTrait)))
 # upsert_field_fields(BuiltIns['Field'].trait.fields)
 
 
@@ -87,12 +86,28 @@ BuiltIns['Option'].records = IntermediateOptionTable.records
 BuiltIns['Option'].trait.fields.append(Slot('signature', TableMatcher(BuiltIns['Pattern'])))
 BuiltIns['Option'].trait.fields.append(Slot('code block', TableMatcher(BuiltIns['Block'])))
 
+TableTable.trait.fields = [
+    Formula('fields', TableMatcher(BuiltIns['Tuple']), lambda self: py_value(tuple(self.fields.values()))),
+    Formula('records', TraitMatcher(IterTrait), lambda self: py_value(self.records))
+]
 FuncTrait.fields.append(Slot('options', TraitMatcher(BuiltIns['seq'])))
-# the type should also have a specifier like `list[Option]` ... and also a default value: []
+
+BuiltIns['Field'] = FieldTable = ListTable(name='Field')
+FieldTable.trait.fields = [
+    Formula('name', TraitMatcher(StrTrait), lambda field: py_value(field.name)),
+    Formula('type', UnionMatcher(TraitMatcher(PattTrait), ValueMatcher(BuiltIns['blank'])),
+            lambda field: field.type or BuiltIns['blank']),
+    Formula('getter', UnionMatcher(TraitMatcher(FuncTrait), ValueMatcher(BuiltIns['true']), ValueMatcher(BuiltIns['blank'])),
+            lambda field: py_value(field.getter)),
+    Formula('setter', UnionMatcher(TraitMatcher(FuncTrait), ValueMatcher(BuiltIns['true']), ValueMatcher(BuiltIns['blank'])),
+            lambda field: py_value(field.setter)),
+    Formula('default', UnionMatcher(FieldMatcher((), {'value': AnyMatcher()}), ValueMatcher(BuiltIns['blank'])),
+            lambda field: field.wrap_default())
+]
 
 # now redo the Field fields, since they weren't able to properly initialize while the fields were incomplete
 # upsert_field_fields(BuiltIns['Field'].trait.fields)
-BuiltIns['Field'].records = BuiltIns['Field'].records[5:]
+# BuiltIns['Field'].records = BuiltIns['Field'].records[5:]
 
 BuiltIns['range'].fields = [Slot('start', UnionMatcher(TraitMatcher(NumTrait), ValueMatcher(BuiltIns['blank']))),
                             Slot('end', UnionMatcher(TraitMatcher(NumTrait), ValueMatcher(BuiltIns['blank']))),
@@ -146,7 +161,9 @@ BuiltIns['num'].assign_option(ParamSet(StringParam, IntegralParam),
 BuiltIns['int'].assign_option(ParamSet(NormalParam), lambda x: py_value(int(BuiltIns['num'].call(x).value)))
 BuiltIns['ratio'].assign_option(ParamSet(NormalParam), lambda x: py_value(Fraction(BuiltIns['num'].call(x).value)))
 BuiltIns['float'].assign_option(ParamSet(NormalParam), lambda x: py_value(float(BuiltIns['num'].call(x).value)))
-BuiltIns['str'].assign_default(lambda x: x.to_string())
+BuiltIns['str'].default_option = (
+    Option(ParamSet(AnyParam, Parameter(BoolParam, 'info', default=BuiltIns['blank'])),
+           lambda x, info=BuiltIns['blank']: x.to_string(info.truthy)))
 BuiltIns['str'].assign_option(Option(StringParam, lambda x: x))
 BuiltIns['str'].assign_option(ParamSet(NumericParam, IntegralParam),
                               lambda n, b: py_value(write_number(n.value, b.value)))
@@ -194,9 +211,7 @@ SettingsSingletonTable = SetTable(Trait({},
                                name="SettingsSingletonTable")
 BuiltIns['settings'] = Record(SettingsSingletonTable)
 
-BuiltIns['repr'] = Function({StringParam: lambda s: py_value(repr(s.value)),
-                             FunctionParam: lambda fn: fn.to_string(True),
-                             AnyParam: lambda arg: BuiltIns['str'].call(arg)})
+# BuiltIns['repr'] = Function({AnyParam: lambda arg: arg.to_string(True)})
 
 BuiltIns['type'] = Function(default=lambda v: v.table)
 
