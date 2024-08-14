@@ -107,6 +107,10 @@ class Tokenizer:
             elif self.char in "#\n":
                 last_indent = self.indent
                 self.next_line()
+                if self.char == '\\':
+                    self.indent = last_indent
+                    self.next_char()
+                    continue
                 if self.indent == last_indent:
                     text = '\n'
                 else:
@@ -116,12 +120,7 @@ class Tokenizer:
                     else:
                         token_type = TokenType.BlockEnd
             elif self.char == '\\':
-                while self.next_char() and self.char in ' \t':
-                    pass
-                if self.char != '\n':
-                    raise SyntaxErr(f"Expected newline after backslash at {pos}")
-                self.next_line()
-                continue
+                raise SyntaxErr(f'Line {self.ln}: backslash (\\) is only valid at the beginning of a line.')
             else:
                 raise SyntaxErr(f'{pos} What kind of character is this? "{self.char}"')
 

@@ -184,9 +184,9 @@ test[31] = add[fav_num, 5]  == fav_num.add[5]
 print 'test 31 ' + ('passed' if test[31] else 'FAILED')
 
 
-test[32] = type[-10 / 20].str == "Fraction" \
-			and type[4 * (1 + (-15 / 4))].str == "Integer" \
-			and type[1.0f / 1 + 1].str == "Float"
+test[32] = type[-10 / 20].str == "Fraction"
+			\ and type[4 * (1 + (-15 / 4))].str == "Integer"
+\           and type[1.0f / 1 + 1].str == "Float"
 # print type[-10/20]
 # print type[4 * (1 + (-15 / 4))]
 # print type[1.0f / 1 + 1]
@@ -239,8 +239,8 @@ my_func = {'one': 1
 			empty_func: 'yeah'
 			(1,2): 'this is not a block'
 		  }
-test[42] = my_func['one'] == 1 and my_func[2] == 'two' and my_func[empty_func] == 'yeah' \
-		   and my_func[(1,2)] == "this is not a block"
+test[42] = my_func['one'] == 1 and my_func[2] == 'two' and my_func[empty_func] == 'yeah'
+			\ and my_func[(1,2)] == "this is not a block"
 print 'test 42 ' + ('passed' if test[42] else 'FAILED')
 stringify = any arg => str[arg]
 add_one = [num arg] => str[arg + 1]
@@ -420,12 +420,12 @@ fsf[float f1*, str s*, float f2*]:
 # print fsf[] or 'fsf[] => ""'
 # return '*********************'
 
-test[100] = fsf[-1.3f, 's', -0.122f] == "f1: -1.3, s: s, f2: -0.122" \
-			and fsf['s', -0.122f]	== "s: s, f2: -0.122" \
-			and fsf[0.2345f]		 == "f1: 0.2345" \
-			and fsf['STRING']		== "s: STRING" \
-			and fsf['h', 0.1f, 0.2f] == "s: h, f2: 0.1 0.2" \
-			and fsf[]				== ""
+test[100] = fsf[-1.3f, 's', -0.122f] == "f1: -1.3, s: s, f2: -0.122"
+			\ and fsf['s', -0.122f]	== "s: s, f2: -0.122"
+			\ and fsf[0.2345f]		 == "f1: 0.2345"
+			\ and fsf['STRING']		== "s: STRING"
+			\ and fsf['h', 0.1f, 0.2f] == "s: h, f2: 0.1 0.2"
+			\ and fsf[]				== ""
 print_test[100]
 
 fsnfi[float f1?, str s*, num n*, float f2*, int op_i+]:
