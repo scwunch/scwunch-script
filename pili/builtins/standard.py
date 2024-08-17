@@ -32,6 +32,14 @@ def pili_min(iterable):
 state.deref('min').op_list[0].resolution = pili_min
 
 
+def transmogrify(ref: Record, data: Record):
+    ref.__class__ = data.__class__
+    ref.__dict__ = data.__dict__
+    return ref
+
+state.deref('transmogrify').op_list[0].resolution = transmogrify
+
+
 ##############################################
 # files
 ##############################################

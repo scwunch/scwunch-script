@@ -14,6 +14,8 @@ function min
     [any args+]:
         return min[args]
 
+transmogrify[ref, data]:
+	blank
 
 
 
