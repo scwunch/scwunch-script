@@ -149,7 +149,9 @@ class Position:
         return str((self.ln, self.ch))
 
     def __repr__(self):
-        return f"Position{tuple(self.__dict__.values())}"
+        if hasattr(self, 'start_index'):
+            return f"Position{self.ln, self.ch, self.start_index, self.stop_index}"
+        return f"Position{self.ln, self.ch}"
 
     def __add__(self, other):
         if other.stop_index is None:

@@ -118,7 +118,9 @@ class Tokenizer:
                     if self.indent > last_indent:
                         token_type = TokenType.BlockStart
                     else:
-                        token_type = TokenType.BlockEnd
+                        for i in range(last_indent-1, self.indent-1, -1):
+                            tokens.append(Token('\t'*i, TokenType.BlockEnd, pos, start, self.idx))
+                        continue
             elif self.char == '\\':
                 raise SyntaxErr(f'Line {self.ln}: backslash (\\) is only valid at the beginning of a line.')
             else:

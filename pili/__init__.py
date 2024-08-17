@@ -2,7 +2,7 @@ from pili import state
 from pili.state import Op, BuiltIns, File
 from pili.lexer import Tokenizer
 from pili.abstract_syntax_tree import AST
-from pili.runtime import GlobalFrame, Closure, Frame
+from pili.runtime import GlobalFrame, Closure, Frame, pili_repr
 from pili.utils import PiliException
 from pili.builtins import base, operators
 
