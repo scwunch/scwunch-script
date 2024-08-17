@@ -1,0 +1,162 @@
+
+table Node
+	slot value any
+	slot prev Node?
+	slot next Node?
+	.str[!info]:
+		if info
+			return "<Node {'"{self.value}"' if self.value is str else self.value} prev={self.prev} next={self.next}>"
+		return 'Node[{self.value.str}]'
+
+
+trait Deque
+	slot _front Node?
+	slot _back Node?
+	slot len int = 0
+	formula front any =
+		return self._front.value
+	setter front[item]:
+		self._front.value = item
+	formula back any =
+		return self._back.value
+	formula is_empty bool =
+		return self._front is blank and self._back is blank
+	setter back[item]:
+		self._back.value = item
+	[iter iterable?]:
+		d = EmptyDeque.new[]
+		if iterable is blank
+			return d
+		return d.extend[iterable]
+	.extend[iter iterable]:
+		for item in iterable
+			self.append[item]
+		return self
+# 	function append
+# 		[Deque(len: 0) self, item]:
+# 			self._back = self._front = Node[item]
+# 			self.len = 1
+# 			return self
+# 		[Deque self, item]:
+# 			self._front.next = Node[item, self._front]
+# 			self._front = self._front.next
+# 			self.len += 1
+# 			return self
+# 	function prepend
+# 		[Deque(len: 0) self, item]:
+# 			self._back = self._front = Node[item]
+# 			self.len = 1
+# 			return self
+# 		[Deque self, item]:
+# 			self._back.prev = Node[item, self._back]
+# 			self._back = self._back.prev
+# 			self.len += 1
+# 			return self
+	.append[item]:
+		self._front.next = Node[item, self._front]
+		self._front = self._front.next
+		self.len += 1
+		return self
+	.prepend[item]:
+		self._back.prev = Node[item, next=self._back]
+		self._back = self._back.prev
+		self.len += 1
+		return self
+	.pop_front:
+		Node(value: value) = self._front
+		if self.len == 1
+			self.transmogrify[EmptyDeque.new]
+			return value
+		self._front = self._front.prev
+		self._front.next = blank
+		self.len -= 1
+		return value
+	.pop_back:
+		Node(value: value) = self._back
+		if self.len == 1
+			self.transmogrify[EmptyDeque.new]
+			return value
+		self._back = self._back.next
+		self._back.prev = blank
+		self.len -= 1
+		return value
+	.list:
+		return list[self.iter]
+	.iter[!nodes]:
+		ls = []
+		node = self._back
+		if nodes
+			while node
+				ls.push[node]
+				node = node.next
+		else
+			while node
+				ls.push[node.value]
+				node = node.next
+		return ls
+	.str[!info]:
+		if info
+			return "Deque[{self.iter[!nodes]..str[!info].join[', ']}]"
+		return self.iter.str
+
+table EmptyDeque (Deque)
+	formula front any =
+		blank
+	formula back any =
+		blank
+	setter front[item]:
+		return self.append[item]
+	setter back[item]:
+		return self.append[item]
+	.append[item]:
+		node = Node[item]
+		self.transmogrify[NonEmptyDeque.new[node, node]]
+		self.len = 1
+		return self
+	prepend = append
+	.pop:
+		print "ERROR: Cannot pop from empty Deque"
+		exit
+	pop_back = pop_front = pop
+	.str[!info]:
+		return "<EmptyDeque>" if info else '[]'
+
+table NonEmptyDeque (Deque)
+	slot _front Node
+	slot _back Node
+
+
+# d = Deque[(1, 2, 3)]
+# d.append[4]
+# d.prepend[0]
+# d.extend[(5, 6, 7, 8, 9, 10)]
+# print "print d"
+# print d
+# print "\nprint d.str[!info]"
+# print d.str[!info]
+
+
+import timeit
+now[]:
+	return python ['timeit.default_timer()']
+count = 1000
+start_time = now[]
+ls = []
+for i in 1 to count
+# 	ls.push[i]
+	ls.push[i, 1]
+list_time = now[] - start_time
+print ls
+# now for the Deque
+start_time = now[]
+dq = Deque[]
+for i in 1 to count
+# 	dq.append[i]
+	dq.prepend[i]
+deque_time = now[] - start_time
+print dq
+
+print "list time: {list_time}"
+print "deque time: {deque_time}"
+debug_shell
+return
