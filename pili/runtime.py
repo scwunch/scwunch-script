@@ -42,6 +42,8 @@ class OptionCatalog:
         match pattern, resolution:
             case Option(pattern=pattern, resolution=resolution) as option, None:
                 key = pattern.to_args()
+            case Args() as key, _:
+                option = Option(key, resolution)
             case _:
                 if resolution is None:
                     raise AssertionError("Why are you trying to add a null option?")
@@ -166,7 +168,7 @@ class Record:
             raise SlotErr(f"Line {state.line}: no field found with name '{name}'.")
         return default[0]
 
-    def set(self, name: str, value):
+    def set(self, name: str, value, safe_set=False):
         match self.table.setters.get(name):
             case int() as idx:
                 # TODO: check for type agreement ...
@@ -175,8 +177,9 @@ class Record:
                 return value
             case Function() as fn:
                 return fn.call(self, value)
-            case None:
-                raise SlotErr(f"Line {state.line}: no field found with name '{name}'.")
+        if safe_set:
+            return
+        raise SlotErr(f"Line {state.line}: no field found with name '{name}'.")
 
     def call(self, *args, safe_call=False):
         """ A Record can be called on multiple values (like calling a regular function),
@@ -525,14 +528,14 @@ class Function(Record, OptionCatalog):
                 return val
         return super().get(name, *default, search_table_frame_too=search_table_frame_too)
 
-    def set(self, name: str, value: Record):
+    def set(self, name: str, value: Record, safe_set=False):
         if self.frame:
             if name in self.frame.vars:
                 self.frame.vars[name] = value
             else:
                 self.frame.locals[name] = value
             return value
-        return super().set(name, value)
+        return super().set(name, value, safe_set)
 
     def select(self, args):
         option, bindings = self.select_and_bind(args)
@@ -1023,7 +1026,21 @@ class Pattern(Record):
         raise NotImplementedError(self.__class__.__name__)
 
     def issubset(self, other):
-        raise NotImplementedError(self.__class__.__name__)
+        # raise NotImplementedError(self.__class__.__name__)
+        match self, other:
+            case _, AnyMatcher():
+                return True
+            case _, UnionMatcher(matchers=matchers):
+                return any(self.issubset(m) for m in matchers)
+            case _, NotMatcher(pattern=pattern):
+                return not pattern.issubset(self)
+            case _, BindingPattern(pattern=pattern, default=default) as param:
+                if getattr(param, 'multi'):
+                    return self.issubset(ParamSet(param))
+                return self.issubset(pattern) or default and self.match(default) is not None
+            # case _:
+            #     raise NotImplementedError(f'{self.__class__.__name__}.issubset({other.__class__.__name__})')
+        return self.definite_subset(other)
 
     def match_and_bind(self, arg: Record):
         match = self.match(arg)
@@ -1069,9 +1086,9 @@ class Matcher(Pattern):
         # implemented by subclasses
         raise NotImplementedError(self.__class__.__name__)
 
-    def issubset(self, other):
-        print('WARNING: Matcher.issubset method not implemented properly yet.')
-        return self.equivalent(other)
+    # def issubset(self, other):
+    #     print('WARNING: Matcher.issubset method not implemented properly yet.')
+    #     return self.equivalent(other)
 
     def equivalent(self, other):
         raise NotImplementedError(self.__class__.__name__)
@@ -1127,7 +1144,7 @@ class TableMatcher(Matcher):
     def basic_score(self, arg: Record) -> bool:
         return arg.table == self.table_
 
-    def issubset(self, other):
+    def definite_subset(self, other):
         match other:
             case TableMatcher(table_=table):
                 return table == self.table_
@@ -1152,7 +1169,7 @@ class TraitMatcher(Matcher):
     def basic_score(self, arg: Record) -> bool:
         return self.trait in arg.table.traits
 
-    def issubset(self, other):
+    def definite_subset(self, other):
         return isinstance(other, TraitMatcher) and other.trait == self.trait
 
     def equivalent(self, other):
@@ -1172,15 +1189,16 @@ class ValueMatcher(Matcher):
     def basic_score(self, arg: Record) -> bool:
         return arg == self.value
 
-    def issubset(self, other):
-        match other:
-            case ValueMatcher(value=value):
-                return value == self.value
-            case TableMatcher(table_=table):
-                return self.value.table == table
-            case TraitMatcher(trait=trait):
-                return trait in self.value.table.traits
-        return False
+    def definite_subset(self, other):
+        return other.match(self.value) is not None
+        # match other:
+        #     case ValueMatcher(value=value):
+        #         return value == self.value
+        #     case TableMatcher(table_=table):
+        #         return self.value.table == table
+        #     case TraitMatcher(trait=trait):
+        #         return trait in self.value.table.traits
+        # return False
 
     def equivalent(self, other):
         return isinstance(other, ValueMatcher) and other.value == self.value
@@ -1207,6 +1225,9 @@ class ArgsMatcher(Matcher):
             return {}
         return self.params.match(arg)
 
+    def issubset(self, other):
+        return self.params.issubset(other)
+
 
 class FunctionSignatureMatcher(Matcher):
     def __init__(self, pattern, return_type):
@@ -1228,7 +1249,7 @@ class FunctionSignatureMatcher(Matcher):
                for option in options()):
             return True
 
-    def issubset(self, other):
+    def definite_subset(self, other):
         match other:
             case FunctionSignatureMatcher(pattern=patt, return_type=ret):
                 return self.pattern.issubset(patt) and self.return_type.issubset(ret)
@@ -1269,6 +1290,19 @@ class KeyValueMatcher(Matcher):
                 bindings.update(sub_bindings)
         return bindings
 
+    def definite_subset(self, other):
+        match other:
+            case TraitMatcher(trait=BuiltIns.get('fn')) | TableMatcher(table_=BuiltIns.get('Function')):
+                return True
+            case KeyValueMatcher(items=items):
+                for key, patt in self.items.items():
+                    if key not in items:
+                        return False
+                    if not patt.issubset(items[key]):
+                        return False
+                return True
+        return False
+
 
 class AnyMatcher(Matcher):
     rank = 100, 0
@@ -1282,7 +1316,7 @@ class AnyMatcher(Matcher):
     def basic_score(self, arg: Record) -> True:
         return True
 
-    def issubset(self, other):
+    def definite_subset(self, other):
         return isinstance(other, AnyMatcher)
 
     def equivalent(self, other):
@@ -1306,7 +1340,7 @@ class EmptyMatcher(Matcher):
             case _:
                 return False
 
-    def issubset(self, other):
+    def definite_subset(self, other):
         return isinstance(other, EmptyMatcher)
 
     def equivalent(self, other):
@@ -1331,6 +1365,11 @@ class IterMatcher(Matcher):
         except TypeError:
             return
         return self.params.match(Args(*it))
+
+    def definite_subset(self, other):
+        match other:
+            case TraitMatcher(trait=trait):
+                return trait == BuiltIns['iter']
 
 
 def dot_call_fn(rec: Record, *name_and_or_args, safe_get=False, swizzle=False, safe_call=False):
@@ -1369,6 +1408,56 @@ def dot_call_fn(rec: Record, *name_and_or_args, safe_get=False, swizzle=False, s
         raise KeyErr(f"Line {state.line}: {limit_str(rec)} has no slot '{name}' and no record with that "
                      f"name found in current scope either.")
     return fn.call(Args(rec) + args, safe_call=safe_call)
+
+def dot_set_fn(rec: Record, *args, safe_set=False, swizzle=False, no_clobber=False):
+    args: Args | None
+    match args:
+        case [PyValue(value=str(name)) | str(name), value]:
+            if no_clobber and (res := rec.get(name, None)) and res is not BuiltIns['blank']:
+                return res
+            res = rec.set(name, value, safe_set=True)
+            if res is not None:
+                return res
+            args: Args = Args(rec)
+        case [Args() as args, value]:
+            if no_clobber:
+                res = rec.select(args)
+            return rec.assign_option(args, value, no_clobber=no_clobber)
+        case [PyValue(value=str(name)) | str(name), Args() as args, value]:
+            args = Args(rec) + args
+        case _:
+            raise ValueError('either name or args should be non-None')
+
+    if swizzle and swizzle.truthy:
+        return py_value([dot_set_fn(item, name, args, value, safe_set=safe_set) for item in rec])
+
+    if hasattr(rec, "uninitialized"):
+        raise InitializationErr(f"Line {state.line}: "
+                                f"Cannot set property or key of {limit_str(rec)} before initialization.")
+    # 1. Try to set via slot/setter in rec
+    # 2. Try to set rec.name as name[rec]
+    prop = rec.get(name, None)
+    if prop is not None:
+        # if not isinstance(prop, Function):
+        #     raise RuntimeErr
+        return prop.assign_option(args)
+    # 3. Try to find function in table and traits
+    for scope in (rec.table, *rec.table.traits):
+        method = scope.get(name, None)
+        if method is not None:
+            # if not isinstance(method, Function):
+            #     raise RuntimeErr
+            return method.assign_option(args)
+    # 4. Finally, try  to resolve name normally
+    fn = state.deref(name, None)
+    if fn is None:
+        if safe_set:
+            return BuiltIns['blank']
+        raise KeyErr(f"Line {state.line}: {limit_str(rec)} has no slot '{name}' and no record with that "
+                     f"name found in current scope either.")
+    # if not isinstance(fn, Function):
+    #     raise RuntimeErr
+    return fn.assign_option(args)
 
 
 class FieldMatcher(Matcher):
@@ -1416,6 +1505,19 @@ class FieldMatcher(Matcher):
         yield from self.fields.items()
         yield from enumerate(self.ordered_fields)
 
+    def definite_subset(self, other):
+        match other:
+            case FieldMatcher() as fm:
+                fields = dict(fm.items())
+                for key, patt in self.items():
+                    if key not in fields:
+                        return False
+                    if not patt.issubset(fields[key]):
+                        return False
+                return True
+        return False
+
+
     def get_rank(self):
         return 2, -1
 
@@ -1453,6 +1555,9 @@ class NotMatcher(Matcher):
 
     def get_rank(self):
         return AnyMatcher.rank[0] - self.pattern.get_rank()[0], 0
+
+    def definite_subset(self, other):
+        return not other.issubset(self.pattern)
 
     def __lt__(self, other):
         return other <= self.pattern
@@ -1495,17 +1600,18 @@ class IntersectionMatcher(Matcher):
         ranks = [m.get_rank()[0] for m in self.matchers]
         return tuple(sorted(ranks))
 
-    def issubset(self, other):
-        match other:
-            case Matcher() as other_matcher:
-                return any(m.issubset(other_matcher) for m in self.matchers)
-            case IntersectionMatcher() as patt:
-                return any(matcher.issubset(patt) for matcher in self.matchers)
-            case UnionMatcher(matchers=patterns):
-                return any(self.issubset(patt) for patt in patterns)
-            case Parameter(pattern=pattern):
-                return self.issubset(pattern)
-        return False
+    def definite_subset(self, other):
+        return any(m.issubset(other) for m in self.matchers)
+        # match other:
+        #     case IntersectionMatcher() as patt:
+        #         return any(matcher.issubset(patt) for matcher in self.matchers)
+        #     case UnionMatcher(matchers=patterns):
+        #         return any(self.issubset(patt) for patt in patterns)
+        #     case Parameter(pattern=pattern):
+        #         return self.issubset(pattern)
+        #     case patt:
+        #         return any(m.issubset(patt) for m in self.matchers)
+        # return False
 
     def __lt__(self, other):
         match other:
@@ -1592,6 +1698,9 @@ class BindingPattern(Pattern):
 
     def merge(self, binding: str = None, default: Record = None):
         return BindingPattern(self.pattern, binding or self.binding, default or self.default)
+
+    def definite_subset(self, other):
+        return self.pattern.issubset(other)
 
     def __repr__(self):
         return (f"BindingPattern({self.pattern} {self.binding or '<no binding>'}"
@@ -2608,4 +2717,5 @@ class PiliField(Record):
             case Setter(fn=setter):
                 if not self.setter:
                     self.setter = setter
+        return self
 

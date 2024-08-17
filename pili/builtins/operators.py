@@ -7,7 +7,7 @@ print(f'loading {__name__}.py')
 
 Operator.fn = Function({AnyPattern: default_op_fn})
 
-identity = lambda x: x
+def identity(x): return x
 
 Op[';'].fn = Function({AnyPlusPattern: lambda *args: args[-1]})
 
@@ -18,8 +18,14 @@ def eval_eq_args(lhs: Node, *val_nodes: Node) -> Args:
         #     patt = Parameter(AnyMatcher(), name)
         case OpExpr('.', [loc_node, Token(TokenType.Name, text=name)]):
             patt = BindPropertyPattern(loc_node.evaluate(), name)
+            # rec = loc_node.evaluate()
+            # return Args(rec, py_value(name), *values)
         case OpExpr('[', [loc_node, args]):
             patt = BindKeyPattern(loc_node.evaluate(), args.evaluate())
+            # match loc_node:
+            #     case OpExpr('.', [rec_node, Token(TokenType.Name, text=name)]):
+            #         return Args(rec_node.evaluate(), py_value(name), args.evaluate(), *values)
+            # return Args(loc_node.evaluate(), args.evaluate(), *values)
         case _:
             patt = lhs.eval_pattern(as_param=True)
     return Args(patt, *values)
@@ -34,6 +40,7 @@ def set_with_fn(operation: Function = None):
 Op['='].eval_args = eval_eq_args
 Op['='].fn = Function({ParamSet(PatternParam, AnyParam):
                            lambda patt, val: patt.match_and_bind(val),
+                       # ParamSet(AnyParam, Parameter(AnyMatcher(), quantifier="+")): dot_set_fn,
                        AnyParam: identity},
                       name='=')
 Op['??='].fn = Op['='].fn
@@ -50,6 +57,7 @@ def eval_null_assign_args(lhs: Node, rhs: Node) -> Args:
             if existing is not None and existing != BuiltIns['blank']:
                 return Args(existing)
             patt = BindPropertyPattern(rec, name)
+            # return Args(rec, py_value(name), rhs.evaluate())
         case OpExpr('[', terms):
             rec, args = [t.evaluate() for t in terms]
             exists = BuiltIns['has'].call(Args(rec, args)).value
@@ -57,6 +65,10 @@ def eval_null_assign_args(lhs: Node, rhs: Node) -> Args:
             if existing != BuiltIns['blank']:
                 return Args(existing)
             patt = BindKeyPattern(rec, args)
+            # match loc_node:
+            #     case OpExpr('.', [rec_node, Token(TokenType.Name, text=name)]):
+            #         return Args(rec_node.evaluate(), py_value(name), args.evaluate(), *values)
+            # return Args(loc_node.evaluate(), args.evaluate(), *values)
         case _:
             raise SyntaxErr(f'Line {lhs.line}: "{lhs.source_text}" is invalid syntax for left-hand-side of "??=".')
     return Args(patt, rhs.evaluate())

@@ -1,5 +1,5 @@
 ---
-created: ""
+created: 2023-03-05T00:00:00
 ---
 #2023/Mar/5 #programming
 
@@ -1079,8 +1079,8 @@ Keep the function literal syntax as is and introduce another operator (eg ` => `
 	- `?` is the "safe-call" operator — it goes between a function and a set of arguments.  It returns `blank` if the option is not found in the function, otherwise calls normally.
 	- `??` nullish coalescing: evaluates and returns the first argument if it is not `blank`.  If it is `blank` or it is a name that doesn't exist, evaluate and return the second operand.
 		- similar to the `or` operator in that it short circuits, but only for `blank` values, and will not raise an error for undefined names
-	- `??=` has the same behaviour, but also works for assigning options: `foo[1] ??= "one"`
-- Other opeators:
+	- `??=` has the same behaviour, but also works for assigning properties: `foo.bar ??= "one"`
+- Other operators:
 	- `in`: checks if a value is a key of a function, or a member of a list
 	- `has`: checks if a record or function has a property (takes a string value as it's right operand) or has a matching option (takes a list of arguments as it's right operand).
 		- when used as a prefix operator, checks to see if a name (string) exists in the current scope
@@ -1103,6 +1103,41 @@ Keep the function literal syntax as is and introduce another operator (eg ` => `
 	- `*` prefix in a list-like context spreads any iterators
 		- eg, `nums = [1, 2, 3];  (0, *nums)`  yields `(0, 1, 2, 3)`
 
+### Assignment
+There are several uses for the ` = ` operator.  The simplest and most common is assigning names to values.
+- eg, `foo = 5`
+- where `foo` is any name token
+
+The second use for assigning values to values of fields.
+- eg `foo.bar = 5`
+- where `foo` is any expression that evaluates to a record, and `bar` is the name of a field in said record.
+
+The third use is assigning value-options
+- eg `foo[bar] = 5`
+- where `foo` is any expression that evaluates to a function, and `bar` is any expression
+
+The fourth use is destructuring/pattern-matching assignment.  The left side is any valid pattern-matching expression, and the right side is any expression
+- eg `Person(first_name: str name) = fred`
+- if `fred` is a record like `Person[first_name='Fred']`, then this expression will assign "Fred" to `name`.
+
+#### Should I support assignments like:
+```
+foo.len = 5
+```
+#### ?
+#### Nullish Assignment
+- nullish assignment uses the same syntax as regular assignment, except for the last one, `<pattern> = <expression>`
+- It works differently for all three variations of syntax:
+- `<name> ??= <value>`
+	- assigns value to name if name is *undefined* **or** is defined but evaluates to `blank` (the singleton).
+- `<expression>.<name> ??= <value>`
+	- assigns value to the field named "name" of the record which is the evaluation of expression **iff** the `<expression>.<name>` evaluates to `blank`.
+- `<expression>[<args>] ??= <value>`
+	- assigns value to the option located in expression at args **iff** the option does not already exist.
+- in summary:
+	- bare name => checks for existence *and* blankness
+	- assigning to option => checks *only* if exists
+	- assigning to field => checks *only* if blank
 
 ## Advanced Patterns
 In addition to basic types, unions, and prototypes, a pattern may also have further specification.  This comes in the form of a **guard** or **sub-pattern**.
@@ -1195,8 +1230,8 @@ IDEA: make the equals sign simply run the pattern-matching algorithm as if calli
   - that will also bind names — and allow very complex destructuring assignment!  
 What about assigning values to names of properties and keys?  
 - eg, `foo.bar = value` and `foo[key] = value`  
-- foo[bar.prop]: ...  
-- foo[5]  
+- `foo[bar.prop]: ...  `
+- `foo[5]`
 - special case it?  It's not like you're gonna see that in a parameter pattern anyway
 	- ... except you might want to use it as a value pattern like I do all the time with enums.
 	- `[Node(type: NodeType.foo), ...]: ...`
@@ -1260,7 +1295,34 @@ class VarExpr(Declaration):
 ```python
 ```
 
+### Implicit Dot Calls, Implicit Dot assignment
+In Pili, `foo.bar` is an overloaded expression:
+1. if bar is a field of foo's table, it will evaluate the field
+2. if bar is a function, (either in foo's table or traits, or containing scope) it will call that function using foo as the first argument
+	- ie, `foo.bar` in this case is equivalent to `bar[foo]`
 
+Currently, in setting the value using that expression as a left-hand-side of the eq operator, eg `foo.bar = 5`, it will only set the field.  It will not attempt to set it as if it was `bar[foo] = 5`.
+
+Of course, for consistency, we should allow `foo.bar = 5` to assign 5 to the location `foo` in `bar`.  But there are two problems:
+1. It feels weird: flexible calling/getting seems stranger than flexible setting/defining
+2. nullish assignment get even weirder:
+	- eg `foo.bar ??= 5` 
+		- if bar is a field of foo, set it to 5 iff it's not blank
+		- if bar is a function.... then do we try calling it to see if it evaluates to blank first?
+		- I guess not.  That would be too unexpected.  So we must draw the blank-checking line somewhere.  Where?
+			- we could check for blank only if it's in op_dict
+				- that would mean the only inconsistent case is when bar is found in op_list
+				- that's not too bad, but there are other options
+				- for example: we could *never* check for blank only check for existence
+					- so then `foo ??= 5` => assigns 5 only if foo not exists
+					- `foo.bar ??= 5` where bar is a field of foo loses semantic value, because this would imply setting bar only if bar doesn't exist, but assignment can take place only if the property bar does exist.
+					- `bar[foo] ??= 5` => assigns 5 only if foo is not an option of foo
+				- compromising solution: check for blank only on names and properties, but in functions only check for existence.
+					- `{"key": num foo} ??= {"key": 5}`
+					- assigns 5 to foo
+					- `{"key": num foo} ??= {"key": "string value"}`
+					- ... maybe suppresses the error?
+					- nah, if you want that functionality, best to use a match statement instead
 
 ### Loops and Generators
 In python there are `for ... in` loops, `while` loops, generator functions, generator expressions and iterators.  While loops are the simplest — they just loop until they break.  `for ... in` loops require an iterable object — `iter` (a generator function) is called on the iterable, which produces a generator iterator.  The iterator spits out values for the body of the loop to act on.  Custom generator functions and generator expressions can also be used.  Usually generators are one line long, but they can be arbitrarily complex.
