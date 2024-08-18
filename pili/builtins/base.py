@@ -295,6 +295,12 @@ BuiltIns['new'] = Function({ParamSet(TableParam, AnyPattern[0], kwargs='kwargs')
 #     # return Function({AnyPattern: lambda_fn)
 #     return Function({AnyPattern: lambda *args: py_value(py_fn(*(arg.value for arg in args)))})
 #
+
+def transmogrify(ref: Record, data: Record):
+    ref.__class__ = data.__class__
+    ref.__dict__ = data.__dict__
+    return ref
+BuiltIns['transmogrify'] = Function({ParamSet(AnyParam, AnyParam): transmogrify})
 def make_flags(*names: str) -> dict[str, Parameter]:
     return {n: Parameter(TraitMatcher(BuiltIns['bool']), n, '?', BuiltIns['blank']) for n in names}
 

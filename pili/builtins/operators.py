@@ -109,6 +109,8 @@ def eval_colon_args(lhs: Node, rhs: Node) -> Args:
             key = Args(lhs.evaluate())
             return Args(key, resolution)
 
+Op[':='].fn = BuiltIns['transmogrify']
+
 def assign_option(*args):
     match args:
         case fn, pattern, resolution:

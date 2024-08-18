@@ -1,3 +1,11 @@
+table Symbol
+	slot label str?
+
+table Cell
+	NONE = Symbol['empty']
+	slot value any = NONE
+
+
 
 table Node
 	slot value any
@@ -65,7 +73,7 @@ trait Deque
 	.pop_front:
 		Node(value: value) = self._front
 		if self.len == 1
-			self.transmogrify[EmptyDeque.new]
+			self := EmptyDeque.new
 			return value
 		self._front = self._front.prev
 		self._front.next = blank
@@ -74,7 +82,7 @@ trait Deque
 	.pop_back:
 		Node(value: value) = self._back
 		if self.len == 1
-			self.transmogrify[EmptyDeque.new]
+			self := EmptyDeque.new
 			return value
 		self._back = self._back.next
 		self._back.prev = blank
@@ -110,7 +118,7 @@ table EmptyDeque (Deque)
 		return self.append[item]
 	.append[item]:
 		node = Node[item]
-		self.transmogrify[NonEmptyDeque.new[node, node]]
+		self := NonEmptyDeque.new[node, node]
 		self.len = 1
 		return self
 	prepend = append
