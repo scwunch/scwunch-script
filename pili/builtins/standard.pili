@@ -127,9 +127,9 @@ function yaml
     [str content]:
         docs = content.split[regex[`\n*(\.{3}\n)?---\n*`]]
         docs.filter[doc => doc and doc.trim, !mutate]
-        if docs.len == 0
+        if docs.len = 0
             return yaml.load[content]
-        if docs.len == 1
+        if docs.len = 1
             return yaml.load[docs[1]]
         return docs..(yaml.load)
     load[str yaml_text]:

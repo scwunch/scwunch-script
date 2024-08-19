@@ -294,9 +294,13 @@ BuiltIns['new'] = Function({ParamSet(TableParam, AnyPattern[0], kwargs='kwargs')
 #     #     return py_value(py_fn(*arg_list))
 #     # return Function({AnyPattern: lambda_fn)
 #     return Function({AnyPattern: lambda *args: py_value(py_fn(*(arg.value for arg in args)))})
-#
+
+
+BuiltIns['copy'] = Function({AnyParam: lambda rec: transmogrify(Record(None), rec)}, name='copy')
 
 def transmogrify(ref: Record, data: Record):
+    if ref.table.name in ('Blank', 'Bool'):
+        raise RuntimeErr(f'Cannot transmogrify singleton {ref}.')
     ref.__class__ = data.__class__
     ref.__dict__ = data.__dict__
     return ref

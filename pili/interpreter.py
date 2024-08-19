@@ -734,6 +734,38 @@ class TableExpr(FunctionExpr):
     def __repr__(self):
         return f'Table({self.table_name} with {", ".join(map(str, self.traits))}, {self.body})'
 
+class LetExpr(CommandWithExpr):
+    lhs: Node
+    rhs: Node
+    def __init__(self, cmd: str, expr: Node, pos: Position = None):
+        super().__init__(cmd, expr, pos)
+        match expr:
+            case OpExpr(':=', terms):
+                self.lhs, self.rhs = terms
+            case _:
+                raise SyntaxErr(f'Line {pos.ln}: let statement must contain a := operator')
+
+    def evaluate(self):
+        value = self.rhs.evaluate()
+        match self.lhs:
+            # case Token(TokenType.Name, text=name):
+            #     patt = Parameter(AnyMatcher(), name)
+            case OpExpr('.', [loc_node, Token(TokenType.Name, text=name)]):
+                patt = BindPropertyPattern(loc_node.evaluate(), name)
+                # rec = loc_node.evaluate()
+                # return Args(rec, py_value(name), *values)
+            case OpExpr('[', [loc_node, args]):
+                patt = BindKeyPattern(loc_node.evaluate(), args.evaluate())
+                # match loc_node:
+                #     case OpExpr('.', [rec_node, Token(TokenType.Name, text=name)]):
+                #         return Args(rec_node.evaluate(), py_value(name), args.evaluate(), *values)
+                # return Args(loc_node.evaluate(), args.evaluate(), *values)
+            case lhs:
+                patt = lhs.eval_pattern(as_param=True)
+        return patt.match_and_bind(value)
+
+    def __repr__(self):
+        return f'LetExpr({self.expr})'
 
 class SlotExpr(NamedExpr):
     # slot_name: str
@@ -978,4 +1010,5 @@ EXPRMAP = {
     'setter': SetterExpr,
     'local': LocalExpr,
     'var': VarExpr,
+    'let': LetExpr,
 }

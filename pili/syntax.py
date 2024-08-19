@@ -80,6 +80,7 @@ class Commands(Enum):
     Formula = 'formula'
     Opt = 'opt'
     Setter = 'setter'
+    Let = 'let'
 
 
 for cmd in Commands:
@@ -292,7 +293,7 @@ class Operator:
 
 Operator(';', binop=1)
 Operator(':', binop=2, associativity='right')
-Operator('=', binop=2, associativity='right')
+# Operator('=', binop=2, associativity='right')
 for op in ('+', '-', '*', '/', '//', '**', '%', '&', '|', '&&', '||'):
     Operator(op+'=', binop=2, associativity='right')
 Operator(':=', binop=2, associativity='right')
@@ -307,7 +308,7 @@ Operator('and', binop=6, chainable=True)
 Operator('&&', binop=6, chainable=True)
 Operator('not', prefix=7)
 Operator('in', binop=8)
-Operator('==', binop=9, chainable=True)
+Operator('=', binop=9, chainable=True)
 Operator('!=', binop=9, chainable=True)
 # Operator('!~', binop=9, chainable=False)
 Operator('is', binop=9, chainable=False)

@@ -37,12 +37,12 @@ def set_with_fn(operation: Function = None):
     return inner
 
 
-Op['='].eval_args = eval_eq_args
-Op['='].fn = Function({ParamSet(PatternParam, AnyParam):
-                           lambda patt, val: patt.match_and_bind(val),
-                       # ParamSet(AnyParam, Parameter(AnyMatcher(), quantifier="+")): dot_set_fn,
-                       AnyParam: identity},
-                      name='=')
+# Op['='].eval_args = eval_eq_args
+# Op['='].fn = Function({ParamSet(PatternParam, AnyParam):
+#                            lambda patt, val: patt.match_and_bind(val),
+#                        # ParamSet(AnyParam, Parameter(AnyMatcher(), quantifier="+")): dot_set_fn,
+#                        AnyParam: identity},
+#                       name='=')
 Op['??='].fn = Op['='].fn
 def eval_null_assign_args(lhs: Node, rhs: Node) -> Args:
     match lhs:
@@ -291,13 +291,13 @@ Op['in'].fn = Function({ParamSet(AnyParam, FunctionParam):
                             lambda a, b: py_value(a.value in b.value)},
                        name='in')
 
-Op['=='].fn = Function({AnyPlusPattern: lambda a, *args: py_value(all(a == b for b in args))},
-                       name='==')
+Op['='].fn = Function({AnyPlusPattern: lambda a, *args: py_value(all(a == b for b in args))},
+                       name='=')
 
 def neq(*args: Record):
     if len(args) <= 1:
         return BuiltIns['false']
-    if not Op['=='].fn.call(Args(*args)).truthy:
+    if not Op['='].fn.call(Args(*args)).truthy:
         return BuiltIns['true']
     return neq(*args[1:])
 Op['!='].fn = Function({AnyPlusPattern: neq},
@@ -326,11 +326,11 @@ Op['<'].fn = Function({AnyPlusPattern: make_comp_fn(lt)},
 Op['>'].fn = Function({AnyPlusPattern: make_comp_fn(gt)},
                       name='>')
 Op['<='].fn = Function({AnyBinopPattern:
-                         lambda a, b: py_value(BuiltIns['<'].call(a, b).value or BuiltIns['=='].call(a, b).value),
+                         lambda a, b: py_value(BuiltIns['<'].call(a, b).value or BuiltIns['='].call(a, b).value),
                         AnyPlusPattern: make_comp_fn(le)},
                        name='<=')
 Op['>='].fn = Function({AnyBinopPattern:
-                         lambda a, b: py_value(BuiltIns['>'].call(a, b).value or BuiltIns['=='].call(a, b).value),
+                         lambda a, b: py_value(BuiltIns['>'].call(a, b).value or BuiltIns['='].call(a, b).value),
                         AnyPlusPattern: make_comp_fn(ge)},
                        name='>=')
 

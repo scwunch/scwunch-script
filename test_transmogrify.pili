@@ -1,0 +1,89 @@
+import timeit
+now[]:
+	return python ['timeit.default_timer()']
+let start_time := now[]
+
+trait LinkedList
+	slot head Node?
+	slot tail Node?
+	[]:
+		return EmptyList.new
+	[iter iterable]:
+		let ls :=  EmptyList.new
+		return ls.extend[iterable]
+	.extend[iter iterable]:
+		for item in iterable
+			self.append[item]
+		return self
+
+table EmptyList (LinkedList)
+	slot head blank = blank
+	slot tail blank = blank
+	.append[item]:
+		let node := Node[item]
+		self := SingleList[node]
+		return self
+	let prepend := append
+
+table SingleList (LinkedList)
+	slot head Node
+	.append[item]:
+		let node := Node[item]
+		return self := MultiList[Node[self.head.data, node], node]
+	.prepend[item]:
+		let node := Node[item, self.head]
+		return self := MultiList[node, self.head]
+	.str:
+		return 'LinkedList[{self.head.data}]'
+
+table MultiList (LinkedList)
+	slot head Node
+	slot tail Node
+	.append[item]:
+		let self.tail.next := Node[item]
+		let self.tail := self.tail.next
+		return self
+	.prepend[item]:
+		self.head := Node[item, self.head.copy]
+		return self
+	.list:
+		let ls := []
+		let node := self.head
+		while node
+			ls.push[node.data]
+			let node := node.next
+		return ls
+	.str:
+		return 'LinkedList{self.list}'
+
+table Node
+	slot data any
+	slot next Node?
+	.str[!info]:
+		if not info
+			return self.data.str
+		if self.next is blank
+			return '<Node {self.data}>'
+		return '<Node {self.data} next:{self.next}>'
+
+let ls := LinkedList[]
+# debug_shell
+
+
+let a := 'A'
+let b := a
+b := 5
+let b := 5
+b := -2
+print "a: {a}"  # 5
+print "b: {b}"  # -2
+
+
+let immutable_tuple := (1, 2, 3)
+immutable_tuple[2] := "I can now mutate the immutable"
+print immutable_tuple  # (1, 'I can now mutate the immutable', 3)
+
+
+let end_time := now[]
+let execution_time := end_time - start_time
+return "Execution time: {1000 * execution_time}ms"
