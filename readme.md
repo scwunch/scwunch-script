@@ -6,174 +6,36 @@ created: 2023-03-05T00:00:00
 Pili is the successor to [[22D28 ryanscript 2.1 everything is still a function — refined|ryanscript and scwunch-script]].
 
 ## Introduction and Overview
-The core distinctive of Pili is the way that functions act as maps where the key-value pairs are called "options".  Whenever you pass values (as arguments) to a function, Pili uses a pattern-matching algorithm to select one option and resolve it, returning a value.  The name "pili" is a Filipino word meaning "choose".  
+The core distinctive of Pili is the **map** data structure which combines the concepts of functions, hashmaps, and namespaces.  Values are passed to maps (as arguments), and Pili uses a combination of hashing and a pattern-matching algorithm to "select" the matching option, and return it's value or call the associated function.  The name "pili" is a Filipino word meaning "choose".  
 
-Pili attempts to simultaneously value ergonomics, readability, conciseness, and expressivity. The goal of the language is for it to be a joy to read and write.  Pili opts to use newlines and tabs to demarcate statements and code blocks, rather than semicolons and curly braces.  Extraneous words and symbols are generally avoided.  The major elements of the type system are all denoted by English words (table, slot, formula, etc).
-
-
-## Variables Declaration and Scope
-Variables, and options are created and assigned with three operators:
-- ` =` for assigning a *value* (right-hand-side is evaluated before assignment)
-- `:` for assigning a block of code (right-hand-side is saved for evaluation later)
-- `:=` for assigning an alias
-
-```python
-greeting = "Hello " + "world"
-# immediately calculates the right hand side and assigns the VALUE to the option "greeting"
-# if the name "greeting" is not already an option of the root function, it is added automatically
-
-greeting[1] = "hello world"
-# immediately calculates the right hand side and assigns the VALUE to the option [1] in the function "greeting".  
-# if greeting doesn't exist, it will be initialized as a function
-# if greeting exists as a record whose table does not define setting values, an error occurs.
-
-greeting[str who]: 
-	return "hello " + who
-# creates a greeting function with one option whose pattern is [str who] and whose block is the single indented expression.
-
-greeting[str who]: "hello " + who
-# for single expression functions, the return command is implied
-# does not evaluate the right-hand side; only when the [str who] option is selected will it return a value
-
-```
-
-### Pointers and Aliases
-Pili does not provide special syntax for pointers, but they can be emulated to a degree using functions with no parameters.  
-```python
-my_var = 5
-pseudo_pointer[]: my_var
-not_a_pointer = my_var
-
-pseudo_pointer[] == my_var and not_a_pointer == my_var
-> true
-
-my_var = 10
-
-pseudo_pointer[] == my_var
-> true
-not_a_pointer == my_var
-> false
-pseudo_pointer[]
-> 10
-not_a_pointer
-> 5
-```
-
-Aliases are defined with the walrus operator `:=`
-```python
-my_var = 5
-pseudo_pointer[]: my_var
-my_alias := my_var
-
-my_var += 1
-my_alias
-> 6
-my_alias += 1
-my_var
-> 7
-pseudo_pointer[]
-> 7
-pseudo_pointer[] += 1
-> ERROR  # left-hand side must be an identifier
-```
-This is analogous to hard-linking in the file system, whereas pointers are more like soft (symbolic) links.
-
-### Unconventional Handling of Scope
-Variable declaration is not required in Pili; values are simply assigned to names without the need for keywords like "let", "var", "mut", etc.  Variables initialized in a higher scope are accessible in a deeper scope, but if that variable name is assigned, it will not be overwritten — rather, a "shadow" variable will be created in its stead.  That new variable is now accessible in the current (or deeper) scope, and the original variable remains untouched in the higher scope. 
-
-Variables from higher scopes are still accessible in deeper scopes before the name is assigned.  
-```python
-x = "global x"
-closure[]:
-	print x  # a reference to "global x"
-	x = "new value"  # creates a local shadow of x; does not overwrite the global x
-	return x
-
-print closure[]
-print x
-```
-```
-global x
-new value
-global x
-```
-
-The default scoping behaviour can be overridden in Pili by declaring variables using the `var` keyword.  In these cases, the variables are accessible *and mutable* in deeper scopes.  The default shadowing behaviour can be re-enabled with an explicit `local` keyword.
-```python
-var y = "global mutable y"
-closure[]:
-    print y  # prints global y
-    y = "mutated y"  # mutates global y
-    print y
-    local y = "not global y"  # shadow of y; global y unaffected
-    print y
-
-closure[]
-print y
-```
-```
-globally mutable y
-mutated y
-not global y
-mutated y
-```
+Pili attempts to simultaneously value ergonomics, readability, conciseness, and expressivity. The goal of the language is for it to be a joy to read and write.  Pili opts to use newlines and tabs to demarcate statements and code blocks, rather than semicolons and curly braces.  Extraneous words and symbols are generally avoided.  The major elements of the type system are all denoted by English words (class, slot, formula, etc).
 
 
-#### What about function options and record properties?
-Any assignments where the left-hand side uses dot notation or brackets follows the conventions in other programming languages.  The scope of such identifiers is bound to the object itself, not the scope of the function.
-```python
-foo[1] = "one"
-bob = Person["Bob"]
+## Basic Types
+Types are also called classes or traits.  Every value in Pili is a record of exactly one class.  Each class "inherits" from 0 or more traits.  By convention, class names are always capitalized, and trait names are usually capitalized (except all the builtin traits are lowercase).  All other names (singletons, variables, functions, etc) all follow snake_casing convention.  
 
-closure[]:
-	# accessing foo from above scope
-	foo[1] = "new one"  # mutation
-	foo[3] = bob  # new dictionary entry
-	foo[3].name = "Robert"  # mutates object stored in foo[3]
-
-print bob.name
-closure[]
-if bob == foo[3]
-	print bob.name
-else
-	print 'not the same'
-```
-```
-Bob
-Robert
-```
-
-#### Potential for Confusion or Unexpected Behaviour
-If you are coming from a js paradigm where all variables are declared, you're basically good to go.
-
-If you're coming from a python paradigm, and you like to use closures, it could be a little bit jarring to have to declare variables in the higher scope, rather than using the keywords 'nonlocal' or 'global' *in* the closure scope.
-
-
-## Type System
-Types are also called tables or traits.  Every value in Pili is a record of a certain table.  Each table "inherits" from 0 or more traits.  By convention, table names are the only names in Pili that are capitalized.  Traits, variables, functions, etc all follow snake_casing convention.  (This has more to do with my aversion to using the shift key than any strong opinions about casing.)
-
-### Basic Tables
-Here are some of the most basic built in tables: 
-- `Blank` table has only one value: `blank`.  This value is falsy and treated specially in some situations, eg, the `.?` and `??` operators.
-- `Boolean` has only two values:  `true` and `false`
+### Basic Types
+Here are some of the most basic built in classes: 
+- `Blank` class has only one value: `blank`.  This value is falsy and treated specially in some situations, eg, the `.?` and `??` operators.
+- `Boolean` has only two records:  `true` and `false`
 - `Integer` integer number: arbitrary magnitude signed integer
 - `Rational` rational number: exact representation any number that can be defined with integer numerator and denominator.  
 - `Float` floating point number
 - `String` string of text
 
 #### Numeric types
-The builtin number types are usually referred to by their traits: `bool`, `int`, `ratio`, `float`.   The `num` trait is inherited by all numeric tables, including `Boolean`.   However `float` is inherited only by the `Float` table.
+The builtin number types are usually referred to by their traits: `bool`, `int`, `ratio`, `float`.   ("ratio" is short for "rational").  The `num` trait is inherited by all numeric classes, including `Boolean`.   However `float` is implemented only by the `Float` class.
 
-The tables inherit the following traits:
+The numeric classes implement the following traits:
 - `Float:     num, float`
-- `Rational:  num, ratio`
+- `Fraction:  num, ratio`
 - `Integer:   num, ratio, int`
 - `Boolean:   num, ratio, int, bool`
 
-Pili intelligently converts between these numeric types depending on the operation applied to them.  The `Boolean` values `true` and `false` used in a mathematical expression will be treated like 1 and 0 respectively.  If two numbers with trait `ratio` are divided, a `Rational` will be the result — unless the numerator is divisible by the denominator (eg, 9/2 divided by 3/2 => 2), then an `Integer` will be the result.  `float` operations always result in `Float` values.
+Pili intelligently converts between these numeric types depending on the operation applied to them.  The `Boolean` values `true` and `false` used in a mathematical expression will be treated like 1 and 0 respectively.  If two numbers with trait `ratio` are divided, a `Fraction` will be the result — unless the numerator is divisible by the denominator (eg, 9/2 divided by 3/2 => 2), then an `Integer` will be the result.  `float` operations always result in `Float` values.
 
 #### The Blank
-There is a special value called `blank` which is the only value of type `Blank`.  It represents "there is no useful value here".  It is equivalent to what other languages call "null", "undefined", "None", etc.  There are a few operators that treat this value in a special way, namely: `??` and `.?`.
+There is a special value called `blank` which is the only value of type `Blank`.  It represents "there is no useful value here".  It is equivalent to what other languages call "null", "undefined", "None", etc.  There are a few operators that treat this value in a special way, namely: `??`, `.?`, and `?=`.
 
 #### Strings
 The next basic type is the `String (str)`.  It represent text.  Strings can be created with string literals.  Here are a few examples:
@@ -191,20 +53,19 @@ To render strings without all the escaping and formatting use backticks.
 ```
 
 #### Collections and other types
-Pili also provides lists, tuples, sets, and frozensets — all with functionality borrowed shamelessly from python.  There is no dictionary type, as functions provide dictionary-like functionality.
+Pili also provides lists, tuples, sets, and frozensets — all with functionality borrowed shamelessly from python.  There is no dictionary type, as maps provide dictionary-like functionality.
 
 Indices start at 1 in Pili.  This applies to tuples and lists and other similar or derived types.  0 is not a valid index and will result in an error.  However, negative indices are usually allowed where element of list `ls` at index `-n` corresponds to the nth last element, ie 
 `ls[-n] == ls[1 + len[ls] - n]`
 
-The other types (functions, patterns, tables, traits, etc) are discussed in later sections.
+The other types (functions, patterns, classes, traits, etc) are discussed in later sections.
 
-### Tables and Traits
-[[#Tables and Traits]]
+***
+See [[#Classes and Traits]] for more information on the type system in Pili.
 
 
-
-## Functions
-Functions are extremely flexible constructs in Pili.  Functions can act as namespaces since they have their own scope possibly containing variables.  They can act as their own closures.  Functions can act as dictionary-like holding key-value pairs using value options.  And of course, functions can run blocks of code by calling options — each of which has a certain signature that is dynamically chosen at runtime.
+## Maps and Functions
+Maps are extremely flexible constructs in Pili.  Maps can act as namespaces since they have their own scope containing named variables.  Maps also act as functions, mapping dictionary-like containers holding key-value pairs using value options.  And of course, functions can run blocks of code by calling options — each of which has a certain signature that is dynamically chosen at runtime.
 
 ### Declaring Functions
 The primary way to declare a function is with the `function` keyword, followed by the name of the function, followed by a block of code where all variables and options are defined.
@@ -260,12 +121,12 @@ ERROR: no proper "another_property" found in greeting
 ```
 
 ### Value Options
-Value options consist of a key and a value (or possibly a code block, but not usually).  The key is usually one single immutable value, but it could also be:
+Value options consist of a key and a value (or possibly a code block, but not usually).  The key is usually one single immuclass value, but it could also be:
 - no values
 - multiple values
-- mutable value(s)  (not recommended)
+- muclass value(s)  (not recommended)
 
-These key-value pairs are stored in a hash table and are therefore accessible in O(1) time regardless of the number of value options.  (The same is not true of code options.)
+These key-value pairs are stored in a hash class and are therefore accessible in O(1) time regardless of the number of value options.  (The same is not true of code options.)
 
 The syntax for defining key-value options is as follows:
 ```python
@@ -280,7 +141,7 @@ function foo
 		return "no key" 
 ```
 
-As you can see, the square brackets are optional — they have no effect on the program.  A key may consist of multiple comma-separated values, or no values at all.  The last two options are not key-value pairs, but they are still added to the hash table — they just run a function when called.
+As you can see, the square brackets are optional — they have no effect on the program.  A key may consist of multiple comma-separated values, or no values at all.  The last two options are not key-value pairs, but they are still added to the hash class — they just run a function when called.
 
 All of these value options can be retrieved and reassigned from other scopes using the same syntax as function calling.  New options can also be added this way.  The only difference is that value options must now use the ` =`  operator... basically just because programmers are used to this syntax.  
 ```python
@@ -434,7 +295,7 @@ The `!` bang is just syntactic sugar:
 > Bools can be useful for tweaking function behaviour, but enums are arguably better in most cases.  Perhaps this `!syntax` could be expanded to include enums as well somehow.
 
 #### Universal Function Call Syntax
-The dot operator pulls double duty in Pili.  It's first role is to access fields of records (see [[#Tables and Traits]]).  For example, `person.height` might return a number value, provided the `person` is a record that has a field called `height`.  If no field is found with that name, then Pili will instead try to treat the expression as a dot-call: that is, a somewhat inverted function call.  Pili tries calling the function `height` on the record `person`.  If no function `height` exists in the scope of the call site either, an error is raised.
+The dot operator pulls double duty in Pili.  It's first role is to access fields of records (see [[#classes and Traits]]).  For example, `person.height` might return a number value, provided the `person` is a record that has a field called `height`.  If no field is found with that name, then Pili will instead try to treat the expression as a dot-call: that is, a somewhat inverted function call.  Pili tries calling the function `height` on the record `person`.  If no function `height` exists in the scope of the call site either, an error is raised.
 
 Example:
 ```python
@@ -455,7 +316,7 @@ my_name.match[`\w+`]
 > True
 ```
 
-If a function or record happens to have a field with the same name as another function in scope, then the field name will take precedence.  For example, assuming a `dog` record comes from a table called `Dog` and has a slot called `type` and value `"Chihahua"`:
+If a function or record happens to have a field with the same name as another function in scope, then the field name will take precedence.  For example, assuming a `dog` record comes from a class called `Dog` and has a slot called `type` and value `"Chihahua"`:
 ```python
 dog.type
 > "Chihahua"
@@ -465,15 +326,105 @@ type[dog]
 
 In cases like this, though the program executes perfectly fine, it's considered better to use a different name for the slot (eg "breed" in this case would make sense), to avoid confusion.
 
-However, in some instances, changing or extending built-in previously defined functions may be exactly what you want to do.  For example, you may want to implement the addition operator for a custom table, or modify the behaviour of `str[foo]`.  This is the purpose of "dot options."  See [[#Dot Options]]
+However, in some instances, changing or extending built-in previously defined functions may be exactly what you want to do.  For example, you may want to implement the addition operator for a custom class, or modify the behaviour of `str[foo]`.  This is the purpose of "dot options."  See [[#Dot Options]]
 
-## Tables and Traits
-Types in Pili are called Tables.  Every value in Pili is a record of exactly one table.  Tables are defined by a set of fields, options, and dot-options that together make up the interface for records in that table.
-
-Here is a simple example of a table with some slot fields, record initialization, and the behaviour of such records.
+## Variables Declaration and Scope
+Variables, and options are created and assigned with three operators:
+- ` =` for assigning a *value* (right-hand-side is evaluated before assignment)
+- `:` for assigning a block of code (right-hand-side is saved for evaluation later)
 
 ```python
-table Person
+greeting = "Hello " + "world"
+# immediately calculates the right hand side and assigns the VALUE to the option "greeting"
+# if the name "greeting" is not already an option of the root function, it is added automatically
+
+greeting[1] = "hello world"
+# immediately calculates the right hand side and assigns the VALUE to the option [1] in the function "greeting".  
+# if greeting doesn't exist, it will be initialized as a function
+# if greeting exists as a record whose class does not define setting values, an error occurs.
+
+greeting[str who]: 
+	return "hello " + who
+# creates a greeting function with one option whose pattern is [str who] and whose block is the single indented expression.
+```
+
+### Unconventional Handling of Scope
+Variable declaration is not required in Pili; values are simply assigned to names without the need for keywords like "let", "var", "mut", etc.  Variables initialized in a higher scope are accessible in a deeper scope, but if that variable name is assigned, it will not be overwritten — rather, a "shadow" variable will be created in its stead.  That new variable is now accessible in the current (or deeper) scope, and the original variable remains untouched in the higher scope. 
+
+Variables from higher scopes are still accessible in deeper scopes before the name is assigned.  
+```python
+x = "global x"
+closure[]:
+	print x  # a reference to "global x"
+	x = "new value"  # creates a local shadow of x; does not overwrite the global x
+	return x
+
+print closure[]
+print x
+```
+```
+global x
+new value
+global x
+```
+
+The default scoping behaviour can be overridden in Pili by declaring variables using the `var` keyword.  In these cases, the variables are accessible *and muclass* in deeper scopes.  The default shadowing behaviour can be re-enabled with an explicit `local` keyword.
+```python
+var y = "global muclass y"
+closure[]:
+    print y  # prints global y
+    y = "mutated y"  # mutates global y
+    print y
+    local y = "not global y"  # shadow of y; global y unaffected
+    print y
+
+closure[]
+print y
+```
+```
+globally muclass y
+mutated y
+not global y
+mutated y
+```
+
+
+#### What about function options and record properties?
+Any assignments where the left-hand side uses dot notation or brackets follows the conventions in other programming languages.  The scope of such identifiers is bound to the object itself, not the scope of the function.
+```python
+foo[1] = "one"
+bob = Person["Bob"]
+
+closure[]:
+	# accessing foo from above scope
+	foo[1] = "new one"  # mutation
+	foo[3] = bob  # new dictionary entry
+	foo[3].name = "Robert"  # mutates object stored in foo[3]
+
+print bob.name
+closure[]
+if bob == foo[3]
+	print bob.name
+else
+	print 'not the same'
+```
+```
+Bob
+Robert
+```
+
+#### Potential for Confusion or Unexpected Behaviour
+If you are coming from a js paradigm where all variables are declared, you're basically good to go.
+
+If you're coming from a python paradigm, and you like to use closures, it could be a little bit jarring to have to declare variables in the higher scope, rather than using the keywords 'nonlocal' or 'global' *in* the closure scope.
+
+## Classes and Traits
+Types in Pili are called classes.  Every value in Pili is a record of exactly one class.  classes are defined by a set of fields, options, and dot-options that together make up the interface for records in that class.
+
+Here is a simple example of a class with some slot fields, record initialization, and the behaviour of such records.
+
+```python
+class Person
 	slot name str
 	slot height int
 	slot friend Person?
@@ -495,10 +446,10 @@ ryan.friend
 ```
 
 ### Fields
-Each field in a table has a name and a type, and may also have an associated function, or default value.  The slot is only one type of field.  There are two more: `formula`, and `setter`.
+Each field in a class has a name and a type, and may also have an associated function, or default value.  The slot is only one type of field.  There are two more: `formula`, and `setter`.
 
 #### Slot
-Each slot in a table corresponds to a piece of data in each record of the table.  Every slot of every record must be filled with a value.  Sometimes, however, that value may be the special value `blank`.  Any slot that is not filled with data upon initialization of the record (either by an initialization function or by a default value) will automatically be filled with the value `blank`.  If the type of the slot does not not allow `blank`, an error will be raised.  
+Each slot in a class corresponds to a piece of data in each record of the class.  Every slot of every record must be filled with a value.  Sometimes, however, that value may be the special value `blank`.  Any slot that is not filled with data upon initialization of the record (either by an initialization function or by a default value) will automatically be filled with the value `blank`.  If the type of the slot does not not allow `blank`, an error will be raised.  
 
 In general, if the slot is ever filled with a value that doesn't agree with the slot type, an error is raised.
 
@@ -509,12 +460,12 @@ slot friend Person?
 slot friend Person | blank = blank
 ```
 
-#### Formula
+#### Getter
 In other languages, a formula might be called a "getter", but Pili uses the term "formula" to evoke the feeling of a spreadsheet.  Formulas behave somewhat like slots, but there is no underlying data stored — instead, the data is generated by a function every time the formula field is accessed.
 
-Here is an example of a table with a formula:
+Here is an example of a class with a formula:
 ```python
-table Product
+class Product
 	slot price_per_unit float
 	slot quantity int
 	formula total_price float :
@@ -534,7 +485,7 @@ The setter is the complement of the formula.  Setters also have functions rather
 
 Example:
 ```python
-table MyList
+class MyList
 	slot _items list = []
 	formula last any :
 		if self._items
@@ -556,11 +507,11 @@ ls.last
 ```
 
 #### Hidden/Private Fields
-Pili does not officially have the concept of public/private methods or visible/hidden attributes.  However, these can be easily emulated.  Since a table can also act as a closure (see [[#Table Options and Record Options|Table Options]] below), local variables can be defined in a table scope just like in a function scope, and then those variables are accessible by all fields, options, and dot-options of the table.
+Pili does not officially have the concept of public/private methods or visible/hidden attributes.  However, these can be easily emulated.  Since a class can also act as a closure (see [[#class Options and Record Options|class Options]] below), local variables can be defined in a class scope just like in a function scope, and then those variables are accessible by all fields, options, and dot-options of the class.
 
-In the example above we defined a slot `_items`, prepending an underscore to indicate privacy.  This is usually the best way to do it.  However, if need be, we could rewrite the `MyList` table above like so:
+In the example above we defined a slot `_items`, prepending an underscore to indicate privacy.  This is usually the best way to do it.  However, if need be, we could rewrite the `MyList` class above like so:
 ```python
-table MyList
+class MyList
 	items = {}   # {} is a function literal
 	
 	opt [int index]:
@@ -589,11 +540,11 @@ print myls.str
 Now, for all code within the scope of `MyList`, `self.items` (ie, `items[self]`) should return the private list of items.  
 
 ### Record Initialization
-Pili has one constructor function for all tables; it is called `new` and takes a table as its first argument, and any number of positional arguments after which will fill the slots of that record, in that order.  Because of this flexibility, the `new` function is prone to error (when, eg, slot order changes), so Pili automatically generates an option for each individual table.  This option is like a default constructor function — it has exactly one parameter for each slot: the name and type of each parameter matches the name and type of each slot, and the parameter is marked as optional of the slot provides a default value.
+Pili has one constructor function for all classes; it is called `new` and takes a class as its first argument, and any number of positional arguments after which will fill the slots of that record, in that order.  Because of this flexibility, the `new` function is prone to error (when, eg, slot order changes), so Pili automatically generates an option for each individual class.  This option is like a default constructor function — it has exactly one parameter for each slot: the name and type of each parameter matches the name and type of each slot, and the parameter is marked as optional of the slot provides a default value.
 
-So, if we were to manually write this option in Pili for the Person table, it would look like this:
+So, if we were to manually write this option in Pili for the Person class, it would look like this:
 ```python
-table Person
+class Person
 	slot name str
 	slot height int
 	slot friend Person?
@@ -611,15 +562,15 @@ Person["Fredrick", 175, ryan]
 # etc, etc
 ```
 
-Of course, we can make our own constructor by defining options directly on the table that return a call either to the `new` function or to the automatically generated option.
+Of course, we can make our own constructor by defining options directly on the class that return a call either to the `new` function or to the automatically generated option.
 
-### Table Options and Record Options
-Tables are also functions, so options can be defined on tables in the same way that they are defined on function.
+### class Options and Record Options
+classes are also functions, so options can be defined on classes in the same way that they are defined on function.
 
-Tables can also give records their own options.  This allows you to then treat records like functions.  This might be useful for custom container types, shortcuts for common methods, or function-like records.
+classes can also give records their own options.  This allows you to then treat records like functions.  This might be useful for custom container types, shortcuts for common methods, or function-like records.
 
 ```python
-table Container
+class Container
 	
 ```
 
@@ -628,7 +579,7 @@ table Container
 see also [[2024-Jul-4#How do methods work? Pili]] for brainstorming on this
 
 #2024/Jul/13 I am realizing that there is still a need to improve this system.  Particularly, I believe we need to reserve the dot options ***only*** for adding options to existing functions.  Why?
-- because any function scoped to the trait/table will (generally) only be accessible when called from an instance of that trait/table — and therefore already has access to the `self` record
+- because any function scoped to the trait/class will (generally) only be accessible when called from an instance of that trait/class — and therefore already has access to the `self` record
 	- the rare exception might be when you want to save a function from an instance to call later — but that's not a core feature and I can deal with that when it comes to it.
 - and how can/should the `self` be inserted when defining a function with the `function` command?  It's not a dot-option, and it would be too much boilerplate to add `self` to each first parameter.
 
@@ -704,16 +655,16 @@ case
 ```
 
 ### The `self` keyword
-The `self` keyword, by default, will resolve a reference to the "caller" of the option, that is, either the function holding the currently called option, or the record used to select an option of a trait/table.
+The `self` keyword, by default, will resolve a reference to the "caller" of the option, that is, either the function holding the currently called option, or the record used to select an option of a trait/class.
 
 ```python
 function foo
 	[int n]:
 		self  # this refers to foo
 
-table Foo
+class Foo
 	opt [int n]:
-		self  # this refers to the *instance* of Foo (not table Foo)
+		self  # this refers to the *instance* of Foo (not class Foo)
 ```
 
 However the `self` keyword can (and should) be overwritten in some circumstances.  Recall that dot-options are syntactic sugar for functions whose first parameter is a "self"  parameter.  In this case, `self` will resolve to the first argument passed.  In this case, there is no practical difference, but in other cases there might be.  
@@ -724,7 +675,7 @@ For example, you might want to change the pattern of the `self` parameter to exp
 function bar
 	...
 	
-table Foo
+class Foo
 	slot prop
 	slot func fn
 	
@@ -759,28 +710,28 @@ the
 
 
 ### Traits
-Traits are like partial tables.  They may contain fields, options, and dot-options just like tables, but they cannot create or contain records (at least not directly) and the definition of such fields, options, and dot-options is allowed to be incomplete.  
+Traits are like partial classes.  They may contain fields, options, and dot-options just like classes, but they cannot create or contain records (at least not directly) and the definition of such fields, options, and dot-options is allowed to be incomplete.  
 
-Tables are created by combining traits together...
+classes are created by combining traits together...
 ```python
 ```
 
-If a trait is found to be incomplete or incompatible with a given table, an error is given.  This usually happens when multiple traits define incompatible types for fields or options.
+If a trait is found to be incomplete or incompatible with a given class, an error is given.  This usually happens when multiple traits define incompatible types for fields or options.
 
-### Table and Trait Conventions
-By convention, the order of the elements of traits and table should be the following:
+### class and Trait Conventions
+By convention, the order of the elements of traits and class should be the following:
 - local variables
 - slots
 - formulas
 - setters
-- table/trait options (eg, constructors)  %% to be honest, I actually have no idea where this should go in the ordering... %%
+- class/trait options (eg, constructors)  %% to be honest, I actually have no idea where this should go in the ordering... %%
 - record options
 - dot options
 
 But this ordering is by no means enforced, and it the user prefers another ordering for clarity or other reasons, Pili will not throw any errors.
 
 #### Captialization
-Tables are in CamelCase, traits are snake_case.
+classes are in CamelCase, traits are snake_case.
 
 
 ## Patterns
@@ -789,7 +740,7 @@ Pattern matching is a core feature of Pili.  It is how options are selected and 
 #### Pattern Types
 - **Value Pattern**.  
 	- The simplest kind of pattern simply matches one particular value and nothing else.
-- **Table Pattern**
+- **class Pattern**
 	- 
 - **Type Pattern**.  
 	- The most used type of pattern though are types.  Type patterns match any value which is descended from (has as its prototype) the given type.  
@@ -867,7 +818,7 @@ I guess that's a matcher.
 #### .................................. more pattern thoughts
 
 Umm, so I guess what I currently have as class "Pattern" is actually just one of the cases of sub-patterns I listed above.  Specifically, its an Args sub-pattern... so maybe I actually need to go back to the structure I had before where list-pattern was actually a sub-class of pattern.  So my pattern class will be just for inheritance, and the pattern types will be:
-- table
+- class
 - trait
 - value
 - function
@@ -1225,6 +1176,97 @@ Either patterns that match patterns... OR check for the existence of an option m
 
 
 ## Ideas and Issues
+### IDEA: Enums, Atoms, Symbols
+- **observation:** maps have both hashed options, and named variables.  If map `foo` has a named variable `bar` as well as a hashed option at `"bar"`, then `foo.bar` and `foo["bar"]` are very similar conceptually.
+- **idea:** make another string-like type (enum, atom, symbol, or something similar) and put these values in the hashmap
+- suppose I use the syntax `#bar` to make a symbol
+- **implications:** 
+	- now these two expressions are equivalent: `foo.bar` <=> `foo[#bar]`
+	- likewise, these two are also equivalent: `bar = 5` <=> `#bar: 5` (within a map block)
+	- using a name in an expression would then check for symbols in the scopes ascending like normal
+#### how does this help with enums?
+- now we can make an enum function that can be used like this:
+- `TokenType = enum[#name, #number, #string]`
+- equivalent to:
+```
+map TokenType
+	name = #TokenType/name
+	number = #TokenType/number
+	string = #TokenType/string
+```
+
+or maybe
+```
+class TokenType (enum)
+	var name
+	var number
+	var string
+TokenType.name = TokenType[]
+TokenType.number = TokenType[]
+TokenType.string = TokenType[]
+```
+
+or maybe
+```
+map TokenType
+	name = #name
+	number = #number
+	string = #string
+	.@:
+		#name | #number | #string   
+	# meaning TokenType will be patternized as this union pattern
+```
+
+This one is nice, because it allows me to define functions like this:
+```python
+map parse
+	[Token(text: text, type: TokenType type), Scope context]:
+		if type == #name
+			...
+		...
+
+print_options = enum[#pretty, #info, #normal]
+```
+
+Or, even better, just make the UnionMatcher an iterable object.
+```
+TokenType = (#name | #number | #string)
+print_options = ( 
+	  #pretty
+	| #info
+	| #normal )
+
+map print
+	[msg, print_options popts=#normal]:
+		<some code>
+		match popts
+			#normal:
+				<do normal print>
+			#pretty:
+				<print nicely>
+			#info:
+				<print informatively>
+		<some more code>
+	
+	[msg, #info]:
+		<print informatively>
+
+	[msg, bool pretty?]:
+		if pretty
+			<print nicely>
+		else
+			<print normally>
+
+	[msg, pretty=false]
+	
+```
+
+#### Does this complement or clash with the idea of leaning further into UFCS?
+- it clashes.  if `foo.bar` is equivalent to `foo[#bar]`, then how can it also be equivalent to `bar[foo]`?
+- So, it's a good thing that [[#Idea Converge on Dot Options]] was **rejected**
+- Actually, it gives the developer a fairly ergonomic option to specify field-access without risking an accidental function-call.
+
+
 ### Destructuring Assignment via Patterns
 IDEA: make the equals sign simply run the pattern-matching algorithm as if calling a function  
   - that will also bind names — and allow very complex destructuring assignment!  
@@ -1239,7 +1281,7 @@ What about assigning values to names of properties and keys?
 	- what about having both of these default as `bind(any, name)` and only interpret them as patterns with the `@` operator?  Or the other way around?
 		- `[Node(type: @NodeType.foo), ...]: ...`
 		- `len[@foo]: ...`
-		- this might be the only/best way to make patterns match literal traits and tables
+		- this might be the only/best way to make patterns match literal traits and classes
 		- prolly good to have the builtin singletons as exceptions, not needing the `@`: `blank, true, false, inf`
 		- wait lang... I'm sensing another potential path here: what about pattern expressions with other (non-pattern-specific) operators like `-foo` or `foo+bar`?
 			- what if we go back to only treating bare names as `bind(any, name)` and just evaluate other expressions... no that is what I'm doing, the debate is just 
@@ -1297,8 +1339,8 @@ class VarExpr(Declaration):
 
 ### Implicit Dot Calls, Implicit Dot assignment
 In Pili, `foo.bar` is an overloaded expression:
-1. if bar is a field of foo's table, it will evaluate the field
-2. if bar is a function, (either in foo's table or traits, or containing scope) it will call that function using foo as the first argument
+1. if bar is a field of foo's class, it will evaluate the field
+2. if bar is a function, (either in foo's class or traits, or containing scope) it will call that function using foo as the first argument
 	- ie, `foo.bar` in this case is equivalent to `bar[foo]`
 
 Currently, in setting the value using that expression as a left-hand-side of the eq operator, eg `foo.bar = 5`, it will only set the field.  It will not attempt to set it as if it was `bar[foo] = 5`.
@@ -1463,7 +1505,7 @@ tallies
 
 ### Syntax for Assigning Options and Variables
 - A given assignment operation has many dimensions in Pili:
-	- context: function scope, trait/table scope, other (eg `foo.name` or `foo[something]`)
+	- context: function scope, trait/class scope, other (eg `foo.name` or `foo[something]`)
 	- type of LHS: name, key, pattern
 	- type of RHS: value or code block
 - simply multiply these dimensions together and you get 3×3×2 = 18 different possibilities.
@@ -1472,7 +1514,7 @@ tallies
 		- `_, name|key, code block`: also potentially useful (just for performance, likely) but could be rules out as well if need be
 		- combine the above two and suddenly the type of LHS determines the type of RHS
 - syntactically, I have quite a few choices to make to distribute these 
-	- of course the context is determined for me (presence or absence of expression before name|key|pattern, or the function|table|trait keyword above current block)
+	- of course the context is determined for me (presence or absence of expression before name|key|pattern, or the function|class|trait keyword above current block)
 	- RHS: block or expression — this is also already more or less set in stone.
 		- however, I could allow reading expression as block in certain cases (eg, when pattern is detected)
 	- this just leaves LHS.
@@ -1722,6 +1764,11 @@ Okay, option 2 is too verbose.  Here's a refinement of option 1, for more consis
 - so a name on it's own is invalid, it must be `any name`.  
 
 ### Idea: Converge on Dot Options
+
+> [!summary] Status: Rejected
+> `foo.bar` should **NOT** be equivalent to `bar[foo]` in general.
+
+
 [[#Virtual Options or Dot Options]] already form a core part of the functionality of Pili.  What if we turn towards more fully relying on dot options to replace names and even function properties/methods?
 
 > [!Currently] 
@@ -1830,7 +1877,63 @@ len =
 
 ```
 
+#### Proposal 3
+Single scope for all variables.  
 
+`bar = 5` means... what?
+- it means, when in a map block called `foo`, the same thing as `bar[foo] = 5`
+- what if `bar` is already a record in a higher scope?  Like `bar = 1` in the global scope?
+- that's fine.  That just means `bar[root] == 1 and bar[foo] == 5`
+- so, while in the scope called `foo` then any reference to `bar` will be evaluated as `bar[foo]`
+- what if I literally type the expression `bar[foo]` ... then how does `bar` get evaluated?
+	- well, if we follow the above rule, we get a circular reference to evaluate: `bar => bar[foo] => bar[bar[foo]] ...`
+	- so, I guess we would have to make an exception for function call syntax
+	- so `bar` => `bar[foo]`
+	- but `bar[foo]` just stays the same
+	- that's super confusing
+	- what about this:
+		- `bar` => `global[#bar, foo]`
+		- `bar[foo]` => `global[#bar, foo][foo]`
+		- so then I guess names are stored in the location that's the hash of the tuple of the symbol and scope.
+		- nah, this eliminates the equivalence I was seeking in the first place
+
+Hmm
+
+If there's only one scope for variables, then does that mean I must sacrifice closures and local variables?  Basically, the answer is yes.  So can I do this like [[#Updated Proposal]] and have regular scoping for bare names, but reverse map scoping for other names?
+
+```
+bar = 4
+map foo
+	bar = 1
+
+print bar
+print foo.bar
+print bar[foo]
+```
+
+In this case, I could live with `bar` being  a sneaky double-agent kinda map, where it carries the value 4 when mentioned, but also maps values like foo.
+
+But what about this example?
+```
+map foo
+	bar = 1
+
+map bar
+	foo: 5
+
+print bar
+print foo.bar
+print bar[foo]
+```
+
+The only way to do this would be to embed a "secondary mapping" within each record.
+
+> [!summary] Conclusion
+> OKAY, I'm finally ready to completely reject these proposals.  `foo.bar` really should **not** be equivalent to `bar[foo]`.  
+
+### Discussion: Re-merge Maps, Classes, and Traits?
+- observation: classes and traits are both maps
+	- 
 ### Reimagining Types & Patterns
 #### Types vs Patterns
 - a type should be viewed as the possible space for a given value (including composite values, ie, product types and sum types)
@@ -1842,8 +1945,8 @@ len =
 	- quantifiers
 	- fn guard / expr guard
 
-#### Table Type System
-All values are organized into tables.  Tables consist of fields and records.
+#### class Type System
+All values are organized into classes.  classes consist of fields and records.
 
 In this system, the dot operator will no longer play triple duty.  Before, the three uses of dot were:
 1. calling an option (ie, `foo.bar` <=> `foo["bar"]`)
@@ -1856,7 +1959,7 @@ Now, the dot operator will lose (2) the ability to call options (which was kinda
 	- ie `foo.bar[]` is equivalent to `bar[foo]` (as long as no `bar` field exists on foo) but NOT equivalent to `foo.bar` which ONLY access the `bar` field, and results in an error if none exists
 
 ##### Fields
-- a table field has the following properties:
+- a class field has the following properties:
 	- name
 	- type
 	- default: 
@@ -1868,7 +1971,7 @@ Now, the dot operator will lose (2) the ability to call options (which was kinda
 - Slot
 	- with default value (`blank` if missing)
 	- with default formula
-- Formula
+- Getter
 	- the API looks like a slot
 	- essentially it is a dot-function with no extra arguments
 - Action
@@ -1888,53 +1991,53 @@ Ok, but there is still some advantage in a special category for "formula".
 
 Reasons against a special "formula" category:
 - added complexity to the "Field" class
-- ... should a table keep track of the dot-functions defined on it?  Should all of them be called psuedo-fields?
+- ... should a class keep track of the dot-functions defined on it?  Should all of them be called psuedo-fields?
 	- I can't really think of a reason to do that, given my current implementation of dot-functions
-	- maybe just to get a list of methods for some reason?  For copying a whole table?
+	- maybe just to get a list of methods for some reason?  For copying a whole class?
 
 However, maybe a formula should not be a sub-class of field.  Or maybe it's fine.  I don't know.
 
-##### Table Anatomy
-What things go in a table definition?
+##### class Anatomy
+What things go in a class definition?
 - slots
 - formulas
 - dot-options
-- heritable options
-- table options 
+- hericlass options
+- class options 
 - constructors
 
 These are categorized like so:
-- directly heritable:
+- directly hericlass:
 	- slots
 	- formulas
-- heritable through dot-option patterns:
+- hericlass through dot-option patterns:
 	- dot-options
-	- heritable options (under `.call`)
-- for table only:
-	- table options
+	- hericlass options (under `.call`)
+- for class only:
+	- class options
 	- ... incl. constructors
 
 ##### Records
 - each record has one value for each field, even if that value is `None`.
 
 ##### Built-in Fields
-Tables have a few fields built-in with default values or formulas.  The most important one is "key".  The 'key' field, if left undefined, defaults to an `int` field with a formula that increments every time a record is added to the table.
+classes have a few fields built-in with default values or formulas.  The most important one is "key".  The 'key' field, if left undefined, defaults to an `int` field with a formula that increments every time a record is added to the class.
 
-##### Built-in Tables
-- string table, boolean table, int, float, ratio
-	- key-only table: hash of python value
-- None table
+##### Built-in classes
+- string class, boolean class, int, float, ratio
+	- key-only class: hash of python value
+- None class
 	- consists of only one value: None, key=0
-- List table
+- List class
 	- no hashing of lists in python...
 	- key: regular default incrementing
 	- no other fields... or maybe some fields like `len` 
-	- oh, hold on a second, I guess lists should actually be implemented as tables themselves (but not tuples or sets?)
-- Table table
-	- table of all tables
-	- key: table name?  No, allow anonymous tables/lists
-- Pattern table
-- Function Table
+	- oh, hold on a second, I guess lists should actually be implemented as classes themselves (but not tuples or sets?)
+- class class
+	- class of all classes
+	- key: class name?  No, allow anonymous classes/lists
+- Pattern class
+- Function class
 	- fields:
 		- key: function name?
 		- options:
@@ -1942,24 +2045,24 @@ Tables have a few fields built-in with default values or formulas.  The most imp
 			- code-block
 		- closure
 	- ... or maybe a "call" pseudo field?
-- Option Table:
+- Option class:
 	- fields:
 		- signature: pattern
 		- block: code-block
 
 ##### Slices
-A slice object is an object that shares the same fields as its parent table (and maybe extended fields?) but only a subset of the records.   The subset can be defined in three different ways, and therefore there are three different types of slices.
-- pattern slice: all records in a table that match a given pattern
-- filter-function slice: all records in a table that return a truthy value given a function
+A slice object is an object that shares the same fields as its parent class (and maybe extended fields?) but only a subset of the records.   The subset can be defined in three different ways, and therefore there are three different types of slices.
+- pattern slice: all records in a class that match a given pattern
+- filter-function slice: all records in a class that return a truthy value given a function
 - manual slice: a slice that contains no records by default, but that can be added to manually
-	- this is subtly different to just forming a list of records from one table
+	- this is subtly different to just forming a list of records from one class
 	- this one is the most like subclass
 
-Slices also have additional properties.  In particular, a slice has a `parent: Table` property, and an `extended_fields: Field*` property.
+Slices also have additional properties.  In particular, a slice has a `parent: class` property, and an `extended_fields: Field*` property.
 
 ###### Slice Syntax
 ```pili
-table Bird
+class Bird
 	slot species <Species> 
 	formula call <blank>:
 		print self.species.melody
@@ -1974,15 +2077,15 @@ slice Penguin
 
 #### Types
 - so a type is one of:
-	- a table (product type)
+	- a class (product type)
 	- a union (sum type)
 - or maybe make all types sum types where some of them are len=1
-- well, I guess *patterns* can be like that.  But a *type* is just gonna be a table.
+- well, I guess *patterns* can be like that.  But a *type* is just gonna be a class.
 
 #### Patterns
 pattern ::= parameter | parameter "," pattern
 parameter ::= matcher (name | "") quantifier
-matcher ::= (table | value | any) guard? fn?
+matcher ::= (class | value | any) guard? fn?
 intersection-matcher ::= slice+ guard? fn?
 name ::= alpha +
 quantifier ::= "" | "?" | "+" | "\*"
@@ -1995,7 +2098,7 @@ examples:
 ```
 
 So a monad is one of:
-- table
+- class
 - value
 - union of parameters
 - intersection of patterns
@@ -2030,7 +2133,7 @@ int|float n
 ```
 
 #### Inheritance?
-Records inherit a few specific things from tables:
+Records inherit a few specific things from classes:
 - slots
 - formulas
 - dot-options
@@ -2038,36 +2141,36 @@ Records inherit a few specific things from tables:
 And that's it.  Regular options are not inherited, nor any other properties, hidden or otherwise.
 
 - probably won't do regular inheritance
-- but might do "table duplicating"
-	- be careful about dynamic modification of tables, because changes may not apply to tables that have already been duplicated
+- but might do "class duplicating"
+	- be careful about dynamic modification of classes, because changes may not apply to classes that have already been duplicated
 - and/or composition
-	- like a table has a field with a pointer to a record to another "parent" table 
+	- like a class has a field with a pointer to a record to another "parent" class 
 	- (probably not ideal in most cases)
-- table templates
-	- allows fields (and rows?) to be shared between tables
+- class templates
+	- allows fields (and rows?) to be shared between classes
 	- if rows: somehow need to make sure the keys don't overlap 
 - related: filtered views
 
 
 So we have three levels of abstraction.  
 1. Ad-hoc functions (objects) can be defined
-2. Tables (templates for objects) can be defined
-4. Traits (templates for tables) can be defined 
+2. classes (templates for objects) can be defined
+4. Traits (templates for classes) can be defined 
 There should be clear, consistent, easy syntax for all three levels.  
 
 - in a function, you can define slots, formulas, options, and dot-options.
-- in a table, you should be able to define all of those things both for the table, and also for the template.  The constructor (unique to the table, usually, is an option of the table)
-- in a trait, usually you just want to define things to be inherited by the instance, but I guess it could be fun to modify table behaviour too
+- in a class, you should be able to define all of those things both for the class, and also for the template.  The constructor (unique to the class, usually, is an option of the class)
+- in a trait, usually you just want to define things to be inherited by the instance, but I guess it could be fun to modify class behaviour too
 
 - one idea: 
 	- for the current level (ie `Context.env.fn`), define those fields and options directly
 		- dot-option patterns will start with a value matcher
 	- for the instance level (ie, the instance) define the fields with the keywords: `slot`, `formula`, and `opt`.  
-		- dot-option patterns will start with a table matcher, value matchers for tables/traits must be explicitly specified
-	- for the table level (ie, properties that traits give to *tables*), some other syntax will be required... like `metaslot` ... so the table itself will gain a new slot... but let's not worry about that one for now
+		- dot-option patterns will start with a class matcher, value matchers for classes/traits must be explicitly specified
+	- for the class level (ie, properties that traits give to *classes*), some other syntax will be required... like `metaslot` ... so the class itself will gain a new slot... but let's not worry about that one for now
 
 
-#### filtered table/virtual table
+#### filtered class/virtual class
 - b;
 
 #### Garbage Collection
@@ -2075,7 +2178,7 @@ There should be clear, consistent, easy syntax for all three levels.
 
 #### Syntax
 ```python pili
-table Dog:
+class Dog:
     # slot field
     slot name:
         str
@@ -2191,7 +2294,7 @@ factory[3]["hello"]
 - Prototypes vs type-tags:
 	- The current model is a prototype model, where all values are functions, and all types are also functions.  So `int` is a value, and also the prototype for `1`.
 	- However, I feel like 99% of the time, you want to separate classes (types) from values.  
-	- Maybe I should explore the idea again of "type tags" — little pieces of data that describe the capabilities of an object.  Some tags might be "numeric", "iterable", "printable", "lengthable" ^type-tags
+	- Maybe I should explore the idea again of "type tags" — little pieces of data that describe the capabilities of an object.  Some tags might be "numeric", "iterable", "princlass", "lengthable" ^type-tags
 	- could simplify pattern-matching
 	- One Major **advantage** of Type-Tags:
 		- if types are indeed a separate kind of entity from other values, then it becomes much simpler to separate 'param list' from 'arg list'.  
@@ -2922,7 +3025,7 @@ NFA:
 ```
 
 ##### Option Tree
-I want to explore again the idea of creating an option TREE for each function, rather than a hashed dictionary of options and a list of options.  Because I feel like there should be a way to do something similar to hashing for *all* options, if not exactly a hash table.
+I want to explore again the idea of creating an option TREE for each function, rather than a hashed dictionary of options and a list of options.  Because I feel like there should be a way to do something similar to hashing for *all* options, if not exactly a hash class.
 
 But the thing is, it doesn't really work with quantifiers.  
 
@@ -2930,7 +3033,7 @@ But for individual parameters, imagine something like this:
 ```
 ## eg for pattern `int` and a given value:
 opt = Option[int, value]
-option_tree: dict[Table, ...] ??= {}
+option_tree: dict[class, ...] ??= {}
 option_tree[int] ??= (None, {}): tuple[<option matching type int>, dict[Value, Option]]
 option_tree[int] = opt
 
@@ -3040,9 +3143,9 @@ So,
 		2. That is our fn, raise error if missing
 4. Now we have fn and pattern and dot_option; Return those values as tuple
 
-#### Functions & Tables (and traits, maps, prototypes, etc)
+#### Functions & classes (and traits, maps, prototypes, etc)
 - Function(Record, OptionMap)
-- Table(Function, FieldMap)
+- class(Function, FieldMap)
 - Trait(Function)
 
 ```pili
@@ -3070,11 +3173,11 @@ trait function
 	slot formula_dict
 	slot setter_dict
 
-table Record @record
+class Record @record
 
-table Function @function @option_map
+class Function @function @option_map
 
-table Table @function @field_map @option_map
+class class @function @field_map @option_map
 
-table Trait @trait @function @option_map
+class Trait @trait @function @option_map
 ```

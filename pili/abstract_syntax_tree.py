@@ -2,7 +2,7 @@ from .state import Op
 from .utils import SyntaxErr, OperatorErr
 from .syntax import Node, TokenType, Token, Position, Operator
 from .lexer import Tokenizer
-from .interpreter import Block, TableExpr, TraitExpr, FunctionExpr, OpExpr, EmptyExpr, ParamsNode, BindExpr, \
+from .interpreter import Block, ClassExpr, TraitExpr, MapExpr, OpExpr, EmptyExpr, ParamsNode, BindExpr, \
     IfElse, EXPRMAP, CommandWithExpr, NamedExpr, ListLiteral, FunctionLiteral, FieldMatcherNode, \
     ArgsNode, StringNode
 
@@ -14,26 +14,27 @@ class AST:
     tok: Token | None
     indent: int
     block: Block | None
-    function_name: str | None = None
-    in_function_body: str | None
-    function_blocks: list[str]
+    map_name: str | None = None
+    in_map_body: str | None
+    map_blocks: list[str]
 
     @property
-    def in_function_body(self):
-        return self.function_blocks[-1] if self.function_blocks else None
+    def in_map_body(self):
+        return self.map_blocks[-1] if self.map_blocks else None
 
-    def in_group_or_function_block(self, end_of_statement: tuple):
-        return (self.in_function_body
+    def in_group_or_map_block(self, end_of_statement: tuple):
+        return (self.in_map_body
                 or TokenType.RightParen in end_of_statement
                 or TokenType.RightBracket in end_of_statement
                 or TokenType.RightBrace in end_of_statement)
 
     def __init__(self, toks: Tokenizer):
+        self.file = toks.file
         self.tokens = toks.tokens
         self.idx = 0
-        self.seek(0)
+        self.seek(1)
         self.indent = 0
-        self.function_blocks = []
+        self.map_blocks = []
         try:
             self.block = self.read_block(0)
         except Exception as e:
@@ -60,10 +61,10 @@ class AST:
         return self.tok
 
     def read_block(self, indent: int) -> Block:
-        self.function_blocks.append(self.function_name)
-        self.function_name = None
+        self.map_blocks.append(self.map_name)
+        self.map_name = None
         statements: list[Node] = []
-        table_names: set[str] = set()
+        class_names: set[str] = set()
         trait_names: set[str] = set()
         func_names: set[str] = set()
         pos = self.tok.pos
@@ -71,17 +72,17 @@ class AST:
             stmt = self.read_expression(TokenType.NewLine, TokenType.BlockEnd, TokenType.EOF)
             statements.append(stmt)
             match stmt:
-                case TableExpr(table_name=tbl):
-                    if tbl in table_names:
-                        raise SyntaxErr(f'Line {stmt.line}: Duplicate table name "{tbl}"')
-                    table_names.add(tbl)
+                case ClassExpr(class_name=tbl):
+                    if tbl in class_names:
+                        raise SyntaxErr(f'Line {stmt.line} in "{self.file}": Duplicate class name "{tbl}"')
+                    class_names.add(tbl)
                 case TraitExpr(fn_name=trait):
                     if trait in trait_names:
-                        raise SyntaxErr(f'Line {stmt.line}: Duplicate trait name "{trait}"')
+                        raise SyntaxErr(f'Line {stmt.line} in "{self.file}": Duplicate trait name "{trait}"')
                     trait_names.add(trait)
-                case FunctionExpr(fn_name=fn):
+                case MapExpr(fn_name=fn):
                     if fn in func_names:
-                        raise SyntaxErr(f'Line {stmt.line}: Duplicate function name "{fn}"')
+                        raise SyntaxErr(f'Line {stmt.line} in "{self.file}": Duplicate map name "{fn}"')
                     func_names.add(fn)
                 case EmptyExpr():
                     statements.pop()
@@ -95,9 +96,9 @@ class AST:
                     break
                 else:
                     self.seek()
-        self.function_blocks.pop()
+        self.map_blocks.pop()
         pos += self.tok.pos
-        return Block(statements, table_names, trait_names, func_names, pos)
+        return Block(statements, class_names, trait_names, func_names, pos)
 
     def read_expression(self, *end_of_statement: TokenType) -> Node:
         ops: list[list[Operator | str | Position]] = []
@@ -120,25 +121,25 @@ class AST:
                         t0.terms += t1,
                     elif fixity == 'binop':
                         if not terms:
-                            raise OperatorErr(f"Line {op_pos.ln}: binary operator '{op}' missing right-hand-side.")
+                            raise OperatorErr(f"Line {op_pos.ln} in '{self.file}': binary operator '{op}' missing right-hand-side.")
                         terms.pop()
                         pos = t0.pos + t1.pos
                         if op.text == ':':
                             # try to insert self param in dot methods
                             match t0:
                                 case OpExpr('.', [method], prefix=True, pos=t0pos):
-                                    if not self.in_function_body:
-                                        raise SyntaxErr(f'Line {pos.ln}: dot methods not allowed '
-                                                        f'outside of table/trait/function blocks.')
+                                    if not self.in_map_body:
+                                        raise SyntaxErr(f'Line {pos.ln} in "{self.file}": dot methods not allowed '
+                                                        f'outside of map blocks.')
                                     match method:
                                         case OpExpr('[', [loc, ParamsNode(pos=pp) as params]) as t0:
                                             t0.pos = t0pos
-                                            params.nodes.insert(0, BindExpr(Token(self.in_function_body, TokenType.Name, pp.pos),
+                                            params.nodes.insert(0, BindExpr(Token(self.in_map_body, TokenType.Name, pp.pos),
                                                                             'self', pos=pp.pos))
                                         case fn_node:
                                             ppos = Position((t0pos.stop_index,)*2)
                                             t0 = OpExpr(Op['['], fn_node,
-                                                        ParamsNode([BindExpr(Token(self.in_function_body, TokenType.Name, ppos.pos),
+                                                        ParamsNode([BindExpr(Token(self.in_map_body, TokenType.Name, ppos.pos),
                                                                              'self', pos=ppos)],
                                                                    []), pos=t0pos)
                         terms.append(OpExpr(op, t0, t1, pos=pos))
@@ -178,17 +179,17 @@ class AST:
                         try:
                             op = Op[op_text]
                         except KeyError:
-                            raise OperatorErr(f"Line {pos.ln}: unrecognized operator: '{op_text}'")
+                            raise OperatorErr(f"Line {pos.ln} in '{self.file}': unrecognized operator: '{op_text}'")
                         if op.prefix:
                             ops.append([op, 'prefix', pos])
                         elif op.binop and ops and ops[-1][0].postfix:
                             ops[-1][1] = 'postfix'
                             ops.append([op, 'binop', pos])
                         elif ops:
-                            raise OperatorErr(f"Line {pos.ln}: expected term or prefix operator after '{ops[-1][0]}'.  "
+                            raise OperatorErr(f"Line {pos.ln} in '{self.file}': expected term or prefix operator after '{ops[-1][0]}'.  "
                                               f"Instead got '{op}'.")
                         else:
-                            raise OperatorErr(f"Line {pos.ln}: expected term or prefix operator.  Got '{op}'")
+                            raise OperatorErr(f"Line {pos.ln} in '{self.file}': expected term or prefix operator.  Got '{op}'")
                     case Node():
                         terms.append(node)
                         unary_state = False
@@ -213,14 +214,14 @@ class AST:
                         # assert node.type in {TokenType.Operator, TokenType.LeftBracket, TokenType.LeftParen,
                         #                      TokenType.Comma, TokenType.Semicolon}
                         if (self.tok.text == ':' and self.peek().type != TokenType.BlockStart
-                                and not self.in_group_or_function_block(end_of_statement)):
-                            raise SyntaxErr(f'Line {self.tok.line}: invalid syntax outside function block.\n\t'
+                                and not self.in_group_or_map_block(end_of_statement)):
+                            print(f'WARNING: Line {self.tok.line} in "{self.file}": invalid syntax outside function block.\n\t'
                                             f'If you meant to define a function option, the body must be on an indented'
                                             f' block.\n\tIf you meant to assign to a key, use "=" instead of ":"')
                         try:
                             op = Op[op_text]
                         except KeyError:
-                            raise OperatorErr(f"Line {pos.ln}: '{op_text}' is not an operator.")
+                            raise OperatorErr(f"Line {pos.ln} in '{self.file}': '{op_text}' is not an operator.")
                         if op.binop:
                             reduce(op.binop)
                             ops.append([op, 'binop', pos])
@@ -229,7 +230,7 @@ class AST:
                             reduce(op.postfix)
                             ops.append([op, 'postfix', pos])
                         else:
-                            raise OperatorErr(f"Line {pos.ln}: Prefix '{op}' used as binary/postfix operator.")
+                            raise OperatorErr(f"Line {pos.ln} in '{self.file}': Prefix '{op}' used as binary/postfix operator.")
                     case None:
                         raise AssertionError  # end of statement
 
@@ -242,11 +243,11 @@ class AST:
                     reduce(op.postfix)
                     ops.append([op, 'postfix', op_pos])
                 else:
-                    raise OperatorErr(f"Line {op_pos.ln}: expected operand after '{op}' @ {op_pos}")
+                    raise OperatorErr(f"Line {op_pos.ln} in '{self.file}': expected operand after '{op}' @ {op_pos}")
             elif len(terms) == 0:
                 return EmptyExpr(self.tok.pos.pos)
             else:
-                raise OperatorErr(f"Line {terms[-1].line}: expected operand.")
+                raise OperatorErr(f"Line {terms[-1].line} in '{self.file}': expected operand.")
         reduce()
         # if len(terms) == 0 == len(ops):
         #     return EmptyExpr(Position(self.tok.pos.pos))
@@ -295,7 +296,7 @@ class AST:
                     field_name = ()
                 self.seek()
                 expr = self.read_expression(*end_of_statement)
-                # expr_nodes: list[Node] = [self.seek()] if Cmd in (SlotExpr, FormulaExpr, SetterExpr) else []
+                # expr_nodes: list[Node] = [self.seek()] if Cmd in (SlotExpr, GetterExpr, SetterExpr) else []
                 # self.seek()
                 # expr_nodes.extend(self.read_statement(*end_of_statement))
                 pos += expr.pos
@@ -314,7 +315,7 @@ class AST:
                                      self.peek().text == ':' and self.peek(2).type == TokenType.BlockStart):
                     node = ParamsNode(nodes, named_params, pos)
                 elif named_params:
-                    raise SyntaxErr(f"Line {pos.ln}: semicolon not allowed in list literals or argument list.")
+                    raise SyntaxErr(f"Line {pos.ln} in '{self.file}': semicolon not allowed in list literals or argument list.")
                 else:
                     node = ListLiteral(nodes, pos)
                 self.seek()
@@ -334,11 +335,11 @@ class AST:
                 command = self.tok.text
                 Cmd = EXPRMAP[command]
                 self.seek()
-                if command in ('table', 'trait', 'function'):
-                    self.function_name = self.tok.text
+                if command in {'class', 'trait', 'map'}:
+                    self.map_name = self.tok.text
                 header = self.read_expression(TokenType.BlockStart, *end_of_statement)
                 if self.tok.type != TokenType.BlockStart:
-                    raise SyntaxErr(f"Line {pos.ln}: missing block after {Cmd} statement.")
+                    raise SyntaxErr(f"Line {pos.ln} in '{self.file}': missing block after {Cmd} statement.")
                 if self.peek(-1).text == ':':
                     raise SyntaxErr(pos, f"Pili does not use colons for control blocks like if and for.")
                 blk_nodes = self.read_block_ladder()
@@ -362,7 +363,7 @@ class AST:
                 tok = self.tok
                 self.seek()
                 return tok
-                # raise OperatorErr(f"Line {self.tok.line}: Expected operand but got {self.tok}")
+                # raise OperatorErr(f"Line {self.tok.line} in '{self.file}': Expected operand but got {self.tok}")
 
     def read_operator(self) -> Token:
         while self.tok.type in {TokenType.NewLine, TokenType.BlockStart, TokenType.BlockEnd}:
@@ -392,7 +393,7 @@ class AST:
                                      self.peek().text == ':' and self.peek(2).type == TokenType.BlockStart):
                     yield ParamsNode(nodes, named_params, pos)
                 elif named_params:
-                    raise SyntaxErr(f"Line {pos.ln}: semicolon not allowed in argument list")
+                    raise SyntaxErr(f"Line {pos.ln} in '{self.file}': semicolon not allowed in argument list")
                 else:
                     yield ArgsNode(nodes, pos)
                 self.seek()
@@ -404,7 +405,7 @@ class AST:
             # case _ if self.tok.type in end_of_statement:
             #     yield None
             case _:
-                raise OperatorErr(f"Line {self.tok.line}: Expected operator but got {self.tok}")
+                raise OperatorErr(f"Line {self.tok.line} in '{self.file}': Expected operator but got {self.tok}")
 
     def read_list(self, end: TokenType, whitespace_delimits=False, semicolon_behaviour: str = 'comma',
                   pos: Position = None) -> list[Node] | tuple[list[Node], list[Node]]:
@@ -430,15 +431,15 @@ class AST:
             #             return IntervalExpr(start, end, end != TokenType.RightBracket, end == TokenType.RightBracket)
             #         case [OpExpr('>>', [start, end]), step_node], []:
             #             return IntervalExpr(start, end, end != TokenType.RightBracket, end == TokenType.RightBracket, step=step_node)
-            #     raise SyntaxErr(f'Line {self.tok.line}: mismatching brackets/parens')
+            #     raise SyntaxErr(f'Line {self.tok.line} in "{self.file}": mismatching brackets/parens')
             if self.tok.type == TokenType.Semicolon:
                 if semicolon_behaviour == 'end':
                     return items
                 if semicolon_behaviour == 'disallow':
-                    raise SyntaxErr(f"Line {self.tok.line}: semicolons not allowed in this context.")
+                    raise SyntaxErr(f"Line {self.tok.line} in '{self.file}': semicolons not allowed in this context.")
                 if semicolon_behaviour == 'split':
                     if named_params:
-                        raise SyntaxErr(f"Line {self.tok.line}: only zero or one semicolon allowed in params list.")
+                        raise SyntaxErr(f"Line {self.tok.line} in '{self.file}': only zero or one semicolon allowed in params list.")
                     current = named_params
         assert self.tok.type == end
         if semicolon_behaviour == 'split':
@@ -476,9 +477,9 @@ class AST:
                 if self.tok.type is TokenType.BlockStart:
                     continue
                 if self.tok.text == ':':
-                    raise SyntaxErr(f'Line {self.tok.line}: Invalid colon after "else"; '
+                    raise SyntaxErr(f'Line {self.tok.line} in "{self.file}": Invalid colon after "else"; '
                                     f'Pili does not use colons for control blocks.')
-                raise SyntaxErr(f'Line {self.tok.line}: expected block after "else"')
+                raise SyntaxErr(f'Line {self.tok.line} in "{self.file}": expected block after "else"')
             if self.tok.text == 'elif':
                 self.seek()
                 expr = self.read_expression(TokenType.NewLine, TokenType.BlockStart, TokenType.BlockEnd)

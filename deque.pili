@@ -1,13 +1,13 @@
-table Symbol
+class Symbol
 	slot label str?
 
-table Cell
+class Cell
 	NONE = Symbol['empty']
 	slot value any = NONE
 
 
 
-table Node
+class Node
 	slot value any
 	slot prev Node?
 	slot next Node?
@@ -21,13 +21,13 @@ trait Deque
 	slot _front Node?
 	slot _back Node?
 	slot len int = 0
-	formula front any =
+	getter front any =
 		return self._front.value
 	setter front[item]:
 		self._front.value = item
-	formula back any =
+	getter back any =
 		return self._back.value
-	formula is_empty bool =
+	getter is_empty bool =
 		return self._front is blank and self._back is blank
 	setter back[item]:
 		self._back.value = item
@@ -40,7 +40,7 @@ trait Deque
 		for item in iterable
 			self.append[item]
 		return self
-# 	function append
+# 	map append
 # 		[Deque(len: 0) self, item]:
 # 			self._back = self._front = Node[item]
 # 			self.len = 1
@@ -50,7 +50,7 @@ trait Deque
 # 			self._front = self._front.next
 # 			self.len += 1
 # 			return self
-# 	function prepend
+# 	map prepend
 # 		[Deque(len: 0) self, item]:
 # 			self._back = self._front = Node[item]
 # 			self.len = 1
@@ -107,10 +107,10 @@ trait Deque
 			return "Deque[{self.iter[!nodes]..str[!info].join[', ']}]"
 		return self.iter.str
 
-table EmptyDeque (Deque)
-	formula front any =
+class EmptyDeque (Deque)
+	getter front any =
 		blank
-	formula back any =
+	getter back any =
 		blank
 	setter front[item]:
 		return self.append[item]
@@ -129,7 +129,7 @@ table EmptyDeque (Deque)
 	.str[!info]:
 		return "<EmptyDeque>" if info else '[]'
 
-table NonEmptyDeque (Deque)
+class NonEmptyDeque (Deque)
 	slot _front Node
 	slot _back Node
 
@@ -166,5 +166,7 @@ print dq
 
 print "list time: {list_time}"
 print "deque time: {deque_time}"
+print "dq.front"
+print debug dq.front
 debug_shell
 return

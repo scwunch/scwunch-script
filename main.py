@@ -22,7 +22,8 @@ if __name__ == '__main__':
             # script_path = 'fibonacci.pili'
             # script_path = 'pili_interpreter.pili'
             # script_path = 'advent.pili'
-            script_path = 'deque.pili'
+            # script_path = 'deque.pili'
+            # script_path = 'scratch.pili'
             print('(test mode) running script', script_path, '...')
 
         output = None

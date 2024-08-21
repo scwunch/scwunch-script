@@ -6,16 +6,16 @@ from pili.interpreter import *
 print(f'loading {__name__}.py')
 
 # BuiltIns['blank'] = None
-BuiltIns['Table'] = TableTable = MetaTable()
-BuiltIns['Trait'] = TraitTable = BootstrapTable('Trait')
+BuiltIns['Class'] = ClassClass = MetaClass()
+BuiltIns['Trait'] = TraitClass = BootstrapClass('Trait')
 BuiltIns['pattern'] = PattTrait = Trait(name='pattern')
-BuiltIns['Pattern'] = IntermediatePatternTable = BootstrapTable('Pattern')
-BuiltIns['Option'] = IntermediateOptionTable = BootstrapTable('Option')
-BuiltIns['Args'] = IntermediateArgsTable = BootstrapTable('Args')
-TableTable.traits = (Trait(),)
-TraitTable.traits = (Trait(),)
+BuiltIns['Pattern'] = IntermediatePatternClass = BootstrapClass('Pattern')
+BuiltIns['Option'] = IntermediateOptionClass = BootstrapClass('Option')
+BuiltIns['Args'] = IntermediateArgsClass = BootstrapClass('Args')
+ClassClass.traits = (Trait(),)
+TraitClass.traits = (Trait(),)
 
-BuiltIns['Blank'] = SetTable(name='Blank')
+BuiltIns['Blank'] = SetClass(name='Blank')
 BuiltIns['blank'] = PyValue(BuiltIns['Blank'], None)
 
 # Number traits
@@ -40,69 +40,69 @@ BuiltIns['range'] = RangeTrait = Trait(name='range')
 """ 
 TABLES 
 """
-# Numeric Tables
-BuiltIns['Bool'] = SetTable(BuiltIns['bool'], IntTrait, RatioTrait, NumTrait, IndexTrait, name='Bool')
+# Numeric Classs
+BuiltIns['Bool'] = SetClass(BuiltIns['bool'], IntTrait, RatioTrait, NumTrait, IndexTrait, name='Bool')
 BuiltIns['false'] = PyValue(BuiltIns['Bool'], False)
 BuiltIns['true'] = PyValue(BuiltIns['Bool'], True)
 
-BuiltIns['Integer'] = VirtTable(IntTrait, RatioTrait, NumTrait, IndexTrait, name='Integer')
-BuiltIns['Fraction'] = VirtTable(RatioTrait, NumTrait, name='Fraction')
-BuiltIns['Float'] = VirtTable(BuiltIns['float'], NumTrait, name='Float')
+BuiltIns['Integer'] = VirtClass(IntTrait, RatioTrait, NumTrait, IndexTrait, name='Integer')
+BuiltIns['Fraction'] = VirtClass(RatioTrait, NumTrait, name='Fraction')
+BuiltIns['Float'] = VirtClass(BuiltIns['float'], NumTrait, name='Float')
 
-# Collection Tables
-BuiltIns['String'] = VirtTable(StrTrait, SeqTrait, IterTrait, name='String')
-BuiltIns['Tuple'] = VirtTable(TupTrait, SeqTrait, IterTrait, name='Tuple')
-BuiltIns['Set'] = VirtTable(SetTrait, IterTrait, name='Set')
-BuiltIns['List'] = VirtTable(ListTrait, SeqTrait, IterTrait, name='List')
-BuiltIns['Range'] = VirtTable(RangeTrait, IterTrait, IndexTrait, name='Range')
-BuiltIns['Args'] = VirtTable(SeqTrait, DictTrait, IterTrait, name='Args')
-for rec in IntermediateArgsTable.records:
-    rec.table = BuiltIns['Args']
+# Collection Classs
+BuiltIns['String'] = VirtClass(StrTrait, SeqTrait, IterTrait, name='String')
+BuiltIns['Tuple'] = VirtClass(TupTrait, SeqTrait, IterTrait, name='Tuple')
+BuiltIns['Set'] = VirtClass(SetTrait, IterTrait, name='Set')
+BuiltIns['List'] = VirtClass(ListTrait, SeqTrait, IterTrait, name='List')
+BuiltIns['Range'] = VirtClass(RangeTrait, IterTrait, IndexTrait, name='Range')
+BuiltIns['Args'] = VirtClass(SeqTrait, DictTrait, IterTrait, name='Args')
+for rec in IntermediateArgsClass.records:
+    rec.cls = BuiltIns['Args']
 
 BuiltIns['fn'] = FuncTrait = Trait(name='fn')
-BuiltIns['Function'] = ListTable(FuncTrait, name='Function')
+BuiltIns['Map'] = ListClass(FuncTrait, name='Map')
 
-TableTable.traits += (FuncTrait,)
+ClassClass.traits += (FuncTrait,)
 BuiltIns['Trait'].traits += (FuncTrait,)
 
-BuiltIns['Pattern'] = ListTable(SeqTrait, IterTrait, name='Pattern')
-BuiltIns['Pattern'].records = IntermediatePatternTable.records
-BuiltIns['Block'] = ListTable(name='Block')
+BuiltIns['Pattern'] = ListClass(SeqTrait, IterTrait, name='Pattern')
+BuiltIns['Pattern'].records = IntermediatePatternClass.records
+BuiltIns['Block'] = ListClass(name='Block')
 
-# BuiltIns['Field'] = ListTable(name='Field')
+# BuiltIns['Field'] = ListClass(name='Field')
 
 # def upsert_field_fields(fields: list[Field]):
 #     fields.append(Slot('name', TraitMatcher(BuiltIns['str'])))
-#     fields.append(Slot('type', TableMatcher(BuiltIns['Pattern'])))
-#     fields.append(Slot('is_formula', TraitMatcher(BuiltIns['bool'])))
+#     fields.append(Slot('type', ClassMatcher(BuiltIns['Pattern'])))
+#     fields.append(Slot('is_getter', TraitMatcher(BuiltIns['bool'])))
 #     fields.append(Slot('default', UnionMatcher(TraitMatcher(FuncTrait), AnyMatcher())))
-#     fields.append(Slot('formula', TraitMatcher(FuncTrait)))
+#     fields.append(Slot('getter', TraitMatcher(FuncTrait)))
 #     fields.append(Slot('setter', TraitMatcher(FuncTrait)))
 # upsert_field_fields(BuiltIns['Field'].trait.fields)
 
 
-BuiltIns['Option'] = ListTable(name='Option')
-BuiltIns['Option'].records = IntermediateOptionTable.records
-BuiltIns['Option'].trait.fields.append(Slot('signature', TableMatcher(BuiltIns['Pattern'])))
-BuiltIns['Option'].trait.fields.append(Slot('code block', TableMatcher(BuiltIns['Block'])))
+BuiltIns['Option'] = ListClass(name='Option')
+BuiltIns['Option'].records = IntermediateOptionClass.records
+BuiltIns['Option'].trait.fields.append(Slot('signature', ClassMatcher(BuiltIns['Pattern'])))
+BuiltIns['Option'].trait.fields.append(Slot('code block', ClassMatcher(BuiltIns['Block'])))
 
-TableTable.trait.fields = [
-    Formula('fields', TableMatcher(BuiltIns['Tuple']), lambda self: py_value(tuple(self.fields.values()))),
-    Formula('records', TraitMatcher(IterTrait), lambda self: py_value(self.records))
+ClassClass.trait.fields = [
+    Getter('fields', ClassMatcher(BuiltIns['Tuple']), lambda self: py_value(tuple(self.fields.values()))),
+    Getter('records', TraitMatcher(IterTrait), lambda self: py_value(self.records))
 ]
 FuncTrait.fields.append(Slot('options', TraitMatcher(BuiltIns['seq'])))
 
-BuiltIns['Field'] = FieldTable = ListTable(name='Field')
-FieldTable.trait.fields = [
-    Formula('name', TraitMatcher(StrTrait), lambda field: py_value(field.name)),
-    Formula('type', UnionMatcher(TraitMatcher(PattTrait), ValueMatcher(BuiltIns['blank'])),
-            lambda field: field.type or BuiltIns['blank']),
-    Formula('getter', UnionMatcher(TraitMatcher(FuncTrait), ValueMatcher(BuiltIns['true']), ValueMatcher(BuiltIns['blank'])),
-            lambda field: py_value(field.getter)),
-    Formula('setter', UnionMatcher(TraitMatcher(FuncTrait), ValueMatcher(BuiltIns['true']), ValueMatcher(BuiltIns['blank'])),
-            lambda field: py_value(field.setter)),
-    Formula('default', UnionMatcher(FieldMatcher((), {'value': AnyMatcher()}), ValueMatcher(BuiltIns['blank'])),
-            lambda field: field.wrap_default())
+BuiltIns['Field'] = FieldClass = ListClass(name='Field')
+FieldClass.trait.fields = [
+    Getter('name', TraitMatcher(StrTrait), lambda field: py_value(field.name)),
+    Getter('type', UnionMatcher(TraitMatcher(PattTrait), ValueMatcher(BuiltIns['blank'])),
+           lambda field: field.type or BuiltIns['blank']),
+    Getter('getter', UnionMatcher(TraitMatcher(FuncTrait), ValueMatcher(BuiltIns['true']), ValueMatcher(BuiltIns['blank'])),
+           lambda field: py_value(field.getter)),
+    Getter('setter', UnionMatcher(TraitMatcher(FuncTrait), ValueMatcher(BuiltIns['true']), ValueMatcher(BuiltIns['blank'])),
+           lambda field: py_value(field.setter)),
+    Getter('default', UnionMatcher(FieldMatcher((), {'value': AnyMatcher()}), ValueMatcher(BuiltIns['blank'])),
+           lambda field: field.wrap_default())
 ]
 
 # now redo the Field fields, since they weren't able to properly initialize while the fields were incomplete
@@ -113,7 +113,7 @@ BuiltIns['range'].fields = [Slot('start', UnionMatcher(TraitMatcher(NumTrait), V
                             Slot('end', UnionMatcher(TraitMatcher(NumTrait), ValueMatcher(BuiltIns['blank']))),
                             Slot('step', UnionMatcher(TraitMatcher(NumTrait), ValueMatcher(BuiltIns['blank']))),]
 
-BuiltIns['PythonObject'] = ListTable(name='PythonObject')
+BuiltIns['PythonObject'] = ListClass(name='PythonObject')
 
 """ DONE ADDING BUILTIN TABLES."""
 
@@ -133,10 +133,10 @@ NonStr = NotMatcher(TraitMatcher(StrTrait))
 NonStrSeqParam = Parameter(IntersectionMatcher(TraitMatcher(SeqTrait), NonStr))
 SetParam = Parameter(TraitMatcher(SetTrait))
 IterParam = Parameter(TraitMatcher(IterTrait))
-# TypeParam = Parameter(TableMatcher(BuiltIns["Type"]))
-PatternParam = Parameter(TableMatcher(BuiltIns['Pattern']))
-FunctionParam = Parameter(TraitMatcher(BuiltIns["fn"]))
-TableParam = Parameter(TableMatcher(BuiltIns['Table']))
+# TypeParam = Parameter(ClassMatcher(BuiltIns["Type"]))
+PatternParam = Parameter(ClassMatcher(BuiltIns['Pattern']))
+MapParam = Parameter(TraitMatcher(BuiltIns["fn"]))
+ClassParam = Parameter(ClassMatcher(BuiltIns['Class']))
 AnyParam = Parameter(AnyMatcher())
 ArgsParam = Parameter(ArgsMatcher())
 NormalBinopPattern = ParamSet(NormalParam, NormalParam)
@@ -147,7 +147,7 @@ AnyPattern = ParamSet(Parameter(AnyMatcher(), quantifier="*"))
 # PositiveIntParam = Parameter(TraitMatcher(BuiltIns["int"], guard=lambda x: py_value(x.value > 0)))
 # NegativeIntParam = Parameter(TraitMatcher(BuiltIns["int"], guard=lambda x: py_value(x.value < 0)))
 # NonZeroIntParam = Parameter(TraitMatcher(BuiltIns["int"], guard=lambda x: py_value(x.value != 0)))
-# OneIndexList = Parameter(TableMatcher(BuiltIns['List'],
+# OneIndexList = Parameter(ClassMatcher(BuiltIns['List'],
 #                                       guard=lambda x: py_value(len(x.value) == 1 and
 #                                                                NonZeroIntParam.match_score(x.value[0]))))
 state.DEFAULT_PATTERN = ParamSet(Parameter(AnyMatcher(), 'args', "*"), kwargs='kwargs')
@@ -192,97 +192,97 @@ def setting_set(prop: str, val: PyValue):
         val = BASES[val[0]]
     state.settings[prop] = val
     return BuiltIns['settings']
-get_base_fn = Function({AnyParam: lambda _: py_value("_ubtqphsond"[state.settings['base']])},
-                       name='get_base_fn')
-set_base_fn = Function({ParamSet(AnyParam, Parameter(UnionMatcher(TraitMatcher(StrTrait),
-                                                                  *(ValueMatcher(py_value(v)) for v in range(1, 11))))):
+get_base_fn = Map({AnyParam: lambda _: py_value("_ubtqphsond"[state.settings['base']])},
+                  name='get_base_fn')
+set_base_fn = Map({ParamSet(AnyParam, Parameter(UnionMatcher(TraitMatcher(StrTrait),
+                                                             *(ValueMatcher(py_value(v)) for v in range(1, 11))))):
                         lambda _, val: setting_set('base', val)},
-                       name='set_base_fn')
-get_sort_options = Function({AnyParam: lambda: py_value(state.settings['sort_options'])},
-                            name='get_sort_options')
-set_sort_options = Function({ParamSet(AnyParam, BoolParam):
+                  name='set_base_fn')
+get_sort_options = Map({AnyParam: lambda: py_value(state.settings['sort_options'])},
+                       name='get_sort_options')
+set_sort_options = Map({ParamSet(AnyParam, BoolParam):
                                  lambda _, val: setting_set('sort_options', val)},
-                            name='set_sort_options')
-SettingsSingletonTable = SetTable(Trait({},
-                                     Formula('base', TraitMatcher(IntTrait), get_base_fn),
-                                     Setter('base', set_base_fn),
-                                     Formula('sort_options', TraitMatcher(BuiltIns['bool']), get_sort_options),
-                                     Setter('sort_options', set_sort_options)),
-                               name="SettingsSingletonTable")
-BuiltIns['settings'] = Record(SettingsSingletonTable)
+                       name='set_sort_options')
+SettingsSingletonClass = SetClass(Trait({},
+                                        Getter('base', TraitMatcher(IntTrait), get_base_fn),
+                                        Setter('base', set_base_fn),
+                                        Getter('sort_options', TraitMatcher(BuiltIns['bool']), get_sort_options),
+                                        Setter('sort_options', set_sort_options)),
+                               name="SettingsSingletonClass")
+BuiltIns['settings'] = Record(SettingsSingletonClass)
 
-# BuiltIns['repr'] = Function({AnyParam: lambda arg: arg.to_string(True)})
+# BuiltIns['repr'] = Map({AnyParam: lambda arg: arg.to_string(True)})
 
-BuiltIns['type'] = Function(default=lambda v: v.table)
+BuiltIns['type'] = Map(default=lambda v: v.cls)
 
-BuiltIns['len'] = Function({SeqParam: lambda s: py_value(len(s.value)),
-                            PatternParam: lambda p: py_value(len(p)),
-                            FunctionParam: lambda fn: py_value(len(fn.op_map) + len(fn.op_list)),
-                            # ParamSet(Parameter(TableMatcher(BuiltIns['Table']))): lambda t: py_value(len(t.records))
-                            })
-# BuiltIns['traits'] = Function({Parameter(BuiltIns['Table']): lambda t: py_value(t.traits)})
-# # BuiltIns['contains'] = Function({ParamSet(FunctionParam: AnyParam),
+BuiltIns['len'] = Map({SeqParam: lambda s: py_value(len(s.value)),
+                       PatternParam: lambda p: py_value(len(p)),
+                       MapParam: lambda fn: py_value(len(fn.op_map) + len(fn.op_list)),
+                       # ParamSet(Parameter(ClassMatcher(BuiltIns['Class']))): lambda t: py_value(len(t.records))
+                       })
+# BuiltIns['traits'] = Map({Parameter(BuiltIns['Class']): lambda t: py_value(t.traits)})
+# # BuiltIns['contains'] = Map({ParamSet(MapParam: AnyParam),
 # #                                 lambda a, b: py_value(b in (opt.value for opt in a.options)))
-# # BuiltIns['options'] = Function({AnyParam: lambda x: piliize([py_value(lp.pattern) for lp in x.options])})
-# # BuiltIns['names'] = Function({AnyParam: lambda x: piliize([py_value(k) for k in x.named_options.keys()])})
-def get_keys(fn: Function):
+# # BuiltIns['options'] = Map({AnyParam: lambda x: piliize([py_value(lp.pattern) for lp in x.options])})
+# # BuiltIns['names'] = Map({AnyParam: lambda x: piliize([py_value(k) for k in x.named_options.keys()])})
+def get_keys(fn: Map):
     return py_value({k[0] if len(k) == 1 else py_value(k.positional_arguments)
                      for k in fn.op_map.keys()})
-def get_items(fn: Function):
+def get_items(fn: Map):
     return py_value([((k[0] if len(k) == 1 else py_value(k.positional_arguments)), v.value)
                      for k, v in fn.op_map.items()])
-BuiltIns['keys'] = Function({FunctionParam: get_keys})
-BuiltIns['values'] = Function({FunctionParam: lambda fn: py_value([opt.value for opt in fn.op_map.values()])})
-BuiltIns['items'] = Function({FunctionParam: get_items})
+BuiltIns['keys'] = Map({MapParam: get_keys})
+BuiltIns['values'] = Map({MapParam: lambda fn: py_value([opt.value for opt in fn.op_map.values()])})
+BuiltIns['items'] = Map({MapParam: get_items})
 #'keys
-# BuiltIns['max'] = Function({Parameter(BuiltIns["num"], quantifier='+'):
+# BuiltIns['max'] = Map({Parameter(BuiltIns["num"], quantifier='+'):
 #                                 lambda *args: py_value(max(*[arg.value for arg in args])),
 #                             Parameter(TraitMatcher(BuiltIns["str"]), quantifier='+'):
 #                                 lambda *args: py_value(max(*[arg.value for arg in args])),
 #                             IterParam:
 #                                 lambda ls: py_value(max(*[arg.value for arg in ls.value]))
 #                             })
-# BuiltIns['min'] = Function({Parameter(BuiltIns["num"], quantifier='+'):
+# BuiltIns['min'] = Map({Parameter(BuiltIns["num"], quantifier='+'):
 #                                 lambda *args: py_value(min(*[arg.value for arg in args])),
 #                             Parameter(TraitMatcher(BuiltIns["str"]), quantifier='+'):
 #                                 lambda *args: py_value(min(arg.value for arg in args)),
 #                             IterParam: lambda ls: py_value(min(arg.value for arg in ls.value))
 #                             })
-BuiltIns['abs'] = Function({NumericParam: lambda n: py_value(abs(n.value))})
+BuiltIns['abs'] = Map({NumericParam: lambda n: py_value(abs(n.value))})
 def round_to_rational(num, places):
     num, places = num.value, places.value
     power = state.settings['base'] ** places
     return py_value(Fraction(round(num * power), power))
 
 
-BuiltIns['round'] = Function({NumericParam: lambda n: py_value(round(n.value)),
-                              ParamSet(NumericParam, IntegralParam): round_to_rational})
+BuiltIns['round'] = Map({NumericParam: lambda n: py_value(round(n.value)),
+                         ParamSet(NumericParam, IntegralParam): round_to_rational})
 
 
 RangeTrait.assign_option(Parameter(TraitMatcher(BuiltIns["num"]), quantifier="*"), lambda *args: Range(*args))
-# BuiltIns['map'] = Function({ParamSet(SeqParam, FunctionParam): lambda ls, fn: piliize([fn.call(val) for val in ls.value]),
-#                             ParamSet(FunctionParam, SeqParam): lambda fn, ls: piliize([fn.call(val) for val in ls.value])})
-# BuiltIns['filter'] = Function({ParamSet(ListParam, FunctionParam):
+# BuiltIns['map'] = Map({ParamSet(SeqParam, MapParam): lambda ls, fn: piliize([fn.call(val) for val in ls.value]),
+#                             ParamSet(MapParam, SeqParam): lambda fn, ls: piliize([fn.call(val) for val in ls.value])})
+# BuiltIns['filter'] = Map({ParamSet(ListParam, MapParam):
 #                                    lambda ls, fn: piliize([v for v in ls.value
 #                                                            if BuiltIns['bool'].call(fn.call(v)).value]),
-#                                ParamSet(FunctionParam, ListParam):
+#                                ParamSet(MapParam, ListParam):
 #                                    lambda fn, ls: piliize([v for v in ls.value
 #                                                            if BuiltIns['bool'].call(fn.call(v)).value])})
-BuiltIns['sum'] = Function({IterParam: lambda ls: BuiltIns['+'].call(*ls)})
-BuiltIns['trim'] = Function({StringParam: lambda text: py_value(text.value.strip()),
-                            ParamSet(StringParam, StringParam): lambda t, c: py_value(t.value.strip(c.value))})
-BuiltIns['upper'] = Function({StringParam: lambda text: py_value(text.value.upper())})
-BuiltIns['lower'] = Function({StringParam: lambda text: py_value(text.value.lower())})
+BuiltIns['sum'] = Map({IterParam: lambda ls: BuiltIns['+'].call(*ls)})
+BuiltIns['trim'] = Map({StringParam: lambda text: py_value(text.value.strip()),
+                        ParamSet(StringParam, StringParam): lambda t, c: py_value(t.value.strip(c.value))})
+BuiltIns['upper'] = Map({StringParam: lambda text: py_value(text.value.upper())})
+BuiltIns['lower'] = Map({StringParam: lambda text: py_value(text.value.lower())})
 BuiltIns['replace'] = \
-    Function({ParamSet(StringParam, StringParam, StringParam, Parameter(TraitMatcher(IntTrait), quantifier='?')):
+    Map({ParamSet(StringParam, StringParam, StringParam, Parameter(TraitMatcher(IntTrait), quantifier='?')):
                   lambda self, old, new, count=-1: py_value(self.value.replace(old.value, new.value, count.value))})
 
-BuiltIns['new'] = Function({ParamSet(TableParam, AnyPattern[0], kwargs='kwargs'):
+BuiltIns['new'] = Map({ParamSet(ClassParam, AnyPattern[0], kwargs='kwargs'):
                                 lambda t, *args, **kwargs: Record(t, *args, **kwargs)})
 
 # class File(Record):
 
-# def convert(name: str) -> Function:
+# def convert(name: str) -> Map:
 #     o = object()
 #     # py_fn = getattr(__builtins__, name, o)
 #     py_fn = __builtins__.get(name, o)  # noqa
@@ -292,27 +292,27 @@ BuiltIns['new'] = Function({ParamSet(TableParam, AnyPattern[0], kwargs='kwargs')
 #     # def lambda_fn(*args):
 #     #     arg_list = list(arg.value for arg in args)
 #     #     return py_value(py_fn(*arg_list))
-#     # return Function({AnyPattern: lambda_fn)
-#     return Function({AnyPattern: lambda *args: py_value(py_fn(*(arg.value for arg in args)))})
+#     # return Map({AnyPattern: lambda_fn)
+#     return Map({AnyPattern: lambda *args: py_value(py_fn(*(arg.value for arg in args)))})
 #
 
-BuiltIns['copy'] = Function({AnyParam: lambda rec: transmogrify(Record(None), rec)}, name='copy')
+BuiltIns['copy'] = Map({AnyParam: lambda rec: transmogrify(Record(None), rec)}, name='copy')
 
 def transmogrify(ref: Record, data: Record):
-    if ref.table.name in ('Blank', 'Bool'):
+    if ref.cls.name in ('Blank', 'Bool'):
         raise RuntimeErr(f'Cannot transmogrify singleton {ref}.')
     ref.__class__ = data.__class__
     ref.__dict__ = data.__dict__
     return ref
-BuiltIns['transmogrify'] = Function({ParamSet(AnyParam, AnyParam): transmogrify})
+BuiltIns['transmogrify'] = Map({ParamSet(AnyParam, AnyParam): transmogrify})
 def make_flags(*names: str) -> dict[str, Parameter]:
     return {n: Parameter(TraitMatcher(BuiltIns['bool']), n, '?', BuiltIns['blank']) for n in names}
 
 
-BuiltIns['python'] = Function({ParamSet(StringParam,
-                                        named_params=make_flags('direct', 'execute')):
+BuiltIns['python'] = Map({ParamSet(StringParam,
+                                   named_params=make_flags('direct', 'execute')):
                                    run_python_code}, name='python')  # function filled in in syntax.py
 
-for tbl in TableTable.records:
-    tbl: Table
+for tbl in ClassClass.records:
+    tbl: Class
     tbl.integrate_traits()

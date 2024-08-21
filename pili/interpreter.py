@@ -90,33 +90,33 @@ class Block(ListNode):
     """
     empty = frozenset()
     statements: list[Node]
-    table_names: set[str]
+    class_names: set[str]
     trait_names: set[str]
-    function_names: set[str]
+    map_names: set[str]
 
     def __init__(self, nodes: list[Node],
-                 table_names: set[str] = empty, trait_names: set[str] = empty, func_names: set[str] = empty,
+                 class_names: set[str] = empty, trait_names: set[str] = empty, func_names: set[str] = empty,
                  pos: Position = None):
         super().__init__(nodes, pos)
         self.statements = nodes
-        self.table_names = table_names
+        self.class_names = class_names
         self.trait_names = trait_names
-        self. function_names = func_names
+        self. map_names = func_names
 
     def evaluate(self):
         return self.execute()
 
     def execute(self):
         line = state.line
-        for tbl in self.table_names:
+        for tbl in self.class_names:
             # noinspection PyTypeChecker
-            state.env.locals[tbl] = ListTable(name=tbl, uninitialized=True)
+            state.env.locals[tbl] = ListClass(name=tbl, uninitialized=True)
         for trait in self.trait_names:
             # noinspection PyTypeChecker
             state.env.locals[trait] = Trait(name=trait, uninitialized=True)
-        for fn in self.function_names:
+        for fn in self.map_names:
             # noinspection PyTypeChecker
-            state.env.locals[fn] = Function(name=fn, uninitialized=True)
+            state.env.locals[fn] = Map(name=fn, uninitialized=True)
         val = BuiltIns['blank']
         for expr in self.statements:
             state.line = expr.line
@@ -249,7 +249,7 @@ class FieldMatcherNode(ListNode):
 
 class FunctionLiteral(ListNode):
     def evaluate(self):
-        fn = Function()
+        fn = Map()
         Closure(Block(self.nodes)).execute(link_frame=fn)
         return fn
 
@@ -286,7 +286,7 @@ class OpExpr(Node):
                 case OpExpr('[') | OpExpr('.', prefix=True) | ParamsNode():
                     pass
                 case _:
-                    raise SyntaxErr(f'Line {self.line}: invalid syntax: "{terms[0].source_text}".  A colon followed by '
+                    raise SyntaxErr(f'Line {self.line} in "{self.file}": invalid syntax: "{terms[0].source_text}".  A colon followed by '
                                     f'a block must be a `.dot[method]:`, `[param list]:`, or `option[def]`:')
         self.terms = terms
 
@@ -307,7 +307,7 @@ class OpExpr(Node):
             case ':':
                 lhs, rhs = self.terms
                 if not (isinstance(lhs, Token) and lhs.type == TokenType.Name):
-                    raise SyntaxErr(f'Line {self.line}: could not patternize "{self.source_text}"; '
+                    raise SyntaxErr(f'Line {self.line} in "{self.file}": could not patternize "{self.source_text}"; '
                                     f'left-hand-side of colon must be a name.')
                 field_name = lhs.text
                 return FieldMatcher((), {field_name: rhs.eval_pattern(as_param=True)})
@@ -470,7 +470,7 @@ class ForLoop(ExprWithBlock):
         #         break
         # else:
             case _:
-                raise SyntaxErr(f"Line {self.line}: For loop expression expected 'in' keyword.")
+                raise SyntaxErr(f"Line {self.line} in '{self.file}': For loop expression expected 'in' keyword.")
 
     def evaluate(self):
         iterator = BuiltIns['iter'].call(self.iterable.evaluate())
@@ -587,7 +587,7 @@ class CommandWithExpr(Command):
                 print('Starting interactive pili shell...')
                 return pili_shell()
             case _:
-                raise SyntaxErr(f"Line {state.line}: Unhandled command {self.command}")
+                raise SyntaxErr(f"Line {state.line} in '{self.file}': Unhandled command {self.command}")
 
     def eval_pattern(self, as_param=False) -> Pattern:
         match self.command:
@@ -629,33 +629,33 @@ class NamedExpr(Command):
         super().__init__(cmd, pos)
         self.name = name
 
-class FunctionExpr(ExprWithBlock):
+class MapExpr(ExprWithBlock):
     fn_name: str
     body: Block
     def __init__(self, header: Node, blk_nodes: list[Node], pos: Position = None):
         if len(blk_nodes) > 1:
-            raise SyntaxErr(f"Line {blk_nodes[1].line}: function blocks cannot have else statements.")
+            raise SyntaxErr(f"Line {blk_nodes[1].line} in '{self.file}': map blocks cannot have else statements.")
         super().__init__(header, blk_nodes, pos)
         match header:
             case Token(type=TokenType.Name, text=name):
                 self.fn_name = name
             case _:
-                raise SyntaxErr(f"Line {header.line}: "
-                                f"Function/Trait syntax should be `function|trait <fn_name> <block>`.")
+                raise SyntaxErr(f"Line {header.line} in '{self.file}': "
+                                f"Map syntax should be `map|trait <map_name> <block>`.")
         self.body = self.block
         # match nodes.nodes:
         #     case [Token(type=TokenType.Name, text=name), Block() as blk]:
         #         self.fn_name = name
         #         self.body = blk
         #     case _:
-        #         raise SyntaxErr(f"Line {self.line}: Function syntax should be `function <fn_name> <block>`.")
+        #         raise SyntaxErr(f"Line {self.line} in '{self.file}': Map syntax should be `function <fn_name> <block>`.")
 
     def evaluate(self):
         fn = state.deref(self.fn_name)
-        if isinstance(fn, Function):
+        if isinstance(fn, Map):
             del fn.uninitialized
         else:
-            fn = Function(name=self.fn_name)
+            fn = Map(name=self.fn_name)
             state.env.assign(self.fn_name, fn)
         if self.body is not None:
             Closure(self.body).execute(link_frame=fn)
@@ -664,7 +664,7 @@ class FunctionExpr(ExprWithBlock):
     def __repr__(self):
         return f'Function({self.fn_name}, {self.body})'
 
-class TraitExpr(FunctionExpr):
+class TraitExpr(MapExpr):
     # trait_name: str
     # body: Block
     # def __init__(self, cmd: str, nodes: Concrete, pos: Position = None):
@@ -674,7 +674,7 @@ class TraitExpr(FunctionExpr):
     #             self.trait_name = name
     #             self.body = blk
     #         case _:
-    #             raise SyntaxErr(f"Line {self.line}: Trait syntax should be `trait <trait_name> <block>`.")
+    #             raise SyntaxErr(f"Line {self.line} in '{self.file}': Trait syntax should be `trait <trait_name> <block>`.")
 
     def evaluate(self):
         trait = state.deref(self.fn_name)
@@ -690,33 +690,33 @@ class TraitExpr(FunctionExpr):
     def __repr__(self):
         return f'Trait({self.fn_name}, {self.body})'
 
-class TableExpr(FunctionExpr):
-    table_name: str
+class ClassExpr(MapExpr):
+    class_name: str
     traits: list[Node]
     body: Block = None
     def __init__(self, header: Node, blk_nodes: list[Node], pos: Position = None):
         if len(blk_nodes) > 1:
-            raise SyntaxErr(f"Line {blk_nodes[1].line}: function blocks cannot have else statements.")
+            raise SyntaxErr(f"Line {blk_nodes[1].line} in '{self.file}': function blocks cannot have else statements.")
         ExprWithBlock.__init__(self, header, blk_nodes, pos)
         self.body = self.block
         match header:
             case Token(type=TokenType.Name, text=name):
-                self.table_name = name
+                self.class_name = name
                 self.traits = []
             case OpExpr('&', [Token(type=TokenType.Name, text=name), FieldMatcherNode(nodes=trait_nodes)]):
-                self.table_name = name
+                self.class_name = name
                 self.traits = list(trait_nodes)
             case _:
-                raise SyntaxErr(f"Line {self.line}: Table syntax should be `table <table_name> (<trait>)* <block>`.\n"
-                                f"Eg, `table MyList (list, seq, iter)`")
+                raise SyntaxErr(f"Line {self.line} in '{self.file}': Class block syntax should be `class <class_name> (<trait>)* <block>`.\n"
+                                f"Eg, `class MyList (list, seq, iter)`")
 
     def evaluate(self):
-        table = state.deref(self.table_name)
-        if isinstance(table, Table):
-            del table.uninitialized
+        cls = state.deref(self.class_name)
+        if isinstance(cls, Class):
+            del cls.uninitialized
         else:
-            table = ListTable(name=self.table_name)
-            state.env.assign(self.table_name, table)
+            cls = ListClass(name=self.class_name)
+            state.env.assign(self.class_name, cls)
 
         def gen_traits():
             for node in self.traits:
@@ -725,14 +725,14 @@ class TableExpr(FunctionExpr):
                     raise TypeErr(f"Line: {state.line}: expected trait, but '{node}' is {repr(trait)}")
                 yield trait
 
-        table.traits = (*table.traits, *gen_traits())
+        cls.traits = (*cls.traits, *gen_traits())
         if self.body is not None:
-            Closure(self.body).execute(link_frame=table)
-        table.integrate_traits()
-        return table
+            Closure(self.body).execute(link_frame=cls)
+        cls.integrate_traits()
+        return cls
 
     def __repr__(self):
-        return f'Table({self.table_name} with {", ".join(map(str, self.traits))}, {self.body})'
+        return f'Class({self.class_name} with {", ".join(map(str, self.traits))}, {self.body})'
 
 
 class SlotExpr(NamedExpr):
@@ -756,7 +756,7 @@ class SlotExpr(NamedExpr):
         #         pass
         #     case _:
         #         raise TypeErr(f"Line {state.line}: Invalid type: {self.slot_type.evaluate()}.  "
-        #                       f"Expected value, table, trait, or single-parameter pattern.")
+        #                       f"Expected value, class, trait, or single-parameter pattern.")
         match self.default:
             case None:
                 default = getattr(slot_type, 'default', None)
@@ -764,18 +764,18 @@ class SlotExpr(NamedExpr):
                 default = Closure(blk)
             case Node():
                 default = self.default.evaluate()
-                # default = Function({Parameter(AnyMatcher(), 'self'): default_value})
+                # default = Map({Parameter(AnyMatcher(), 'self'): default_value})
             case _:
                 raise ValueError("Unexpected default")
         if default is not None:
-            default = Function({Parameter(AnyMatcher(), 'self'): default})
+            default = Map({Parameter(AnyMatcher(), 'self'): default})
         slot = Slot(self.name, slot_type, default)
         match state.env.fn:
             case Trait() as trait:
                 trait.fields.append(slot)
-            case Table(traits=(Trait() as trait, *_)):
+            case Class(traits=(Trait() as trait, *_)):
                 trait.fields.append(slot)
-            case Function() as fn:
+            case Map() as fn:
                 fn.update_field(slot)
             case _:
                 raise AssertionError
@@ -786,13 +786,11 @@ class SlotExpr(NamedExpr):
         default = f", {self.default}" or ''
         return f"Slot({self.name}, {self.field_type}{default})"
 
-class FormulaExpr(NamedExpr):
-    # formula_name: str
-    # formula_type: Node
+class GetterExpr(NamedExpr):
+    # getter_name: str
+    # getter_type: Node
     block: Block
     def __init__(self, cmd: str, field_name: str, node: Node, pos: Position = None):
-        # raise DeprecationWarning('FormulaExpr (invoked by `formula field_name return_type: ...` is being deprecated'
-        #                          'in favour of dot methods.')
         super().__init__(cmd, field_name, pos)
         match node:
             case OpExpr('=', blk):
@@ -801,24 +799,24 @@ class FormulaExpr(NamedExpr):
                 self.field_type = node
 
     def evaluate(self):
-        formula_type = self.field_type.eval_pattern()
+        getter_type = self.field_type.eval_pattern()
 
-        patt = ParamSet(Parameter(state.env.fn, binding='self'))
-        formula_fn = Function({patt: Closure(self.block)}, name=self.name)
-        formula = Formula(self.name, formula_type, formula_fn)
+        patt = ParamSet(Parameter(patternize(state.env.fn), binding='self'))
+        getter_fn = Map({patt: Closure(self.block)}, name=self.name)
+        getter = Getter(self.name, getter_type, getter_fn)
         match state.env.fn:
             case Trait() as trait:
-                trait.fields.append(formula)
-            case Table(traits=(Trait() as trait, *_)):
-                trait.fields.append(formula)
-            case Function() as fn:
-                fn.update_field(formula)
+                trait.fields.append(getter)
+            case Class(traits=(Trait() as trait, *_)):
+                trait.fields.append(getter)
+            case Map() as fn:
+                fn.update_field(getter)
             case _:
                 raise AssertionError
         return BuiltIns['blank']
 
     def __repr__(self):
-        return f"Formula({self.name}, {self.field_type}, {self.block})"
+        return f"Getter({self.name}, {self.field_type}, {self.block})"
 
 class SetterExpr(NamedExpr):
     field_name: str
@@ -833,23 +831,23 @@ class SetterExpr(NamedExpr):
                 self.params = params
                 self.block = blk
             case _:
-                raise SyntaxErr(f"Line {self.line}: Setter syntax is: `setter <name>[<value parameter>]: <block>`."
+                raise SyntaxErr(f"Line {self.line} in '{self.file}': Setter syntax is: `setter <name>[<value parameter>]: <block>`."
                                 f"Eg, `setter description[str desc]: self._description = trim[desc]`")
 
     def evaluate(self):
-        # fn = Function({ParamSet(Parameter(AnyMatcher(), 'self'), make_param(self.param_nodes)):
+        # fn = Map({ParamSet(Parameter(AnyMatcher(), 'self'), make_param(self.param_nodes)):
         #                    CodeBlock(self.block)})
         params: ParamSet = self.params.evaluate()
         # params.parameters = (Parameter(AnyMatcher(), 'self'),) + params.parameters
         assert len(params) == 2
-        fn = Function({params: Closure(self.block)}, name=self.name)
+        fn = Map({params: Closure(self.block)}, name=self.name)
         setter = Setter(self.field_name, fn)
         match state.env.fn:
             case Trait() as trait:
                 trait.fields.append(setter)
-            case Table(traits=(Trait() as trait, *_)) as table:
+            case Class(traits=(Trait() as trait, *_)) as cls:
                 trait.fields.append(setter)
-            case Function() as fn:
+            case Map() as fn:
                 fn.update_field(setter)
             case _:
                 raise AssertionError
@@ -870,7 +868,7 @@ class OptExpr(Command):
                 self.params = params
                 self.block = blk
             case _:
-                raise SyntaxErr(f"Line {self.line}: Opt syntax is: `opt [param1, param2, ...]: <block>`."
+                raise SyntaxErr(f"Line {self.line} in '{self.file}': Opt syntax is: `opt [param1, param2, ...]: <block>`."
                                 f"Eg, `opt [int i, int j]: ...`")
 
     def evaluate(self):
@@ -882,15 +880,15 @@ class OptExpr(Command):
         #         pass
         #     case _:
         #         raise TypeErr(f"Line {state.line}: Invalid return type: {self.return_type.evaluate()}.  "
-        #                       f"Expected value, table, trait, or single-parameter pattern.")
+        #                       f"Expected value, class, trait, or single-parameter pattern.")
         pattern = self.params.evaluate()
         match state.env.fn:
             case Trait() as trait:
                 pass
-            case Table(traits=(Trait() as trait, *_)):
+            case Class(traits=(Trait() as trait, *_)):
                 pass
-            case Function():
-                raise ContextErr(f'Line {self.line}: To add options to functions, omit the "opt" keyword.')
+            case Map():
+                raise ContextErr(f'Line {self.line} in "{self.file}": To add options to functions, omit the "opt" keyword.')
             case _:
                 raise AssertionError
         trait.assign_option(pattern, Closure(self.block))
@@ -914,7 +912,7 @@ class Declaration(CommandWithExpr):
             case Token(TokenType.Name, text=name):
                 self.var_name = name
             case _:
-                raise SyntaxErr(f'Line {pos.ln}: Invalid syntax for var/local declaration: "{self.source_text}".')
+                raise SyntaxErr(f'Line {pos.ln} in "{self.file}": Invalid syntax for var/local declaration: "{self.source_text}".')
 
     def __repr__(self):
         return f"{self.__class__.__name__}({self.var_name}={self.value_expr})"
@@ -970,10 +968,10 @@ EXPRMAP = {
     'for': ForLoop,
     'while': WhileLoop,
     'trait': TraitExpr,
-    'table': TableExpr,
-    'function': FunctionExpr,
+    'class': ClassExpr,
+    'map': MapExpr,
     'slot': SlotExpr,
-    'formula': FormulaExpr,
+    'getter': GetterExpr,
     'opt': OptExpr,
     'setter': SetterExpr,
     'local': LocalExpr,

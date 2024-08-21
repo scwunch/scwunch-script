@@ -101,14 +101,14 @@ def regex_match(regex: RegEx | PyValue[str], text: PyValue[str], start: PyValue[
     return PyValue(BuiltIns['Match'], re.compile(regex.value, flags).search(text, idx, end_idx))
 state.deref('match').op_list[0].resolution = regex_match
 
-MatchTable: Frame = state.deref('Match').frame
-MatchTable['group'].op_list[0].resolution = lambda self, *args: py_value(re.Match.group(self.value, *(i.value for i in args)))
-MatchTable['expand'].op_list[0].resolution = lambda self, template: py_value(re.Match.expand(self.value, template.value))
-MatchTable['groups'].op_list[0].resolution = \
+MatchClass: Frame = state.deref('Match').frame
+MatchClass['group'].op_list[0].resolution = lambda self, *args: py_value(re.Match.group(self.value, *(i.value for i in args)))
+MatchClass['expand'].op_list[0].resolution = lambda self, template: py_value(re.Match.expand(self.value, template.value))
+MatchClass['groups'].op_list[0].resolution = \
     lambda self, default=BuiltIns['blank']: py_value(re.Match.groups(self.value, default))
-# MatchTable['span'].op_list[0].resolution = lambda self, group=py_value(0): py_value(re.Match.span(self, group.value))
-MatchTable['start'].op_list[0].resolution = lambda self, group=py_value(0): py_value(re.Match.start(self.value, group.value)+1)
-MatchTable['end'].op_list[0].resolution = lambda self, group=py_value(0): py_value(re.Match.end(self.value, group.value))
+# MatchClass['span'].op_list[0].resolution = lambda self, group=py_value(0): py_value(re.Match.span(self, group.value))
+MatchClass['start'].op_list[0].resolution = lambda self, group=py_value(0): py_value(re.Match.start(self.value, group.value)+1)
+MatchClass['end'].op_list[0].resolution = lambda self, group=py_value(0): py_value(re.Match.end(self.value, group.value))
 
 
 ##############################################
@@ -130,7 +130,7 @@ state.deref('join').op_list[0].resolution = \
     lambda ls, sep=py_value(''): py_value(sep.value.join(BuiltIns['str'].call(item).value for item in iter(ls)))
 state.deref('join').op_list[1].resolution = \
     lambda sep, *args: py_value(sep.value.join(BuiltIns['str'].call(item).value for item in args))
-def filter_function(seq: PyValue, fn: Function, *, mutate=BuiltIns['blank']):
+def filter_function(seq: PyValue, fn: Map, *, mutate=BuiltIns['blank']):
     filtered = filter(lambda el: fn.call(el).truthy, seq)
     if mutate.truthy:
         seq.value[:] = filtered

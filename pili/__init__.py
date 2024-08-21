@@ -43,7 +43,7 @@ def run(*, path: str = None, script: str = None, closure=True, catch_error=True)
     state.file = File(path, source)
     state.source_path = path
     state.source_code = source
-    block = AST(Tokenizer(source)).block
+    block = AST(Tokenizer(source, path)).block
     if closure:
         block = Closure(block)
     try:

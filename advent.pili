@@ -78,7 +78,7 @@ rpy + t
 
 ```
 
-table Hailstone
+class Hailstone
     slot px int
     slot py int
     slot pz int

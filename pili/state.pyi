@@ -1,4 +1,4 @@
-from runtime import Frame, Record, Function, Option, Table, Trait, PyValue, ParamSet
+from runtime import Frame, Record, Map, Option, Class, Trait, PyValue, ParamSet
 from syntax import Operator
 
 print(f'loading {__name__}.py')
@@ -17,20 +17,20 @@ continue_: int
 settings: dict[str]
 
 Op: dict[str, Operator] = {}
-BuiltIns: dict[str, Record | Function | Table | Trait | PyValue] = {}
+BuiltIns: dict[str, Record | Map | Class | Trait | PyValue] = {}
 BASES: dict[str, int] = {'b': 2, 't': 3, 'q': 4, 'p': 5, 'h': 6, 's': 7, 'o': 8, 'n': 9, 'd': 10}
 DEFAULT_PATTERN: ParamSet
 
 class Call:
     file: str
     line: int
-    fn: Function
+    fn: Map
     option: Option
     def __init__(self,
                  file: str,
                  line: int,
                  env: Frame,
-                 fn: Function = None,
+                 fn: Map = None,
                  option: Option = None,
                  error_text: str = None): ...
 
@@ -39,7 +39,7 @@ class File:
     source_code: str
     def __init__(self, path: str | None, source_code: str): ...
 
-def push(frame: Frame, fn: Function = None, option: Option = None): ...
+def push(frame: Frame, fn: Map = None, option: Option = None): ...
 
 def pop(): ...
 

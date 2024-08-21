@@ -238,30 +238,30 @@ greet['Anthony', !excited]
 greet['Anthony', excited=true]
 ```
 
-##  Tables and Traits
-Classes in Pili are called tables for hysterical raisins[^1].  Traits are like table components that can be combined to make tables.  Each value in Pili is a record of exactly one table.  Each table implements zero or more traits.
+##  Classs and Traits
+Classes in Pili are called tables for hysterical raisins[^1].  Traits are like table components that can be combined to make classes.  Each value in Pili is a record of exactly one class.  Each class implements zero or more traits.
 
-Traits and tables are also functions, and therefore can have variables and options defined in their body.  Unlike functions, traits and tables also have **fields**: slot, formula (ie getter), and setter.  The syntax for fields is as follows:
+Traits and classes are also maps, and therefore can have variables and options defined in their body.  Unlike functions, traits and classes also have **fields**: slot, getter (ie getter), and setter.  The syntax for fields is as follows:
 ```
 slot <slot name> <slot type>[ = <default value>]
-formula <name> <type>:
+getter <name> <type>:
 	<body of function to generate value
 setter <name>[<single parameter>]:
 	<code to run when value is set>
 ```
 
-Fields can overlap and overwrite each other to a certain extent, but Pili will check for compatibility.  So if a table attempts to implement two traits that each define a field "foo", but the type signatures are not compatible, it will reject it and raise an error.
+Fields can overlap and overwrite each other to a certain extent, but Pili will check for compatibility.  So if a class attempts to implement two traits that each define a field "foo", but the type signatures are not compatible, it will reject it and raise an error.
 ```
 trait animal 
 	slot is_alive bool = true 
 	slot warm_blooded bool 
  
 trait mammal 
-	formula warm_blooded bool: 
+	getter warm_blooded bool: 
 		return true 
 	slot num_legs 
  
-table Dog (mammal, animal) 
+class Dog (mammal, animal) 
 	slot name str
 	slot num_legs = 4 
  
@@ -272,10 +272,10 @@ Dog['Rover', 4, true, true]
 ```
 
 ### Methods: dot-options etc
-Any variable defined in a trait/table body is accessible via dot syntax, just like with functions.  Additionally, these values are also accessible by instances of the table.  If the value accessed in this way is a function, it will be supplied the instance as it's first argument.  This is how Pili does class methods.
+Any variable defined in a trait/class body is accessible via dot syntax, just like with functions.  Additionally, these values are also accessible by instances of the class.  If the value accessed in this way is a function, it will be supplied the instance as it's first argument.  This is how Pili does class methods.
 
 ```
-table Dog
+class Dog
 	slot name str
 
 	bark[Dog self]:

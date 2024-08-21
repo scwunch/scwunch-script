@@ -17,7 +17,8 @@ class Tokenizer:
     in_string: list[str]
     fn_lv: int
     tokens: list[Token]
-    def __init__(self, script: str):
+    def __init__(self, script: str, path='<none>'):
+        self.file = path
         self.script = script
         self.idx = -1
         self.ln, self.col = 0, 0
@@ -44,7 +45,7 @@ class Tokenizer:
         return head + "\n".join(lines)
 
     def read_tokens(self):
-        tokens: list[Token] = []
+        tokens: list[Token] = [Token('', TokenType.BEGIN, (0,0), 0, 0)]
         text: str
         token_type = None
         while self.char:
@@ -68,20 +69,22 @@ class Tokenizer:
                     self.in_string.append(text)
             elif re.match(r'\w', self.char):
                 text = self.read_word()
-                if text == 'not' and tokens and tokens[-1].text == 'is':
+                if text == 'not' and tokens[-1].text == 'is':
                     tokens[-1].text = 'is not'
                     tokens[-1].pos.stop_index = self.idx
                     continue
-                if text == 'in' and tokens and tokens[-1].text == 'not':
+                if text == 'in' and tokens[-1].text == 'not':
                     tokens[-1].text = 'not in'
                     tokens[-1].pos.stop_index = self.idx
                     continue
+                # if text in {'map', 'class', 'trait'} and not tokens[-1].is_whitespace():
+                #     token_type = TokenType.Name
             elif re.match(r'[:.<>?/~!@$%^&*+=|-]', self.char):
                 # Note: , (comma) and ; (semicolon) are excluded because of special treatment
                 text = self.read_operator()
                 if text == ':':
                     if len(tokens) > 2 and tokens[-1].type == TokenType.Operator and tokens[-2].text == '.':
-                        # This allows operators to be used as function names like this: `.>:`
+                        # This allows operators to be used as map names like this: `.>:`
                         tokens[-1].type = TokenType.Name
                     if (''.join(islice(
                             (t.text for t in reversed(tokens) if not re.match(r'\s', t.text)),
@@ -99,7 +102,7 @@ class Tokenizer:
                         self.fn_lv -= 1
             elif self.char in '[](),;':
                 text = self.char
-                if text == '[' and tokens and tokens[-1].text == '?':
+                if text == '[' and tokens[-1].text == '?':
                     tokens[-1].text = 'call?'
             elif self.char == '#' and self.peek(1, 5) == 'debug':
                 self.next_char(6)
@@ -122,7 +125,7 @@ class Tokenizer:
                             tokens.append(Token('\t'*i, TokenType.BlockEnd, pos, start, self.idx))
                         continue
             elif self.char == '\\':
-                raise SyntaxErr(f'Line {self.ln}: backslash (\\) is only valid at the beginning of a line.')
+                raise SyntaxErr(f'Line {self.ln} in "{self.file}": backslash (\\) is only valid at the beginning of a line.')
             else:
                 raise SyntaxErr(f'{pos} What kind of character is this? "{self.char}"')
 

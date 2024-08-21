@@ -19,6 +19,7 @@ EnumMeta.__contains__ = contains
 
 class TokenType(Enum):
     Unknown = '?'
+    BEGIN = "<begin file>"
     StringLiteral = '`string`'
     StringStart = 'string_start'
     StringPart = 'string_part'
@@ -77,7 +78,7 @@ class Commands(Enum):
     Import = 'import'
     Label = 'label'
     Slot = 'slot'
-    Formula = 'formula'
+    Getter = 'getter'
     Opt = 'opt'
     Setter = 'setter'
 
@@ -121,8 +122,8 @@ class KeyWords(Enum):
     While = 'while'
     Try = 'try'
     Except = 'except'
-    Function = 'function'
-    Table = 'table'
+    Map = 'map'
+    Class = 'class'
     Trait = 'trait'
 
 
@@ -212,6 +213,9 @@ class Token(Node):
             self.pos = Position(pos, start, stop)
         self.type = type or TokenType.map.get(text, TokenType.Name)
 
+    def is_whitespace(self):
+        return self.type in {TokenType.NewLine, TokenType.BlockStart, TokenType.BlockEnd}
+
     def evaluate(self):
         raise NotImplementedError('implement this in interpreter.py')
         # s = self.text
@@ -251,13 +255,13 @@ class ListNode(Node):
 
 
 def default_op_fn(*args):
-    raise OperatorErr(f"Line {state.line}: Operator has no function.")
+    raise OperatorErr(f"Line {state.line} in '{self.file}': Operator has no function.")
 
 
-# default_op_fn = Function({Parameter(AnyMatcher(), None, "*"): default_op_fn})
+# default_op_fn = Map({Parameter(AnyMatcher(), None, "*"): default_op_fn})
 
 class Operator:
-    # fn: Function = default_op_fn
+    # fn: Map = default_op_fn
     def __init__(self,
                  text,
                  fn=None,

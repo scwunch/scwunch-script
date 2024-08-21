@@ -6,7 +6,7 @@ my_func[]:
 my_func[any arg]:
     print arg
 
-function my_func
+map my_func
     []:
         print "it worked"
     [any arg]:
@@ -15,14 +15,14 @@ function my_func
 my_func[]
 my_func['so did this one!']
 
-my_func[MyList ls]:  # note: you can define an option with a pattern matching a table that has yet to be defined
+my_func[MyList ls]:  # note: you can define an option with a pattern matching a class that has yet to be defined
     return ls.str
 
 
-# example of a custom list class with a "hidden" function `items` to store data for some privacy
-table MyList
+# example of a custom list class with a "hidden" map `items` to store data for some privacy
+class MyList
 	var items = {}
-	formula items fn =
+	getter items Map =
 	    return tuple[items[self]]
 
 	[seq ls]:
@@ -81,7 +81,7 @@ print 'next is "settings.base = \'h\'"   now we\'re working in base 6 (heximal)'
 settings.base = 'h'
 # pili fluidly and automatically converts between booleans, integers, and rational numbers,
 # depending on what operators are applied to them
-# floats only appear if a function explicitly returns a float (like the float function) or float literals
+# floats only appear if a function explicitly returns a float (like the float map) or float literals
 my_bool = 'two' == 'two'
 my_int = my_bool * 10
 my_ratio = my_int / 4
@@ -233,8 +233,8 @@ print "my_list = {my_list = [-1, -2, 0 ,1 ,2, ]}"
 print "my_list..abs => {my_list..abs}"
 
 
-# Tables
-# table Animal
+# Classs
+# class Animal
 #     species <str> = "human"
 #     alive <bool> = True
 #     _slices
@@ -350,20 +350,20 @@ trait Animal
     slot species str?
     slot alive bool = true
     slot sound str = ""
-    formula make_sound blank =
+    getter make_sound blank =
         print self.sound
 
 
-table Dog (Animal)
+class Dog (Animal)
     slot name str = ""
     slot length num
     slot array list =
         return []
 
-    formula bark str =
+    getter bark str =
         return "Helo, my name is {self.name}!"
 
-    formula print_bark blank =
+    getter print_bark blank =
         print self.bark
 
     opt [int n]:
@@ -441,12 +441,12 @@ other.make_sound
 
 
 trait Details
-    formula description str =
+    getter description str =
         return "{self.title}, released in {self.release_year}, is a {self.genre} movie directed by {self.director}."
-    formula years_since_release int =
+    getter years_since_release int =
         return 2020 - self.release_year
 
-table Movie (Details)
+class Movie (Details)
     local_var = []
 
     slot title str = ""
@@ -470,12 +470,12 @@ table Movie (Details)
 
 
 
-table TokenType
+class TokenType
     slot name str
     [str t]:
         return TokenType.new[t]
 
-table TokenTypeEnum
+class TokenTypeEnum
     slot Unkown TokenType = TokenType['?']
     slot Operator TokenType = TokenType['op']
 

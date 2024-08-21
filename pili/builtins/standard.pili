@@ -1,4 +1,4 @@
-function max
+map max
     [iter it]:
         blank
     [any arg]:
@@ -6,7 +6,7 @@ function max
     [any args+]:
         return max[args]
 
-function min
+map min
     [iter it]:
         blank
     [any arg]:
@@ -22,7 +22,7 @@ function min
 trait file
     slot path str
 
-table File(file)
+class File(file)
     blank
 
 read[file f; !lines]:
@@ -39,22 +39,22 @@ trait regex
     extract[str regex, str text; !a, !i, !m, !s, !x, !l]:
         blank
 
-table RegEx(regex, str)
+class RegEx(regex, str)
     blank
 
 match[str pattern, str text, int start=0, int end=0; !a, !i, !m, !s, !x, !l]:
     blank
 
-function split
+map split
     [str text, RegEx patt, int max_split = 0; !a, !i, !m, !s, !x, !l]:
         blank
     [str text, str sep = '']:
         blank
 
-table Match
+class Match
     opt [int|str index*]:
         return self.group[*index]
-    opt [range indices]:
+	opt [range indices]:
         return self.group[*indices]
     .group[int|str idx*]:
         blank
@@ -81,15 +81,15 @@ table Match
 ##############################################
 # list functions
 ##############################################
-function push
+map push
     [list ls, any item, int idx?]:
         blank
 
-function pop
+map pop
     [list ls, int idx = -1]:
         blank
 
-function extend
+map extend
     [list ls, iter it]:
         blank
     [list ls, iter its+]:
@@ -97,13 +97,13 @@ function extend
             ls.extend[it]
         return ls
 
-function join
+map join
     [iter it, str sep = '']:
         blank
     [str sep = '', any args+]:
         blank
 
-function filter
+map filter
     [list ls, fn f; !mutate]:
         1/0
     [iter~list it, fn f]:
@@ -113,15 +113,15 @@ function filter
 ##############################################
 # JSON / YAML
 ##############################################
-function parse_json
+map parse_json
     [str json]:
         blank
 
-function write_json
+map write_json
     [fn func]:
         blank
 
-function yaml
+map yaml
     [;str path]:
         return yaml[File[path].read]
     [str content]:
@@ -137,7 +137,7 @@ function yaml
     dump[fn func]:
         blank
 
-function write_yaml
+map write_yaml
     [fn func]:
         blank
 
@@ -151,7 +151,7 @@ if false
 		match[any arg]:
 			blank
 
-	table Field
+	class Field
 		slot name str
 		slot type pattern
 		slot getter fn|true?

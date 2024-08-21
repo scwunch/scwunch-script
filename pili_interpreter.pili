@@ -1,7 +1,7 @@
-function Context
+map Context
     test_script = `print 3 "hello world"`
 
-table TokenType
+class TokenType
     slot name str
     var name
     var number
@@ -20,7 +20,7 @@ TokenType.tab = TokenType['tab']
 TokenType.string = TokenType['string']
 
 
-table Tokenizer
+class Tokenizer
     slot program str
     slot tokens list = []
     debug slot idx int = 0  # the default isn't working
@@ -59,7 +59,7 @@ table Tokenizer
                 print 'EOF'
         token_type = blank
 
-    function handle_char
+    map handle_char
         [str c, _]:
             buffer += c
             token_type ??= TokenType.name
@@ -107,7 +107,7 @@ trait Node
             return blank
         return Context.test_script[self.place]
 
-table Token(Node)
+class Token(Node)
     slot type TokenType
     [str text?, TokenType type, int idx?, int end?, int line, int ch]:
         print "New token: {type} {text} @({line}, {ch})"
@@ -121,7 +121,7 @@ table Token(Node)
     .str:
         return "Token<{self.type.name}>[{self.source ?? self.text}]"
 
-table Position(range)
+class Position(range)
     slot line int?
     slot ch   int?
     [range r, int line?, int ch?]:

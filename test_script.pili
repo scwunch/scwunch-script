@@ -5,7 +5,7 @@ now[]:
 start_time = now  []
 
 
-function foo
+map foo
 	[int a, str b+; num c = 0, num d, *]:
 		if has 'other_name'
 			return other_name
@@ -27,7 +27,7 @@ print foo[a=-1, "one", "two", "three", d=20/30]
 print foo[1, "two", c=55, d=1/2]
 print foo[a=1, "two", c=55, d=1/2, other_name='YES!']
 
-function multiprint
+map multiprint
 	repeats = 3
 	[any msg]:
 		for i in range[repeats]
@@ -53,7 +53,7 @@ a = b = 3
 print 'a: {a}'
 print 'b: {b}'
 
-function test
+map test
 	0: "test initialization success"
 
 print test[0]
@@ -80,7 +80,7 @@ print 'test 3 passed' if test[3] else 'test 3 FAILED'
 test[4] = my_var[2] == 11
 print 'test 4 passed' if test[4] else 'test 4 FAILED'
 
-function next_var
+map next_var
 	[str text]:
 		return text + '?!?!'
 test[5] = next_var['hahahahaha'] == 'hahahahaha?!?!'
@@ -94,7 +94,7 @@ print 'test 10 passed' if test[6d] else 'test 10 FAILED'
 test[7d] = not 345 is type["345"] and 345 is type[3333] and 345 is not str
 print 'test 11 passed' if test[7d] else 'test 11 FAILED'
 
-table Dog
+class Dog
 	slot name str
 	slot breed str
 	.bark[]:
@@ -118,7 +118,7 @@ print 'test 15 passed' if test[15] else 'test 15 FAILED'
 
 Range[int start, int end, int step]:
 	index = start
-	function range
+	map range
 		start = start
 		end = end
 		step = step
@@ -162,7 +162,7 @@ foo2[str|int|bool var_name]:
 test[25] = foo2[1] == "1 worked"
 print 'test 25 ' + ('passed' if test[25] else 'FAILED')
 
-table Cat
+class Cat
 	slot name str
 	[str name]:
 		return Cat.new[name = "😸 " + name]
@@ -277,10 +277,10 @@ print 'test 44 ' + ('passed' if (test[44] = i == 130) else 'FAILED')
 lt[num a, num b]:
 	return a < b
 
-function item1
+map item1
 	length = 230
 
-function item2
+map item2
 	length = 143
 	.<[other]:
 		return length < other.length
@@ -292,7 +292,7 @@ item2.length = 55555
 test[45] = test[45] and not item2 < item1 and item2 > item1
 print 'test 45 ' + ('passed' if test[45] else 'FAILED')
 
-table Bear
+class Bear
 	slot name str
 	slot length num
 	roar[]:
@@ -389,7 +389,7 @@ test[55] = asdf == 1
 print_test[55]
 
 
-function joiner
+map joiner
 	[list|tuple ls, str sep]:
 		if len[ls] == 0
 			return ''
@@ -545,7 +545,7 @@ test[112] = len[test].str[14] == '46' and num['9.5', 10d] == 13.3
 print_test[112]
 
 
-function some_options
+map some_options
 	name = "This is a name"
 	5 : "This is a numbered option"
 	# [any x]: 'not function option'
@@ -589,12 +589,12 @@ test[120] = (1, 2, 3, 4) == (2-1, 4/2, 3, 2**2)
 test[120] *= (asdf = 10; asdf += 2; asdf == 12)
 print_test[120]
 
-table Fruit
+class Fruit
 	slot name str
 	slot color Color?
 	slot weight_in_grams (num>0)?
 
-table Color
+class Color
 	slot name 'red'|'orange'|'yellow'|'green'|'blue'|'purple'
 	var red
 	var orange
@@ -612,7 +612,7 @@ Color.blue = Color['blue']
 Color.purple = Color['purple']
 
 
-function bind_weight
+map bind_weight
 	[Fruit(weight_in_grams: w, color: Color.red | Color.orange) fruit]:
 		return "Weight of red or orange fruit: {w}"
 	[Fruit(weight_in_grams: w, color: Color.purple) fruit]:
@@ -653,7 +653,7 @@ test[131] = ls.join + ', '.join['', -1, -2, -3] == '123450letters123450, -1, -2,
 print_test[131]
 
 
-table Foo
+class Foo
 	slot a int
 	slot b str?
 	.echo:
@@ -704,8 +704,8 @@ test[134] = (y['title'] == 'A New Hope'
 			 and 'date: 2020-08-21' in yaml.dump[y].split['\n'].set)
 print_test[134]
 
-print Table.fields..str[!info].join['\n']
-# for field in Table.fields
+print Class.fields..str[!info].join['\n']
+# for field in Class.fields
 # 	print field.repr
 
 
@@ -726,7 +726,7 @@ end_time = now[]
 execution_time = end_time - start_time
 
 start_time = now[]
-function long_loop
+map long_loop
 	[int n]:
 		for i in range[n]
 			(print i) if i % 1000 == 0 else blank

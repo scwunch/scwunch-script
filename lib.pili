@@ -1,7 +1,7 @@
 trait file
     slot path str
 
-table File(file)
+class File(file)
     blank
 
 read[file f, !lines]:
@@ -51,7 +51,7 @@ def regex_extract(regex: RegEx | PyValue[str], text: PyValue[str], *,
     return py_value(re.findall(regex.value, text.value, flags))
 state.deref('regex').frame['extract'].op_list[0].resolution = regex_extract``]
 
-table RegEx(regex)
+class RegEx(regex)
     python[``state.deref('RegEx').op_list.extend(state.deref('regex').op_list)``]
 
 print python[`state.deref('regex').op_list`]
